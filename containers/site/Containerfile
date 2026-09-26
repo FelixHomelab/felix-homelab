@@ -1,0 +1,89 @@
+# Grant Felix 个人主页（Leptos SSR + Axum + SQLite）构建镜像
+#
+#   构建：podman build -t localhost/felix-homepage:latest -f containers/site/Containerfile site
+#
+# 说明：
+#   · 用官方 rust 镜像编译；cargo-leptos 与 wasm-bindgen-cli 用 GitHub 预编译产物，
+#     避免在线编译这两个工具（版本与 site/Cargo.lock 里的 wasm-bindgen 对齐）。
+#   · cargo 走 rsproxy 稀疏镜像，国内网络更稳。
+#   · 运行时用 debian-slim，只带二进制 + 前端产物 + 内容。
+
+# ---------- 构建阶段 ----------
+FROM docker.io/library/rust:1.98-bookworm AS build
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# 用 GitHub 预编译的 binaryen：Debian 自带版本过旧，其 wasm-opt 产物会让
+# Chrome 报 “WebAssembly.Table.grow(): failed to grow table”，前端水合失败。
+ARG BINARYEN_VERSION=version_133
+RUN curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+	| tar -xz -C /opt \
+ && ln -sf "/opt/binaryen-${BINARYEN_VERSION}/bin/wasm-opt" /usr/local/bin/wasm-opt \
+ && wasm-opt --version
+
+RUN rustup target add wasm32-unknown-unknown
+
+# cargo 走国内镜像（rsproxy），并让 git 依赖用命令行 git
+RUN printf '[source.crates-io]\nreplace-with = "rsproxy-sparse"\n[source.rsproxy-sparse]\nregistry = "sparse+https://rsproxy.cn/index/"\n[net]\ngit-fetch-with-cli = true\n' > "$CARGO_HOME/config.toml"
+
+# 固定用镜像自带的工具链：否则 rust-toolchain.toml 的 "stable" 会让 rustup 联网同步最新版
+ENV RUSTUP_TOOLCHAIN=1.98.1
+
+# cargo-leptos（预编译）
+ARG CARGO_LEPTOS_VERSION=v0.3.9
+RUN curl -sSfL "https://github.com/leptos-rs/cargo-leptos/releases/download/${CARGO_LEPTOS_VERSION}/cargo-leptos-x86_64-unknown-linux-gnu.tar.gz" \
+	| tar -xz -C /tmp \
+ && install -m755 /tmp/cargo-leptos-x86_64-unknown-linux-gnu/cargo-leptos /usr/local/bin/ \
+ && rm -rf /tmp/cargo-leptos-x86_64-unknown-linux-gnu \
+ && cargo-leptos --version
+
+# wasm-bindgen-cli（预编译；版本必须与 site/Cargo.lock 的 wasm-bindgen 一致）
+ARG WASM_BINDGEN_VERSION=0.2.127
+RUN curl -sSfL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+	| tar -xz -C /tmp \
+ && install -m755 "/tmp/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/ \
+ && rm -rf /tmp/wasm-bindgen-* \
+ && wasm-bindgen --version
+
+WORKDIR /src
+COPY . .
+# 缓存 cargo registry 与 target：改代码后重建只重编应用本身。
+# 注意：cache 挂载的内容不会进入镜像层，因此构建后把产物拷到 /out。
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/target,sharing=locked \
+    cargo leptos build --release \
+ && rm -rf /out && mkdir -p /out \
+ && cp target/release/grant-felix-homepage /out/ \
+ && cp -r target/site /out/site
+
+# ---------- 运行阶段 ----------
+FROM docker.io/library/debian:bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd -r -u 1000 -m -d /app app
+
+WORKDIR /app
+COPY --from=build /out/grant-felix-homepage /app/grant-felix-homepage
+COPY --from=build /out/site /app/site
+COPY --from=build /src/content /app/content
+
+ENV LEPTOS_OUTPUT_NAME=grant-felix-homepage \
+    LEPTOS_SITE_ROOT=/app/site \
+    LEPTOS_SITE_PKG_DIR=pkg \
+    LEPTOS_SITE_ADDR=0.0.0.0:8090 \
+    LEPTOS_ENV=PROD \
+    CONTENT_DIR=/app/content \
+    DATABASE_URL=sqlite:///app/data/site.db \
+    UPLOAD_DIR=/app/data/uploads \
+    RUST_LOG=info,sqlx=warn
+
+RUN mkdir -p /app/data/uploads && chown -R app:app /app/data
+
+VOLUME /app/data
+EXPOSE 8090
+USER app
+CMD ["/app/grant-felix-homepage"]

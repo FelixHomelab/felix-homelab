@@ -1,0 +1,10 @@
+- 参考文档:
+    - Forgejo 文档:
+        - abbr: FJ
+          href: https://forgejo.org/docs/latest/
+    - Podman 文档:
+        - abbr: PD
+          href: https://docs.podman.io/
+    - Quadlet 文档:
+        - abbr: QT
+          href: https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html

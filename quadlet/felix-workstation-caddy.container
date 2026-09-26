@@ -1,0 +1,22 @@
+[Unit]
+Description=Felix-Workstation: Caddy 反向代理（统一入口）
+After=felix-workstation-pod.service felix-workstation-forgejo.service
+Requires=felix-workstation-pod.service
+Wants=felix-workstation-forgejo.service
+
+[Container]
+ContainerName=felix-workstation-caddy
+Image=docker.io/library/caddy:2
+Pod=felix-workstation.pod
+Label=autoheal=true
+Timezone=local
+Volume=%h/.config/felix-workstation/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+Volume=felix-workstation-caddy-data.volume:/data
+Volume=felix-workstation-caddy-config.volume:/config
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,19 @@
+# 规避 Podman 5.8.7 / buildah 1.43.4 的 copier 回归
+#
+# 背景：buildah 为修复 CVE 引入的沙箱化路径校验，会拒绝“容器内绝对符号链接”，
+# 于是 Forgejo Runner / act 通过 Docker API 把 action 复制到 /var/run/act/... 时
+# 会报：statat var/run/act/...: path escapes from parent
+# 上游 issue: https://github.com/podman-container-tools/podman/issues/29805
+#
+# 现象只出现在 /var/run 是“绝对”符号链接的镜像（Debian/Ubuntu 系）；
+# 相对符号链接不会被沙箱拒绝。因此这里基于官方镜像派生一层，把
+#     /var/run -> /run       （绝对）
+# 改为
+#     /var/run -> ../run     （相对）
+#
+# 待 Podman 修复后可删除本文件及 scripts/build-runner-images.sh。
+ARG BASE
+FROM ${BASE}
+
+USER root
+RUN rm -f /var/run && ln -s ../run /var/run

@@ -1,0 +1,41 @@
+# ===== Rust 构建产物 =====
+# 注意：Cargo.lock 必须入库（这是可执行程序，不是库），
+# 所以这里绝不能出现 `*.lock`——旧 .gitignore 正是被它误伤了 Cargo.lock。
+/target/
+**/*.rs.bk
+
+# ===== Nix =====
+# `nix build` / `nix develop` 在当前目录留下的软链；flake.lock 则**必须入库**，
+# 它锁定了 nixpkgs 与 rust-overlay 的具体修订，是可复现的关键。
+/result
+/result-*
+
+# ===== 运行时数据（绝不入库）=====
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
+# 手工留的库备份。这些文件里是**密码哈希**，跟 .env 一样属于秘密，
+# 所以整个目录一起忽略——漏一条规则就等于把它交出去。
+/data/backups/
+# 注意：必须先忽略 uploads 下的“内容”而不是目录本身，
+# 否则 git 不会进入该目录，下面的 ! 否定规则就永远不生效。
+/data/uploads/*
+!/data/uploads/.gitkeep
+
+# ===== 秘密（令牌 / 密钥只放本地 .env 或环境变量）=====
+.env
+.env.*
+!.env.example
+
+# ===== 编辑器 / 操作系统 =====
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*~
+
+# ===== 日志与临时文件 =====
+*.log
+*.tmp

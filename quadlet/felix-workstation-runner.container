@@ -1,0 +1,30 @@
+[Unit]
+Description=Felix-Workstation: Forgejo Actions Runner
+After=felix-workstation-pod.service felix-workstation-forgejo.service
+Requires=felix-workstation-pod.service felix-workstation-forgejo.service
+
+[Container]
+ContainerName=felix-workstation-runner
+Image=data.forgejo.org/forgejo/runner:13
+Pod=felix-workstation.pod
+Label=autoheal=true
+# 以容器内 root 运行：在 rootless 下映射为宿主机当前用户，
+# 从而可以访问挂载进来的 podman.sock。
+User=0
+WorkingDir=/data
+Timezone=local
+Environment=DOCKER_HOST=unix:///var/run/docker.sock
+Volume=felix-workstation-runner-data.volume:/data
+Volume=%h/.config/felix-workstation/runner-config.yml:/etc/runner/config.yml:ro,Z
+Volume=%t/podman/podman.sock:/var/run/docker.sock
+SecurityLabelDisable=true
+Exec=forgejo-runner daemon --config /etc/runner/config.yml
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+# 等 Forgejo 真正就绪再启动，避免启动竞态
+ExecStartPre=/usr/bin/podman wait --condition=healthy felix-workstation-forgejo
+
+[Install]
+WantedBy=default.target

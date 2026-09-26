@@ -1,0 +1,15 @@
+title: Felix-Workstation
+description: Podman 工作站 · 统一入口 http://localhost:5729
+theme: dark
+color: slate
+headerStyle: boxed
+target: _blank
+statusStyle: dot
+
+layout:
+  容器服务（本 Pod）:
+    style: row
+    columns: 3
+  入口与文档:
+    style: row
+    columns: 4

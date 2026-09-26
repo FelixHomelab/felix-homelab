@@ -1,0 +1,115 @@
+[package]
+name = "grant-felix-homepage"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.86"
+description = "Grant Felix 个人主页 — Leptos + Axum + SQLite"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { version = "0.8" }
+leptos_router = { version = "0.8" }
+leptos_meta = { version = "0.8" }
+
+# 两端共有：server function 的入参与返回值类型在服务端与 wasm 里都会编译，
+# 因此序列化依赖不能只挂在 ssr 上。
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+# 主题偏好的背景图 URL 需要 percent 编码后才能安全放进 cookie（避开 ; , = ），
+# 客户端编码、服务端解码，两端都要。
+percent-encoding = "2"
+
+# 仅服务端（ssr）依赖：客户端 wasm 包里不会被打进去
+leptos_axum = { version = "0.8", optional = true }
+# `macros` 提供 FromRef 派生宏：AppState 要靠它同时满足 Leptos 与业务处理器；
+# `multipart` 用于背景图上传
+axum = { version = "0.8", optional = true, features = ["macros", "multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs"], optional = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "migrate"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+anyhow = { version = "1", optional = true }
+gray_matter = { version = "0.3", optional = true }
+pulldown-cmark = { version = "0.13", optional = true }
+# RSS 需要把内容里的 YYYY-MM-DD 转成 RFC 822 形式；chrono 本来就在依赖树里（sqlx）
+chrono = { version = "0.4", optional = true }
+# 认证：密码哈希（argon2id）、会话令牌随机数、令牌哈希
+argon2 = { version = "0.6", optional = true }
+rand = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
+hex = { version = "0.4", optional = true }
+# server function 显式注册用（见 lib.rs 的 register_server_fns）
+server_fn = { version = "0.8", optional = true, features = ["axum"] }
+
+# 仅客户端（hydrate）依赖
+#
+# 注意 wasm-bindgen / js-sys / web-sys 三者**锁精确版本**，而且必须同进同退
+# （js-sys 与 web-sys 都会把 wasm-bindgen 钉在同一个补丁版本上）。
+#
+# 原因不是代码需要这个补丁号，而是要跟 nixpkgs 提供的 wasm-bindgen-cli 对齐：
+# cargo-leptos 会从 Cargo.lock 探测 wasm-bindgen 版本，再去找**同版本**的 CLI；
+# 版本不一致时它会试图联网自己下载，在 Nix 构建沙箱里必然失败。
+# 当前对齐的是 flake.lock 里那版 nixpkgs 的 wasm-bindgen-cli。
+# 升级这三个版本前，先确认目标 nixpkgs 里有对应的 CLI。
+wasm-bindgen = { version = "=0.2.127", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+# 读写 cookie 用；leptos 自带的 document() 不一定开着 set_cookie 所需的 feature，
+# 这里显式声明，feature 会与依赖图取并集，不会重复。
+web-sys = { version = "=0.3.104", features = ["Document", "Window", "Location"], optional = true }
+# web-sys 0.3 把 document.cookie 只挂在已废弃的 HtmlDocument 上，
+# 这里改用 Reflect 直接读写该属性，避免依赖 instanceof 强制转换。
+js-sys = { version = "=0.3.104", optional = true }
+
+[features]
+hydrate = [
+    "leptos/hydrate",
+    "dep:console_error_panic_hook",
+    "dep:wasm-bindgen",
+    "dep:web-sys",
+    "dep:js-sys",
+]
+ssr = [
+    "dep:axum",
+    "dep:tokio",
+    "dep:leptos_axum",
+    "dep:sqlx",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "dep:anyhow",
+    "dep:gray_matter",
+    "dep:pulldown-cmark",
+    "dep:chrono",
+    "dep:argon2",
+    "dep:rand",
+    "dep:sha2",
+    "dep:hex",
+    "dep:server_fn",
+    "leptos/ssr",
+    "leptos_meta/ssr",
+    "leptos_router/ssr",
+]
+
+# wasm 包体积优化：个人站要照顾慢速网络，优先小体积
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.leptos]
+output-name = "grant-felix-homepage"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "style/main.css"
+assets-dir = "public"
+site-addr = "127.0.0.1:8080"
+reload-port = 3001
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
+lib-profile-release = "wasm-release"

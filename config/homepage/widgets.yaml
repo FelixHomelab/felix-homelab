@@ -1,0 +1,10 @@
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: long
+      timeStyle: short
+      hour12: false
+
+- search:
+    provider: bing
+    target: _blank

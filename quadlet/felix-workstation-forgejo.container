@@ -1,0 +1,30 @@
+[Unit]
+Description=Felix-Workstation: Forgejo (Git 服务平台)
+After=felix-workstation-pod.service felix-workstation-db.service
+Requires=felix-workstation-pod.service felix-workstation-db.service
+
+[Container]
+ContainerName=felix-workstation-forgejo
+Image=codeberg.org/forgejo/forgejo:16
+Pod=felix-workstation.pod
+Label=autoheal=true
+EnvironmentFile=%h/.config/felix-workstation/.env
+Environment=USER_UID=1000
+Environment=USER_GID=1000
+Timezone=local
+Volume=felix-workstation-forgejo-data.volume:/data
+HealthCmd=wget -q --spider http://127.0.0.1:3000/api/healthz
+HealthInterval=15s
+HealthTimeout=5s
+HealthRetries=10
+HealthStartPeriod=60s
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+# 等待 PostgreSQL 真正就绪（healthy）再启动 Forgejo，避免启动竞态
+ExecStartPre=/usr/bin/podman wait --condition=healthy felix-workstation-db
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,31 @@
+[Unit]
+Description=Felix-Workstation pod (rootless)
+Documentation=https://github.com/containers/podman
+
+[Pod]
+# 用户要求 Pod 名称即 Felix-Workstation
+PodName=Felix-Workstation
+# Pod 内部 hostname 用小写：部分运行时（如 musl/Node）无法解析含大写的名称，
+# Homepage 会以 hostname 作为监听地址，因此必须可解析。
+HostName=felix-workstation
+
+# 对外暴露的端口（仅 Pod 级别可发布端口）
+# 全部只绑回环 127.0.0.1：局域网/外部无法直连（无 TLS 的服务更需如此）。
+# 若以后要从其它设备访问，再按需改成 0.0.0.0，并同步改 ROOT_URL。
+#   5729 -> Caddy 统一入口（个人主页 / dash.localhost / forgejo.localhost）
+#   5730 -> Forgejo Web 直连
+#   5731 -> Forgejo SSH
+#   5732 -> Homepage 控制台直连
+#   5733 -> 个人主页直连
+#   5734 -> Nextcloud 直连
+#   3000 -> Forgejo Web（仅供 host 网络的作业容器经 127.0.0.1:3000 访问）
+PublishPort=127.0.0.1:5729:8080
+PublishPort=127.0.0.1:5730:3000
+PublishPort=127.0.0.1:5731:2222
+PublishPort=127.0.0.1:5732:3001
+PublishPort=127.0.0.1:5733:8090
+PublishPort=127.0.0.1:5734:80
+PublishPort=127.0.0.1:3000:3000
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,26 @@
+[Unit]
+Description=Felix-Workstation: PostgreSQL (Forgejo 数据库)
+After=felix-workstation-pod.service
+Requires=felix-workstation-pod.service
+
+[Container]
+ContainerName=felix-workstation-db
+Image=docker.io/library/postgres:17-alpine
+Pod=felix-workstation.pod
+Label=autoheal=true
+Timezone=local
+EnvironmentFile=%h/.config/felix-workstation/.env
+Volume=felix-workstation-db-data.volume:/var/lib/postgresql/data
+HealthCmd=pg_isready -U forgejo -d forgejo
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=10
+HealthStartPeriod=30s
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

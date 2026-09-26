@@ -1,0 +1,1087 @@
+//! 后台页面。
+//!
+//! 页面级的身份判断只决定**显示什么**，授权由 `crate::admin` 里每个 server function
+//! 自己完成。这里做检查是为了给非管理员一个像样的 403，而不是一屏报错。
+
+use leptos::prelude::*;
+use leptos_meta::Title;
+use leptos_router::hooks::use_location;
+
+use crate::admin::{
+    am_i_admin, admin_backup_config, admin_backup_list, admin_backup_now, admin_backup_save_config,
+    admin_backup_trigger_sync, admin_delete_comment, admin_delete_review, admin_list_comments,
+    admin_list_pod, admin_list_reviews, admin_list_users, admin_load_overview, admin_reply_review,
+    admin_restart_container, admin_set_comment_status, admin_set_review_status,
+    admin_set_user_role, admin_set_user_status, AdminComment, AdminReview, AdminUser, BackupChannel,
+    PodContainer,
+};
+use crate::components::PageHeader;
+
+use super::set_status;
+
+/// 统一执行一个后台动作：成功就刷新列表并提示，失败把服务端的原话显示出来。
+fn run_action<F>(revision: RwSignal<u32>, message: RwSignal<String>, action: F)
+where
+    F: std::future::Future<Output = Result<Result<(), String>, leptos::prelude::ServerFnError>>
+        + 'static,
+{
+    leptos::task::spawn_local(async move {
+        match action.await {
+            Ok(Ok(())) => {
+                message.set("已处理。".to_string());
+                // 自增触发列表重新拉取
+                revision.update(|n| *n += 1);
+            }
+            Ok(Err(text)) => message.set(text),
+            Err(error) => message.set(format!("请求失败：{error}")),
+        }
+    });
+}
+
+/// 非管理员看到的页面。
+fn forbidden() -> impl IntoView {
+    set_status(403);
+    view! {
+        <Title text="无权访问 — Grant Felix" />
+        <section class="wrap">
+            <PageHeader title="无权访问" lede="这个页面只有管理员能看。".to_string() />
+            <p><a href="/">"← 回首页"</a></p>
+        </section>
+    }
+}
+
+/// 后台各页共用的导航（当前页高亮）。
+#[component]
+fn AdminNav() -> impl IntoView {
+    // 归一化尾斜杠：/admin/ 与 /admin 视为同一页
+    let path = use_location().pathname;
+    let active = move |href: &str| path.get().trim_end_matches('/') == href;
+
+    view! {
+        <nav class="admin-nav">
+            <a href="/admin" class:active=move || active("/admin")>"概览"</a>
+            <a href="/admin/comments" class:active=move || active("/admin/comments")>"评论"</a>
+            <a href="/admin/sky-reviews" class:active=move || active("/admin/sky-reviews")>
+                "评价"
+            </a>
+            <a href="/admin/users" class:active=move || active("/admin/users")>"用户"</a>
+            <a href="/admin/pod" class:active=move || active("/admin/pod")>"Pod"</a>
+            <a href="/admin/backup" class:active=move || active("/admin/backup")>"备份"</a>
+        </nav>
+    }
+}
+
+/// 后台页面的外壳：先确认是管理员，再把内容渲染出来。
+///
+/// **守卫必须写在响应式闭包（`move || ...`）里，不能写成组件体里的 `if ... return`。**
+/// 组件体在资源解析之前就执行了，那时读「当前用户」只会拿到 `None`——结果是管理员
+/// 也被自己的后台挡在门外。
+///
+/// 这里也**不复用 App 级的那个「当前用户」资源**：它在路由子树里读会时有时无
+/// （连打 5 次能出现 403），改成页面内部自己的资源后稳定。
+#[component]
+fn AdminPage(
+    #[prop(into)] title: String,
+    #[prop(into)] lede: String,
+    children: ChildrenFn,
+) -> impl IntoView {
+    let is_admin = Resource::new_blocking(|| (), |_| am_i_admin());
+
+    view! {
+        <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+            {move || match is_admin.get() {
+                Some(Ok(true)) => {
+                    let children = children.clone();
+                    view! {
+                        <section class="wrap">
+                            <PageHeader title=title.clone() lede=lede.clone() />
+                            <AdminNav />
+                            {children()}
+                        </section>
+                    }
+                    .into_any()
+                }
+                Some(_) => forbidden().into_any(),
+                None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+            }}
+        </Suspense>
+    }
+}
+
+/// 待审 / 全部 的筛选开关。后台最常做的动作是清待审队列，所以默认只看待审。
+#[component]
+fn StatusFilter(only_pending: RwSignal<bool>) -> impl IntoView {
+    view! {
+        <div class="field-row">
+            <button
+                class="btn"
+                class:active=move || only_pending.get()
+                on:click=move |_| only_pending.set(true)
+            >
+                "只看待审"
+            </button>
+            <button
+                class="btn"
+                class:active=move || !only_pending.get()
+                on:click=move |_| only_pending.set(false)
+            >
+                "全部"
+            </button>
+        </div>
+    }
+}
+
+/// 后台概览。
+#[component]
+pub fn AdminDashboardPage() -> impl IntoView {
+    let overview = Resource::new_blocking(|| (), |_| admin_load_overview());
+    let pod = Resource::new_blocking(|| (), |_| admin_list_pod());
+
+    view! {
+        <Title text="后台 — Grant Felix" />
+        <AdminPage title="后台" lede="审核评论、管理用户、回复评价、看护容器。".to_string()>
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match overview.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"载入统计失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(data)) => view! {
+                        <div class="stat-grid">
+                            <a class="stat" href="/admin/comments">
+                                <span class="stat-value">{data.pending_comments}</span>
+                                <span class="stat-label">"待审评论"</span>
+                            </a>
+                            <a class="stat" href="/admin/sky-reviews">
+                                <span class="stat-value">{data.pending_reviews}</span>
+                                <span class="stat-label">"待审评价"</span>
+                            </a>
+                            <a class="stat" href="/admin/users">
+                                <span class="stat-value">{data.users}</span>
+                                <span class="stat-label">"注册用户"</span>
+                            </a>
+                            <a class="stat" href="/admin/users">
+                                <span class="stat-value">{data.banned}</span>
+                                <span class="stat-label">"已封禁"</span>
+                            </a>
+                            <Suspense fallback=|| ()>
+                                {move || match pod.get() {
+                                    Some(Ok(list)) => {
+                                        let total = list.len();
+                                        let running = list
+                                            .iter()
+                                            .filter(|c| c.state == "running")
+                                            .count();
+                                        let healthy = list
+                                            .iter()
+                                            .filter(|c| c.health.as_deref() == Some("healthy"))
+                                            .count();
+                                        view! {
+                                            <a class="stat" href="/admin/pod">
+                                                <span class="stat-value">
+                                                    {format!("{running}/{total}")}
+                                                </span>
+                                                <span class="stat-label">"容器运行中"</span>
+                                            </a>
+                                            <a class="stat" href="/admin/pod">
+                                                <span class="stat-value">{healthy.to_string()}</span>
+                                                <span class="stat-label">"健康检查通过"</span>
+                                            </a>
+                                        }
+                                            .into_any()
+                                    }
+                                    _ => ().into_any(),
+                                }}
+                            </Suspense>
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
+
+            <section class="admin-quick">
+                <h2 class="admin-section-title">"快捷入口"</h2>
+                <div class="field-row">
+                    <a class="btn btn-small" href="/admin/comments">"评论审核"</a>
+                    <a class="btn btn-small" href="/admin/users">"用户管理"</a>
+                    <a class="btn btn-small" href="/admin/pod">"Pod 管理"</a>
+                    <a class="btn btn-small" href="/admin/backup">"备份与同步"</a>
+                    <a
+                        class="btn btn-small"
+                        href="http://cloud.localhost:5729/"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        "Nextcloud"
+                    </a>
+                    <a
+                        class="btn btn-small"
+                        href="http://dash.localhost:5729/"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        "控制台看板"
+                    </a>
+                    <a
+                        class="btn btn-small"
+                        href="http://localhost:5730/-/admin"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        "Forgejo 后台"
+                    </a>
+                    <a class="btn btn-small" href="/" target="_blank" rel="noreferrer">
+                        "打开主站"
+                    </a>
+                </div>
+            </section>
+        </AdminPage>
+    }
+}
+
+/// 评论审核。
+#[component]
+pub fn AdminCommentsPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let only_pending = RwSignal::new(true);
+
+    let comments = Resource::new_blocking(
+        move || (revision.get(), only_pending.get()),
+        |(_, pending)| admin_list_comments(if pending { "pending".into() } else { "all".into() }),
+    );
+
+    view! {
+        <Title text="评论审核 — Grant Felix" />
+        <AdminPage title="评论审核" lede="通过后才会显示在页面上。".to_string()>
+            <StatusFilter only_pending=only_pending />
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match comments.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"载入评论失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) if list.is_empty() => {
+                        view! { <p class="muted">"没有需要处理的评论。"</p> }.into_any()
+                    }
+                    Some(Ok(list)) => view! {
+                        <div class="admin-list">
+                            {list
+                                .into_iter()
+                                .map(|comment| {
+                                    view! {
+                                        <AdminCommentRow
+                                            comment=comment
+                                            revision=revision
+                                            message=message
+                                        />
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
+        </AdminPage>
+    }
+}
+
+/// 后台里的一行评论。
+#[component]
+fn AdminCommentRow(
+    comment: AdminComment,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let id = comment.id;
+    let target = format!("/{}/{}", comment.target_kind, comment.target_slug);
+    let reply_count = comment.reply_count;
+    // 删除会连带删掉回复（外键 CASCADE），动手前先把后果说清楚
+    let delete_hint = if reply_count > 0 {
+        format!("删除（连同 {reply_count} 条回复）")
+    } else {
+        "删除".to_string()
+    };
+
+    view! {
+        <article class="admin-row">
+            <p class="admin-meta">
+                <span class=format!("status status-{}", comment.status)>{comment.status.clone()}</span>
+                <strong>{comment.author.clone()}</strong>
+                <span class="comment-time">{comment.created_at.clone()}</span>
+                <a href=target>{format!("{}/{}", comment.target_kind, comment.target_slug)}</a>
+                {comment.parent_id.map(|p| view! { <span class="comment-time">"回复 #"{p}</span> })}
+            </p>
+            <p class="admin-body">{comment.body_md.clone()}</p>
+            <div class="admin-actions">
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        run_action(revision, message, admin_set_comment_status(id, "approved".into()))
+                    }
+                >
+                    "通过"
+                </button>
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        run_action(revision, message, admin_set_comment_status(id, "rejected".into()))
+                    }
+                >
+                    "拒绝"
+                </button>
+                <button
+                    class="btn btn-small btn-danger"
+                    on:click=move |_| run_action(revision, message, admin_delete_comment(id))
+                >
+                    {delete_hint}
+                </button>
+            </div>
+        </article>
+    }
+}
+
+/// 评价审核与回复。
+#[component]
+pub fn AdminReviewsPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let only_pending = RwSignal::new(true);
+
+    let reviews = Resource::new_blocking(
+        move || (revision.get(), only_pending.get()),
+        |(_, pending)| admin_list_reviews(if pending { "pending".into() } else { "all".into() }),
+    );
+
+    view! {
+        <Title text="评价审核 — Grant Felix" />
+        <AdminPage title="评价审核" lede="通过后才会显示在代跑页上。".to_string()>
+            <StatusFilter only_pending=only_pending />
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match reviews.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"载入评价失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) if list.is_empty() => {
+                        view! { <p class="muted">"没有需要处理的评价。"</p> }.into_any()
+                    }
+                    Some(Ok(list)) => view! {
+                        <div class="admin-list">
+                            {list
+                                .into_iter()
+                                .map(|review| {
+                                    view! {
+                                        <AdminReviewRow
+                                            review=review
+                                            revision=revision
+                                            message=message
+                                        />
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
+        </AdminPage>
+    }
+}
+
+/// 后台里的一行评价。
+#[component]
+fn AdminReviewRow(
+    review: AdminReview,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let id = review.id;
+    let stars = "★".repeat(review.rating as usize);
+    // 已有回复必须出现在服务端渲染的 HTML 里：`prop:value` 只设 JS 属性，
+    // 那样管理员会以为原本没回复过，一保存就把旧回复覆盖掉。
+    let initial_reply = review.reply.clone().unwrap_or_default();
+    let reply_draft = RwSignal::new(initial_reply.clone());
+
+    view! {
+        <article class="admin-row">
+            <p class="admin-meta">
+                <span class=format!("status status-{}", review.status)>{review.status.clone()}</span>
+                <span class="stars">{stars}</span>
+                <strong>{review.author.clone()}</strong>
+                <span class="comment-time">{review.created_at.clone()}</span>
+            </p>
+            <p class="admin-body">{review.body.clone()}</p>
+
+            <label class="field">
+                <span>"回复（留空则撤销回复）"</span>
+                <textarea
+                    class="comment-input"
+                    rows="2"
+                    on:input=move |ev| reply_draft.set(event_target_value(&ev))
+                >{initial_reply}</textarea>
+            </label>
+
+            <div class="admin-actions">
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        run_action(revision, message, admin_set_review_status(id, "approved".into()))
+                    }
+                >
+                    "通过"
+                </button>
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        run_action(revision, message, admin_set_review_status(id, "rejected".into()))
+                    }
+                >
+                    "拒绝"
+                </button>
+                <button
+                    class="btn btn-small btn-primary"
+                    on:click=move |_| {
+                        let reply = reply_draft.get_untracked();
+                        run_action(revision, message, admin_reply_review(id, reply))
+                    }
+                >
+                    "保存回复"
+                </button>
+                <button
+                    class="btn btn-small btn-danger"
+                    on:click=move |_| run_action(revision, message, admin_delete_review(id))
+                >
+                    "删除"
+                </button>
+            </div>
+        </article>
+    }
+}
+
+/// 用户管理。
+#[component]
+pub fn AdminUsersPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let users = Resource::new_blocking(move || revision.get(), |_| admin_list_users());
+
+    view! {
+        <Title text="用户管理 — Grant Felix" />
+        <AdminPage
+            title="用户管理"
+            lede="封禁后该账号立刻无法登录，已登录的会话也会立即失效。".to_string()
+        >
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match users.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"载入用户失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) => view! {
+                        <div class="admin-list">
+                            {list
+                                .into_iter()
+                                .map(|user| {
+                                    view! {
+                                        <AdminUserRow
+                                            user=user
+                                            revision=revision
+                                            message=message
+                                        />
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
+        </AdminPage>
+    }
+}
+
+/// 后台里的一行用户。
+#[component]
+fn AdminUserRow(
+    user: AdminUser,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let id = user.id;
+    let banned = user.status == "banned";
+    let is_admin = user.role == "admin";
+
+    // 「这个动作做完会变成什么」直接写在按钮上，不必让操作者心算
+    let status_label = if banned { "解封" } else { "封禁" };
+    let next_status = if banned { "active" } else { "banned" };
+    let role_label = if is_admin { "取消管理员" } else { "设为管理员" };
+    let next_role = if is_admin { "user" } else { "admin" };
+
+    view! {
+        <article class="admin-row">
+            <p class="admin-meta">
+                <span class=format!("status status-role-{}", user.role)>{user.role.clone()}</span>
+                <span class=format!("status status-{}", user.status)>{user.status.clone()}</span>
+                <strong>{user.display_name.clone()}</strong>
+                <span class="comment-time">"@"{user.username.clone()}</span>
+                <span class="comment-time">{format!("评论 {} 条", user.comment_count)}</span>
+                {user
+                    .last_login_at
+                    .clone()
+                    .map(|time| view! { <span class="comment-time">"上次登录 "{time}</span> })}
+            </p>
+            <div class="admin-actions">
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        run_action(revision, message, admin_set_user_status(id, next_status.into()))
+                    }
+                >
+                    {status_label}
+                </button>
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        run_action(revision, message, admin_set_user_role(id, next_role.into()))
+                    }
+                >
+                    {role_label}
+                </button>
+            </div>
+        </article>
+    }
+}
+
+/// Pod 管理：查看 Felix-Workstation 内的容器状态，并可重启。
+///
+/// 复用站点后台的布局与样式，和「评论 / 用户」等页面保持一致的观感。
+#[component]
+pub fn AdminPodPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let containers = Resource::new_blocking(move || revision.get(), |_| admin_list_pod());
+
+    view! {
+        <Title text="Pod 管理 — Grant Felix" />
+        <AdminPage
+            title="Pod 管理"
+            lede="Felix-Workstation 内的容器状态；重启会短暂中断对应服务。".to_string()
+        >
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <div class="field-row">
+                <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
+                    "刷新"
+                </button>
+                <a
+                    class="btn btn-small"
+                    href="http://dash.localhost:5729/"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    "控制台看板"
+                </a>
+                <a
+                    class="btn btn-small"
+                    href="http://localhost:5730/-/admin"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    "Forgejo 后台"
+                </a>
+            </div>
+
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match containers.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"读取容器失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) => view! {
+                        <div class="admin-list">
+                            {list
+                                .into_iter()
+                                .map(|container| {
+                                    view! {
+                                        <PodRow
+                                            container=container
+                                            revision=revision
+                                            message=message
+                                        />
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
+        </AdminPage>
+    }
+}
+
+/// Pod 管理里的一行容器。
+#[component]
+fn PodRow(
+    container: PodContainer,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let running = container.state == "running";
+    let state_class = if running { "status status-running" } else { "status status-exited" };
+    let health_class = match container.health.as_deref() {
+        Some("healthy") => "status status-healthy",
+        Some("unhealthy") => "status status-unhealthy",
+        _ => "status",
+    };
+    let restart_name = container.name.clone();
+    let image = container.image.clone();
+
+    view! {
+        <article class="admin-row">
+            <p class="admin-meta">
+                <span class=state_class>{container.state.clone()}</span>
+                {container
+                    .health
+                    .clone()
+                    .map(|health| view! { <span class=health_class>{health}</span> })}
+                <strong>{container.name.clone()}</strong>
+                <span class="comment-time">{container.status.clone()}</span>
+                <span class="admin-image" title=image.clone()>
+                    {image.clone()}
+                </span>
+            </p>
+            <div class="admin-actions">
+                <button
+                    class="btn btn-small"
+                    disabled=!running
+                    on:click=move |_| {
+                        if !running {
+                            return;
+                        }
+                        run_action(
+                            revision,
+                            message,
+                            admin_restart_container(restart_name.clone()),
+                        );
+                    }
+                >
+                    "重启"
+                </button>
+            </div>
+        </article>
+    }
+}
+
+/// 一个备份源的开关行。
+#[component]
+fn SourceToggle(
+    label: &'static str,
+    hint: &'static str,
+    checked: RwSignal<bool>,
+) -> impl IntoView {
+    view! {
+        <label class="toggle-row">
+            <input
+                type="checkbox"
+                prop:checked=move || checked.get()
+                on:change=move |ev| checked.set(event_target_checked(&ev))
+            />
+            <span class="toggle-text">
+                <strong>{label}</strong>
+                <small>{hint}</small>
+            </span>
+        </label>
+    }
+}
+
+/// 单个异地备份渠道（可编辑卡片）。
+#[component]
+fn BackupChannelCard(index: usize, channels: RwSignal<Vec<BackupChannel>>) -> impl IntoView {
+    let name = move || {
+        channels
+            .get()
+            .get(index)
+            .map(|c| c.name.clone())
+            .unwrap_or_default()
+    };
+    let kind = move || {
+        channels
+            .get()
+            .get(index)
+            .map(|c| c.kind.clone())
+            .unwrap_or_default()
+    };
+    let target = move || {
+        channels
+            .get()
+            .get(index)
+            .map(|c| c.target.clone())
+            .unwrap_or_default()
+    };
+    let enabled = move || channels.get().get(index).map(|c| c.enable).unwrap_or(false);
+
+    view! {
+        <article class="channel-card">
+            <div class="channel-head">
+                <input
+                    class="channel-name"
+                    type="text"
+                    placeholder="渠道名称（如：WebDAV 网盘）"
+                    prop:value=name
+                    on:input=move |ev| {
+                        let value = event_target_value(&ev);
+                        channels
+                            .update(|list| {
+                                if let Some(channel) = list.get_mut(index) {
+                                    channel.name = value;
+                                }
+                            });
+                    }
+                />
+                <label class="channel-toggle">
+                    <input
+                        type="checkbox"
+                        prop:checked=enabled
+                        on:change=move |ev| {
+                            let value = event_target_checked(&ev);
+                            channels
+                                .update(|list| {
+                                    if let Some(channel) = list.get_mut(index) {
+                                        channel.enable = value;
+                                    }
+                                });
+                        }
+                    />
+                    <span>"启用"</span>
+                </label>
+                <button
+                    class="btn btn-small btn-danger"
+                    on:click=move |_| channels.update(|list| {
+                        list.remove(index);
+                    })
+                >
+                    "删除"
+                </button>
+            </div>
+            <div class="field-row">
+                <label class="field">
+                    <span>"类型"</span>
+                    <select
+                        prop:value=kind
+                        on:change=move |ev| {
+                            let value = event_target_value(&ev);
+                            channels
+                                .update(|list| {
+                                    if let Some(channel) = list.get_mut(index) {
+                                        channel.kind = value;
+                                    }
+                                });
+                        }
+                    >
+                        <option value="rclone">"rclone（WebDAV / S3 / R2 / OSS…）"</option>
+                        <option value="rsync">"rsync（外置盘 / NAS / SSH）"</option>
+                    </select>
+                </label>
+                <label class="field field-grow">
+                    <span>"目标"</span>
+                    <input
+                        type="text"
+                        placeholder="webdav:我的网盘/felix-backups 或 /run/media/felix/外置盘/felix"
+                        prop:value=target
+                        on:input=move |ev| {
+                            let value = event_target_value(&ev);
+                            channels
+                                .update(|list| {
+                                    if let Some(channel) = list.get_mut(index) {
+                                        channel.target = value;
+                                    }
+                                });
+                        }
+                    />
+                </label>
+            </div>
+        </article>
+    }
+}
+
+/// 由归档文件名判断备份源。
+fn backup_source(name: &str) -> &'static str {
+    if name.starts_with("felix-ws-site-") {
+        "主站"
+    } else if name.starts_with("felix-ws-nextcloud-") {
+        "Nextcloud"
+    } else {
+        "Forgejo"
+    }
+}
+
+/// 备份（分源 + 多渠道）。
+#[component]
+pub fn AdminBackupPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let backups = Resource::new_blocking(move || revision.get(), |_| admin_backup_list());
+    let config = Resource::new_blocking(|| (), |_| admin_backup_config());
+
+    let forgejo = RwSignal::new(true);
+    let site = RwSignal::new(true);
+    let nextcloud = RwSignal::new(false);
+    let keep_days = RwSignal::new("7".to_string());
+    let channels = RwSignal::new(Vec::<BackupChannel>::new());
+    let sync_status = RwSignal::new(String::new());
+    let loaded = RwSignal::new(false);
+
+    // 读取配置后填充表单（只填一次，避免覆盖正在编辑的内容）
+    Effect::new(move |_| {
+        if let Some(Ok(cfg)) = config.get() {
+            if !loaded.get_untracked() {
+                forgejo.set(cfg.forgejo);
+                site.set(cfg.site);
+                nextcloud.set(cfg.nextcloud);
+                keep_days.set(cfg.keep_days.to_string());
+                channels.set(cfg.channels.clone());
+                loaded.set(true);
+            }
+            sync_status.set(cfg.sync_status.clone());
+        }
+    });
+
+    let save = move |_: leptos::ev::MouseEvent| {
+        let days = keep_days
+            .get_untracked()
+            .trim()
+            .parse::<u32>()
+            .unwrap_or(7)
+            .clamp(1, 90);
+        keep_days.set(days.to_string());
+        let (forgejo, site, nextcloud, list) = (
+            forgejo.get_untracked(),
+            site.get_untracked(),
+            nextcloud.get_untracked(),
+            channels.get_untracked(),
+        );
+        leptos::task::spawn_local(async move {
+            match admin_backup_save_config(forgejo, site, nextcloud, days, Some(list)).await {
+                Ok(Ok(())) => {
+                    message.set("设置已保存。".to_string());
+                    config.refetch();
+                }
+                Ok(Err(e)) => message.set(e),
+                Err(e) => message.set(format!("请求失败：{e}")),
+            }
+        });
+    };
+
+    let do_backup = move |_: leptos::ev::MouseEvent| {
+        message.set("正在备份已启用的备份源…".to_string());
+        leptos::task::spawn_local(async move {
+            match admin_backup_now().await {
+                Ok(Ok(name)) => {
+                    message.set(format!("备份完成：{name}"));
+                    revision.update(|n| *n += 1);
+                }
+                Ok(Err(e)) => message.set(e),
+                Err(e) => message.set(format!("请求失败：{e}")),
+            }
+        });
+    };
+
+    let do_sync = move |_: leptos::ev::MouseEvent| {
+        message.set("已请求同步；渠道较大时需要一会儿，可点「刷新状态」查看结果。".to_string());
+        leptos::task::spawn_local(async move {
+            match admin_backup_trigger_sync().await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => message.set(e),
+                Err(e) => message.set(format!("请求失败：{e}")),
+            }
+        });
+    };
+
+    view! {
+        <Title text="备份 — Grant Felix" />
+        <AdminPage
+            title="备份"
+            lede="选择要备份的内容；每个备份源、每个异地渠道都能单独开关。".to_string()
+        >
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <section class="admin-quick">
+                <h2 class="admin-section-title">"1. 备份内容"</h2>
+                <p class="muted">
+                    "每天 03:00 自动备份（关机/休眠错过后开机补跑）。需要哪一项就打开哪一项。"
+                </p>
+                <div class="toggle-list">
+                    <SourceToggle
+                        label="Forgejo"
+                        hint="代码仓库、账号、Issue、Actions 运行记录"
+                        checked=forgejo
+                    />
+                    <SourceToggle
+                        label="主站"
+                        hint="个人主页文章、评论、上传的图片"
+                        checked=site
+                    />
+                    <SourceToggle
+                        label="Nextcloud"
+                        hint="网盘数据库与文件（归档较大，建议开启）"
+                        checked=nextcloud
+                    />
+                </div>
+                <label class="field field-inline">
+                    <span>"保留天数"</span>
+                    <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        prop:value=move || keep_days.get()
+                        on:input=move |ev| keep_days.set(event_target_value(&ev))
+                    />
+                </label>
+                <div class="field-row">
+                    <button class="btn btn-primary btn-small" on:click=save>
+                        "保存设置"
+                    </button>
+                    <button class="btn btn-small" on:click=do_backup>
+                        "立即备份"
+                    </button>
+                    <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
+                        "刷新归档"
+                    </button>
+                </div>
+                <p class="muted">
+                    "「立即备份」按已保存的设置执行；刚改过开关的话先点「保存设置」。"
+                </p>
+            </section>
+
+            <section class="admin-quick">
+                <h2 class="admin-section-title">"2. 备份渠道（异地）"</h2>
+                <p class="muted">
+                    "每个渠道独立开关；可同时开启多个，也可以全部关闭。全部关闭时只保留本机备份。"
+                </p>
+                <div class="channel-list">
+                    {move || {
+                        channels
+                            .get()
+                            .iter()
+                            .enumerate()
+                            .map(|(index, _)| {
+                                view! { <BackupChannelCard index=index channels=channels /> }
+                            })
+                            .collect_view()
+                    }}
+                </div>
+                {move || {
+                    channels
+                        .get()
+                        .is_empty()
+                        .then(|| view! { <p class="muted">"还没有渠道，点下面「添加渠道」。"</p> })
+                }}
+                <div class="field-row">
+                    <button
+                        class="btn btn-small"
+                        on:click=move |_| channels
+                            .update(|list| {
+                                list.push(BackupChannel {
+                                    name: String::new(),
+                                    kind: "rclone".to_string(),
+                                    target: String::new(),
+                                    enable: true,
+                                });
+                            })
+                    >
+                        "添加渠道"
+                    </button>
+                    <button class="btn btn-primary btn-small" on:click=save>
+                        "保存设置"
+                    </button>
+                    <button class="btn btn-small" on:click=do_sync>
+                        "立即同步"
+                    </button>
+                </div>
+                <h3 class="admin-subsection-title">"最近同步"</h3>
+                <pre class="sync-status">
+                    {move || {
+                        let status = sync_status.get();
+                        if status.trim().is_empty() {
+                            "（还没有同步记录；渠道全部关闭时也不会同步）".to_string()
+                        } else {
+                            status
+                        }
+                    }}
+                </pre>
+                <div class="field-row">
+                    <button
+                        class="btn btn-small"
+                        on:click=move |_: leptos::ev::MouseEvent| config.refetch()
+                    >
+                        "刷新状态"
+                    </button>
+                </div>
+            </section>
+
+            <section class="admin-quick">
+                <h2 class="admin-section-title">"3. 备份归档（本机）"</h2>
+                <p class="muted">
+                    "归档保存在宿主机 ~/.local/share/felix-workstation/backups/；按上面保存的保留天数自动清理。"
+                </p>
+                <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                    {move || match backups.get() {
+                        None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                        Some(Err(e)) => {
+                            view! { <p class="error">"读取失败："{e.to_string()}</p> }.into_any()
+                        }
+                        Some(Ok(list)) if list.is_empty() => {
+                            view! { <p class="muted">"还没有备份，点上面「立即备份」。"</p> }
+                                .into_any()
+                        }
+                        Some(Ok(list)) => {
+                            view! {
+                                <div class="admin-list">
+                                    {list
+                                        .into_iter()
+                                        .map(|f| {
+                                            let source = backup_source(&f.name);
+                                            view! {
+                                                <article class="admin-row">
+                                                    <p class="admin-meta">
+                                                        <span class="badge">{source}</span>
+                                                        <strong>{f.name.clone()}</strong>
+                                                        <span class="comment-time">{f.size.clone()}</span>
+                                                        <span class="comment-time">{f.time.clone()}</span>
+                                                    </p>
+                                                </article>
+                                            }
+                                        })
+                                        .collect_view()}
+                                </div>
+                            }
+                                .into_any()
+                        }
+                    }}
+                </Suspense>
+            </section>
+
+            <section class="admin-quick">
+                <h2 class="admin-section-title">"4. 恢复"</h2>
+                <p class="muted">
+                    "在宿主机执行 make restore（默认恢复最新归档，会先做一次安全备份再覆盖）。"
+                    " 各备份源恢复细节见 README「备份与恢复」。"
+                </p>
+            </section>
+        </AdminPage>
+    }
+}

@@ -1,0 +1,3 @@
+# 通过挂载的 rootless Podman socket 读取容器状态
+podman:
+  socket: /var/run/docker.sock

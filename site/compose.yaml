@@ -1,0 +1,72 @@
+# 开发容器：NixOS 上的 Nix，声明式、可复现。
+#
+# 工具链不写在这里，而是由 flake.nix 决定——容器只提供「一台装好 Nix 的机器」，
+# 具体用哪个 rustc、有没有 wasm 目标，全部来自 flake.lock。
+#
+#   docker compose up -d      # 起来后浏览器打开 http://127.0.0.1:8080
+#   docker compose logs -f    # 看构建与运行日志
+#   docker compose exec dev bash   # 进容器
+#   docker compose down       # 停止（卷保留，下次不用重新下载工具链）
+#
+# 首次 `up` 会下载工具链并编译，需要几分钟；之后因为卷里存着 nix store 与 target/，
+# 重启很快。
+
+name: grant-felix-homepage
+
+services:
+  dev:
+    image: nixos/nix
+    working_dir: /work
+    restart: unless-stopped
+
+    volumes:
+      - .:/work
+      # nix store 持久化。命名卷首次挂载时会被镜像里的 /nix 播种，之后一直累积；
+      # 没有它，每次 up 都要重下几个 G 的工具链。
+      - nix-store:/nix
+      # 构建产物留在卷里：既让增量编译跨重启生效，也避免容器里以 root 运行的
+      # cargo 把宿主机目录里的 target/ 写成 root 属主（那样你之后改不动它）。
+      - cargo-target:/work/target
+      # 运行时的 SQLite 与上传图片同理，不落在宿主机目录里。
+      - dev-data:/work/data
+
+    ports:
+      # 与 Forgejo 那份一致：只绑回环，同一局域网的其他设备连不上。
+      - "127.0.0.1:8080:8080"
+
+    environment:
+      # nix 的 flakes 与 nix-command 默认是关闭的。用 NIX_CONFIG 打开，而不是去改
+      # 镜像里的 /etc/nix/nix.conf——配置随 compose 文件走，换机器也一样。
+      NIX_CONFIG: |
+        experimental-features = nix-command flakes
+      # 关键一行：Cargo.toml 里 site-addr 是 127.0.0.1:8080（本机开发的合理默认，
+      # 不把服务暴露到局域网），但容器里绑回环的话**发布出去的端口到不了**——
+      # 表现就是浏览器里连不上。cargo-leptos 认这个环境变量，用它覆盖成 0.0.0.0。
+      LEPTOS_SITE_ADDR: 0.0.0.0:8080
+      # RSS 与 sitemap 要绝对地址，开发环境就用本机地址
+      SITE_URL: http://127.0.0.1:8080
+      RUST_LOG: info,sqlx=warn
+      # 首次启动创建站长账号（后台 /admin 要用，否则本地没有管理员）。
+      # 密码**不能写在这个文件里**——它会进 git。放同目录的 .env，compose 自动读取，
+      # 而 .env 已在 .gitignore 中：
+      #   echo 'ADMIN_USERNAME=felix' >> .env
+      #   echo 'ADMIN_PASSWORD=至少8位' >> .env
+      # 两个都为空时按「不创建」处理（应用侧对空串有专门判断）。
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        # 容器里 nix 必须以 root 跑（store 需要写权限），而 /work 是宿主机 uid 1000
+        # 的文件；libgit2 会因「所有权不符」拒绝读仓库，flake 就解析不了。
+        # 这是容器场景特有的，真实的 NixOS 开发机上不会遇到。
+        git config --global --add safe.directory /work
+        exec nix develop -c cargo leptos serve
+
+volumes:
+  nix-store:
+  cargo-target:
+  dev-data:

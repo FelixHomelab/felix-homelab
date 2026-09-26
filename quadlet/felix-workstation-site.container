@@ -1,0 +1,47 @@
+[Unit]
+Description=Felix-Workstation: Grant Felix 个人主页（主站）
+After=felix-workstation-pod.service
+Requires=felix-workstation-pod.service
+
+[Container]
+ContainerName=felix-workstation-site
+Image=localhost/felix-homepage:latest
+Pod=felix-workstation.pod
+Label=autoheal=true
+Timezone=local
+# 以容器内 root 运行（rootless 下映射为宿主用户），以便读取挂载进来的 podman.sock
+User=0
+# 共享 .env：ADMIN_USERNAME / ADMIN_PASSWORD 用于首次创建站长账号
+EnvironmentFile=%h/.config/felix-workstation/.env
+Environment=LEPTOS_SITE_ADDR=0.0.0.0:8090
+Environment=LEPTOS_SITE_ROOT=/app/site
+Environment=LEPTOS_SITE_PKG_DIR=pkg
+Environment=LEPTOS_ENV=PROD
+Environment=CONTENT_DIR=/app/content
+Environment=DATABASE_URL=sqlite:///app/data/site.db
+Environment=UPLOAD_DIR=/app/data/uploads
+Environment=SITE_URL=http://localhost:5729
+Environment=RUST_LOG=info,sqlx=warn
+Volume=felix-workstation-site-data.volume:/app/data
+Volume=%t/podman/podman.sock:/run/podman/podman.sock
+# 后台「备份」页：读取归档列表与同步状态、读写备份配置、写触发文件
+# 注意挂载整个 sync/ 目录而不是单个文件：单文件绑定会固定 inode，
+# 宿主侧用 sed -i / install 替换文件后容器会继续读旧副本。
+Volume=%h/.local/share/felix-workstation/backups:/backups:ro
+Volume=%h/.config/felix-workstation/sync:/sync
+Volume=%h/.config/felix-workstation/backup:/status:ro
+# 读取 podman.sock 需要放宽 SELinux 标签（站点仅管理员可访问 Pod 管理页）
+SecurityLabelDisable=true
+HealthCmd=curl -fsS http://127.0.0.1:8090/healthz
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=30s
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

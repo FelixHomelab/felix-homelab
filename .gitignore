@@ -1,0 +1,7 @@
+# 本地机密（由 install.sh 生成，切勿提交）
+.env
+secrets/
+*.local
+
+# 备份
+*.bak

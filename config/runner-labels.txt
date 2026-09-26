@@ -1,0 +1,31 @@
+# Forgejo Actions Runner 标签定义
+#
+# 格式：<标签名>:docker://<镜像>
+# 作业里写 runs-on: <标签名> 即使用右侧镜像运行。
+# 以 # 开头或空行会被忽略。
+#
+# —— GitHub 托管 runner 的社区等价镜像（工具齐全，推荐）——
+ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:js-24.04
+ubuntu-24.04:docker://ghcr.io/catthehacker/ubuntu:act-24.04
+ubuntu-22.04:docker://ghcr.io/catthehacker/ubuntu:act-22.04
+
+# —— GitHub 官方 runner 镜像完整拷贝（约 20GB 压缩 / ~60GB 解压，最强）——
+# 注意：full-latest 的镜像 history 元数据有缺陷，当前 buildah 无法基于它重构建
+# （initial error: history lists 0 non-empty layers），因此默认注释。
+# 待上游修复后取消注释即可。
+#full:docker://ghcr.io/catthehacker/ubuntu:full-latest
+
+# —— 语言增强镜像 ——
+rust:docker://ghcr.io/catthehacker/ubuntu:rust-24.04
+go:docker://ghcr.io/catthehacker/ubuntu:go-24.04
+java:docker://ghcr.io/catthehacker/ubuntu:java-tools-24.04
+dotnet:docker://ghcr.io/catthehacker/ubuntu:dotnet-24.04
+
+# —— 官方 Node 24（LTS）——
+node24:docker://docker.io/library/node:24-bookworm
+
+# —— 通用 Debian ——
+debian:docker://docker.io/library/debian:bookworm
+
+# —— 轻量通用镜像（仅用于快速脚本/诊断，不适合跑 actions）——
+alpine:docker://docker.io/library/alpine:3.20

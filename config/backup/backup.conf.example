@@ -1,0 +1,21 @@
+# Felix-Workstation 备份配置
+#
+# 由后台「备份」页维护；也可直接编辑本文件后在页面点「刷新」。
+#
+# 备份源：1 开启 / 0 关闭（可多个同时开启）
+BACKUP_FORGEJO=1
+BACKUP_SITE=1
+BACKUP_NEXTCLOUD=0
+
+# 保留天数（1-90）
+KEEP_DAYS=7
+
+# 备份渠道：可添加多个，各自独立开关；全部为 0 即全部关闭。
+# KIND 为 rclone（支持 WebDAV / S3 / R2 / OSS / Drive…）或 rsync（外置盘 / NAS / SSH）。
+CHANNEL_COUNT=0
+
+# 示例：
+# CHANNEL_1_NAME="WebDAV 网盘"
+# CHANNEL_1_KIND="rclone"
+# CHANNEL_1_TARGET="webdav:我的网盘/felix-backups"
+# CHANNEL_1_ENABLE=1

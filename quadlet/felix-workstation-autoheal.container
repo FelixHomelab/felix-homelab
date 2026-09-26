@@ -1,0 +1,23 @@
+[Unit]
+Description=Felix-Workstation: 容器健康自愈（autoheal）
+After=felix-workstation-pod.service
+Requires=felix-workstation-pod.service
+
+[Container]
+ContainerName=felix-workstation-autoheal
+Image=docker.io/willfarrell/autoheal:latest
+Pod=felix-workstation.pod
+Timezone=local
+# 只处理带 autoheal=true 标签的容器
+Environment=AUTOHEAL_CONTAINER_LABEL=autoheal
+Environment=AUTOHEAL_INTERVAL=30
+Environment=AUTOHEAL_START_PERIOD=120
+Volume=%t/podman/podman.sock:/var/run/docker.sock
+SecurityLabelDisable=true
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

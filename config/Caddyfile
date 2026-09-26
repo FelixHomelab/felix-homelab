@@ -1,0 +1,51 @@
+# Felix-Workstation 统一入口（Caddy，宿主端口 5729）
+#
+# Caddy 与其它容器同处一个 Pod 的网络命名空间，因此用 127.0.0.1 互访。
+#
+#   http://localhost:5729/            -> 个人主页（主站，Leptos）
+#   http://forgejo.localhost:5729/    -> Forgejo
+#   http://dash.localhost:5729/       -> Homepage 控制台
+#
+# 若以后绑定真实域名并启用 HTTPS，可改为站点地址（如 https://example.com），
+# 并去掉 auto_https off、把 Pod 端口改为 80:8080 与 443:8443。
+
+{
+	auto_https off
+	admin off
+}
+
+http://:8080 {
+	encode zstd gzip
+
+	# Forgejo
+	@forgejo host forgejo.localhost
+	handle @forgejo {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Homepage 控制台（监听 Pod hostname，故用 hostname 访问）
+	@dash host dash.localhost
+	handle @dash {
+		reverse_proxy felix-workstation:3001
+	}
+
+	# Nextcloud（容器内监听 80）
+	@cloud host cloud.localhost
+	handle @cloud {
+		reverse_proxy 127.0.0.1:80
+	}
+
+	# 默认：个人主页作为主站
+	handle {
+		# 静态资源强制协商缓存：升级后浏览器必须回源校验，避免继续用旧 wasm/js
+		@assets path /pkg/*
+		header @assets Cache-Control "no-cache"
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# 未来新增工作站工具时，在默认 handle 之前追加路由，例如：
+	#
+	# handle_path /jupyter/* {
+	# 	reverse_proxy 127.0.0.1:8888
+	# }
+}
