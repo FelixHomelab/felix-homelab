@@ -182,7 +182,7 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 ## 快速开始
 
 ```bash
-git clone https://github.com/Grant-Felix/felix-homelab.git
+git clone https://github.com/FelixHomelab/felix-homelab.git
 cd felix-homelab
 
 make deploy         # 交互式菜单（推荐新手）
