@@ -1,18 +1,18 @@
 [Unit]
-Description=Felix-Workstation: Nextcloud（私有云盘）
-After=felix-workstation-pod.service felix-workstation-db.service
-Requires=felix-workstation-pod.service
-Wants=felix-workstation-db.service
+Description=Felix-Homelab: Nextcloud（私有云盘）
+After=felix-homelab-pod.service felix-homelab-db.service
+Requires=felix-homelab-pod.service
+Wants=felix-homelab-db.service
 
 [Container]
-ContainerName=felix-workstation-nextcloud
+ContainerName=felix-homelab-nextcloud
 Image=docker.io/library/nextcloud:apache
-Pod=felix-workstation.pod
+Pod=felix-homelab.pod
 Label=autoheal=true
 Timezone=local
 # Nextcloud 专用环境变量（数据库、管理员、受信域名）
-EnvironmentFile=%h/.config/felix-workstation/nextcloud.env
-Volume=felix-workstation-nextcloud-data.volume:/var/www/html
+EnvironmentFile=%h/.config/felix-homelab/nextcloud.env
+Volume=felix-homelab-nextcloud-data.volume:/var/www/html
 # 只在 Pod 内部监听 80，由 Caddy 按 cloud.localhost 转发
 HealthCmd=php -r 'exit(str_contains(@file_get_contents("http://127.0.0.1/status.php"), "installed") ? 0 : 1);'
 HealthInterval=30s
@@ -25,7 +25,7 @@ HealthOnFailure=kill
 Restart=always
 TimeoutStartSec=600
 # 等 PostgreSQL 就绪（Nextcloud 首次启动会连库、迁移）
-ExecStartPre=/usr/bin/podman wait --condition=healthy felix-workstation-db
+ExecStartPre=/usr/bin/podman wait --condition=healthy felix-homelab-db
 
 [Install]
 WantedBy=default.target

@@ -4,63 +4,63 @@
 # · server/container 对应 docker.yaml，状态点表示容器运行状况
 #   绿 = running/healthy，红 = 停止或异常，点击状态可看资源占用
 - 容器服务（本 Pod）:
-    - 个人主页（主站）:
+    - 主站（Felix Homelab 社区站）:
         icon: /icons/homepage.png
         href: http://localhost:5729/
-        description: Leptos 主页 · 博客/项目/光遇 · 容器 felix-workstation-site
+        description: 官方内容与社区投稿 · Leptos 社区站 · 容器 felix-homelab-site
         server: podman
-        container: felix-workstation-site
+        container: felix-homelab-site
 
     - Nextcloud（私有云盘）:
         icon: /icons/nextcloud.png
         href: http://cloud.localhost:5729/
-        description: 文件同步/分享 · 直连 :5734 · 容器 felix-workstation-nextcloud
+        description: 文件同步/分享 · 直连 :5734 · 容器 felix-homelab-nextcloud
         server: podman
-        container: felix-workstation-nextcloud
+        container: felix-homelab-nextcloud
 
     - Forgejo（Git 平台）:
         icon: /icons/forgejo.png
         href: http://localhost:5730/
-        description: Web :5730 · SSH :5731 · 容器 felix-workstation-forgejo
+        description: Web :5730 · SSH :5731 · 容器 felix-homelab-forgejo
         server: podman
-        container: felix-workstation-forgejo
+        container: felix-homelab-forgejo
 
     - Forgejo Runner（CI/CD）:
         icon: /icons/forgejo.png
-        description: 执行 Actions 作业 · 容器 felix-workstation-runner
+        description: 执行 Actions 作业 · 容器 felix-homelab-runner
         server: podman
-        container: felix-workstation-runner
+        container: felix-homelab-runner
 
     - PostgreSQL（数据库）:
         icon: /icons/postgresql.png
         description: 仅 Forgejo 使用 · Pod 内 127.0.0.1:5432
         server: podman
-        container: felix-workstation-db
+        container: felix-homelab-db
 
     - Caddy（反向代理）:
         icon: /icons/caddy.png
         description: 统一入口 :5729 · 按域名分流
         server: podman
-        container: felix-workstation-caddy
+        container: felix-homelab-caddy
 
     - Homepage（本控制台）:
         icon: /icons/homepage.png
         href: http://localhost:5732/
         description: 当前页面 · 经 Caddy 访问即 :5729
         server: podman
-        container: felix-workstation-homepage
+        container: felix-homelab-homepage
 
     - Backup（定时备份）:
         icon: /icons/forgejo.png
-        description: 每天 03:00 · 保留 7 天 · 容器 felix-workstation-backup
+        description: 每天 03:00 · 保留 7 天 · 容器 felix-homelab-backup
         server: podman
-        container: felix-workstation-backup
+        container: felix-homelab-backup
 
     - Autoheal（健康自愈）:
         icon: /icons/podman.png
-        description: 容器 unhealthy 自动重启 · 容器 felix-workstation-autoheal
+        description: 容器 unhealthy 自动重启 · 容器 felix-homelab-autoheal
         server: podman
-        container: felix-workstation-autoheal
+        container: felix-homelab-autoheal
 
 - 入口与文档:
     - Forgejo 网页:

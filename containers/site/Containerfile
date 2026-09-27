@@ -1,6 +1,6 @@
-# Grant Felix 个人主页（Leptos SSR + Axum + SQLite）构建镜像
+# Felix Homelab 社区站（Leptos SSR + Axum + SQLite）构建镜像
 #
-#   构建：podman build -t localhost/felix-homepage:latest -f containers/site/Containerfile site
+#   构建：podman build -t localhost/felix-homelab-site:latest -f containers/site/Containerfile site
 #
 # 说明：
 #   · 用官方 rust 镜像编译；cargo-leptos 与 wasm-bindgen-cli 用 GitHub 预编译产物，
@@ -55,7 +55,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     cargo leptos build --release \
  && rm -rf /out && mkdir -p /out \
- && cp target/release/grant-felix-homepage /out/ \
+ && cp target/release/felix-homelab-site /out/ \
  && cp -r target/site /out/site
 
 # ---------- 运行阶段 ----------
@@ -67,11 +67,11 @@ RUN apt-get update \
  && useradd -r -u 1000 -m -d /app app
 
 WORKDIR /app
-COPY --from=build /out/grant-felix-homepage /app/grant-felix-homepage
+COPY --from=build /out/felix-homelab-site /app/felix-homelab-site
 COPY --from=build /out/site /app/site
 COPY --from=build /src/content /app/content
 
-ENV LEPTOS_OUTPUT_NAME=grant-felix-homepage \
+ENV LEPTOS_OUTPUT_NAME=felix-homelab-site \
     LEPTOS_SITE_ROOT=/app/site \
     LEPTOS_SITE_PKG_DIR=pkg \
     LEPTOS_SITE_ADDR=0.0.0.0:8090 \
@@ -86,4 +86,4 @@ RUN mkdir -p /app/data/uploads && chown -R app:app /app/data
 VOLUME /app/data
 EXPOSE 8090
 USER app
-CMD ["/app/grant-felix-homepage"]
+CMD ["/app/felix-homelab-site"]

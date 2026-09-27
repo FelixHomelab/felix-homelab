@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Felix-Workstation 安装脚本（rootless Podman + Quadlet）
+# Felix-Homelab 安装脚本（rootless Podman + Quadlet）
 #
 # 作用：
-#   1. 生成 ~/.config/felix-workstation/{.env,Caddyfile,runner-config.yml}
+#   1. 生成 ~/.config/felix-homelab/{.env,Caddyfile,runner-config.yml}
 #   2. 安装 docker.io 镜像加速配置
 #   3. 将 quadlet 单元软链接到 ~/.config/containers/systemd/
 #   4. 拉取镜像、启动 Pod 及核心容器
@@ -13,21 +13,21 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-workstation"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-homelab"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 REGISTRY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/registries.conf.d"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-workstation/backups"
+BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-homelab/backups"
 
 CORE_SERVICES=(
-	felix-workstation-db.service
-	felix-workstation-forgejo.service
-	felix-workstation-site.service
-	felix-workstation-nextcloud.service
-	felix-workstation-caddy.service
-	felix-workstation-homepage.service
-	felix-workstation-autoheal.service
-	felix-workstation-backup.service
+	felix-homelab-db.service
+	felix-homelab-forgejo.service
+	felix-homelab-site.service
+	felix-homelab-nextcloud.service
+	felix-homelab-caddy.service
+	felix-homelab-homepage.service
+	felix-homelab-autoheal.service
+	felix-homelab-backup.service
 )
 
 log()  { printf '\033[1;36m[felix]\033[0m %s\n' "$*"; }
@@ -44,6 +44,12 @@ gen_secret() {
 
 log "仓库目录: $REPO_DIR"
 
+# 旧命名（Felix-Workstation）部署必须先迁移，否则会以空数据启动新实例
+OLD_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-workstation"
+if [ ! -d "$CONFIG_DIR" ] && [ -d "$OLD_CONFIG_DIR" ]; then
+	die "检测到旧命名配置 $OLD_CONFIG_DIR：请先执行 scripts/migrate-rename.sh 迁移到 felix-homelab"
+fi
+
 # ---------------------------------------------------------------------------
 # 1. 目录
 # ---------------------------------------------------------------------------
@@ -52,10 +58,10 @@ mkdir -p "$CONFIG_DIR" "$UNIT_DIR" "$REGISTRY_DIR" "$SYSTEMD_USER_DIR" "$BACKUP_
 # ---------------------------------------------------------------------------
 # 2. docker.io 镜像加速（可选，已存在则保留用户配置）
 # ---------------------------------------------------------------------------
-if [ ! -f "$REGISTRY_DIR/100-felix-workstation.conf" ]; then
+if [ ! -f "$REGISTRY_DIR/100-felix-homelab.conf" ]; then
 	log "安装 docker.io 镜像加速配置"
 	install -m 0644 "$REPO_DIR/config/registries.conf" \
-		"$REGISTRY_DIR/100-felix-workstation.conf"
+		"$REGISTRY_DIR/100-felix-homelab.conf"
 fi
 
 # ---------------------------------------------------------------------------
@@ -67,7 +73,7 @@ fi
 # ---------------------------------------------------------------------------
 PODMAN_DROPIN_DIR="$SYSTEMD_USER_DIR/podman.service.d"
 mkdir -p "$PODMAN_DROPIN_DIR"
-cat > "$PODMAN_DROPIN_DIR/10-felix-workstation.conf" <<'EOF'
+cat > "$PODMAN_DROPIN_DIR/10-felix-homelab.conf" <<'EOF'
 [Service]
 ExecStart=
 ExecStart=/usr/bin/podman $LOGGING system service --time=0
@@ -88,7 +94,7 @@ if [ ! -f "$CONFIG_DIR/.env" ]; then
 	sed -i "s/^FORGEJO__database__PASSWD=.*/FORGEJO__database__PASSWD=$PW/" "$CONFIG_DIR/.env"
 	APW="$(gen_secret)"
 	sed -i "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=$APW/" "$CONFIG_DIR/.env"
-	log "个人主页站长密码（ADMIN_PASSWORD）: $APW"
+	log "站长密码（ADMIN_PASSWORD）: $APW"
 else
 	log "保留已存在的 .env"
 fi
@@ -164,83 +170,83 @@ fi
 # --- 备份调度与触发（宿主机 systemd user 单元）---
 # 定时：每天 03:00 备份（Persistent 错过后补跑），04:00 同步到各渠道
 # 手动：后台写 backup-request / sync-request，由 .path 单元触发
-cat >"$SYSTEMD_USER_DIR/felix-workstation-backup-run.service" <<'EOF'
+cat >"$SYSTEMD_USER_DIR/felix-homelab-backup-run.service" <<'EOF'
 [Unit]
-Description=Felix-Workstation: 执行一次备份（Forgejo/主站 + Nextcloud）
-After=felix-workstation-backup.service felix-workstation-forgejo.service felix-workstation-db.service
-Requires=felix-workstation-backup.service
+Description=Felix-Homelab: 执行一次备份（Forgejo/主站 + Nextcloud）
+After=felix-homelab-backup.service felix-homelab-forgejo.service felix-homelab-db.service
+Requires=felix-homelab-backup.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/podman exec felix-workstation-backup sh /usr/local/bin/backup.sh once
-ExecStart=%h/.config/felix-workstation/backup/backup-nextcloud.sh
+ExecStart=/usr/bin/podman exec felix-homelab-backup sh /usr/local/bin/backup.sh once
+ExecStart=%h/.config/felix-homelab/backup/backup-nextcloud.sh
 EOF
 
-cat >"$SYSTEMD_USER_DIR/felix-workstation-backup.timer" <<'EOF'
+cat >"$SYSTEMD_USER_DIR/felix-homelab-backup.timer" <<'EOF'
 [Unit]
-Description=Felix-Workstation: 每日备份
+Description=Felix-Homelab: 每日备份
 
 [Timer]
 OnCalendar=*-*-* 03:00:00
 Persistent=true
 RandomizedDelaySec=5m
-Unit=felix-workstation-backup-run.service
+Unit=felix-homelab-backup-run.service
 
 [Install]
 WantedBy=timers.target
 EOF
 
-cat >"$SYSTEMD_USER_DIR/felix-workstation-backup-request.path" <<'EOF'
+cat >"$SYSTEMD_USER_DIR/felix-homelab-backup-request.path" <<'EOF'
 [Unit]
-Description=Felix-Workstation: 后台请求备份
+Description=Felix-Homelab: 后台请求备份
 
 [Path]
-PathChanged=%h/.config/felix-workstation/sync/backup-request
-Unit=felix-workstation-backup-run.service
+PathChanged=%h/.config/felix-homelab/sync/backup-request
+Unit=felix-homelab-backup-run.service
 
 [Install]
 WantedBy=paths.target
 EOF
 
-cat >"$SYSTEMD_USER_DIR/felix-workstation-backup-sync.service" <<'EOF'
+cat >"$SYSTEMD_USER_DIR/felix-homelab-backup-sync.service" <<'EOF'
 [Unit]
-Description=Felix-Workstation: 同步备份到各渠道
+Description=Felix-Homelab: 同步备份到各渠道
 [Service]
 Type=oneshot
-ExecStart=%h/.config/felix-workstation/backup/sync-backup.sh
+ExecStart=%h/.config/felix-homelab/backup/sync-backup.sh
 EOF
 
-cat >"$SYSTEMD_USER_DIR/felix-workstation-backup-sync.timer" <<'EOF'
+cat >"$SYSTEMD_USER_DIR/felix-homelab-backup-sync.timer" <<'EOF'
 [Unit]
-Description=Felix-Workstation: 每日同步备份
+Description=Felix-Homelab: 每日同步备份
 
 [Timer]
 OnCalendar=*-*-* 04:00:00
 Persistent=true
 RandomizedDelaySec=10m
-Unit=felix-workstation-backup-sync.service
+Unit=felix-homelab-backup-sync.service
 
 [Install]
 WantedBy=timers.target
 EOF
 
-cat >"$SYSTEMD_USER_DIR/felix-workstation-backup-sync-request.path" <<'EOF'
+cat >"$SYSTEMD_USER_DIR/felix-homelab-backup-sync-request.path" <<'EOF'
 [Unit]
-Description=Felix-Workstation: 后台请求同步备份
+Description=Felix-Homelab: 后台请求同步备份
 
 [Path]
-PathChanged=%h/.config/felix-workstation/sync/sync-request
-Unit=felix-workstation-backup-sync.service
+PathChanged=%h/.config/felix-homelab/sync/sync-request
+Unit=felix-homelab-backup-sync.service
 
 [Install]
 WantedBy=paths.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now felix-workstation-backup.timer >/dev/null
-systemctl --user enable --now felix-workstation-backup-sync.timer >/dev/null
-systemctl --user enable --now felix-workstation-backup-request.path >/dev/null
-systemctl --user enable --now felix-workstation-backup-sync-request.path >/dev/null
+systemctl --user enable --now felix-homelab-backup.timer >/dev/null
+systemctl --user enable --now felix-homelab-backup-sync.timer >/dev/null
+systemctl --user enable --now felix-homelab-backup-request.path >/dev/null
+systemctl --user enable --now felix-homelab-backup-sync-request.path >/dev/null
 
 # runner 配置在注册前先放一个空文件，保证挂载目标存在
 [ -f "$CONFIG_DIR/runner-config.yml" ] || : > "$CONFIG_DIR/runner-config.yml"
@@ -254,10 +260,10 @@ log "链接 Quadlet 单元到 $UNIT_DIR"
 # frpc 同理：云服务器地址/token 未配置前不链接，避免容器反复重启。
 for f in "$REPO_DIR"/quadlet/*; do
 	case "$(basename "$f")" in
-		felix-workstation-runner.container)
+		felix-homelab-runner.container)
 			continue
 			;;
-		felix-workstation-frpc.container)
+		felix-homelab-frpc.container)
 			if ! grep -q 'CHANGE_ME' "$CONFIG_DIR/frp/frpc.toml" 2>/dev/null; then
 				ln -sfn "$f" "$UNIT_DIR/$(basename "$f")"
 			else
@@ -271,8 +277,8 @@ for f in "$REPO_DIR"/quadlet/*; do
 done
 
 # 已配置 frpc 时纳入本次启动列表
-if [ -L "$UNIT_DIR/felix-workstation-frpc.container" ]; then
-	CORE_SERVICES+=(felix-workstation-frpc.service)
+if [ -L "$UNIT_DIR/felix-homelab-frpc.container" ]; then
+	CORE_SERVICES+=(felix-homelab-frpc.service)
 fi
 
 # ---------------------------------------------------------------------------
@@ -288,13 +294,13 @@ podman pull docker.io/willfarrell/autoheal:latest
 podman pull docker.io/library/nextcloud:apache
 
 # frpc 镜像仅在启用公网中转（已链接 frpc 单元）时拉取
-if [ -L "$UNIT_DIR/felix-workstation-frpc.container" ]; then
+if [ -L "$UNIT_DIR/felix-homelab-frpc.container" ]; then
 	podman pull docker.io/snowdreamtech/frpc:0.71.0-alpine
 fi
 
-# 个人主页镜像：本地构建（Leptos 首次编译较慢，仅在缺失时构建）
-if ! podman image exists localhost/felix-homepage:latest; then
-	log "构建个人主页镜像（首次需要编译 Rust，可能较久）"
+# 主站镜像：本地构建（Leptos 首次编译较慢，仅在缺失时构建）
+if ! podman image exists localhost/felix-homelab-site:latest; then
+	log "构建主站镜像（首次需要编译 Rust，可能较久）"
 	"$REPO_DIR/scripts/build-site.sh"
 fi
 
@@ -305,8 +311,8 @@ log "reload systemd --user"
 systemctl --user daemon-reload
 
 log "启动数据库并准备 Nextcloud 库"
-systemctl --user start felix-workstation-db.service
-/usr/bin/podman wait --condition=healthy felix-workstation-db
+systemctl --user start felix-homelab-db.service
+/usr/bin/podman wait --condition=healthy felix-homelab-db
 "$REPO_DIR/scripts/ensure-nextcloud-db.sh"
 
 log "启动核心服务"
@@ -318,7 +324,7 @@ log "等待 Forgejo 就绪..."
 "$REPO_DIR/scripts/wait-for-forgejo.sh"
 
 # Homepage 挂载了 podman.sock；升级安装时重启它以刷新 socket inode
-systemctl --user try-restart felix-workstation-homepage.service 2>/dev/null || true
+systemctl --user try-restart felix-homelab-homepage.service 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # 8. 注册 Actions Runner
@@ -326,11 +332,12 @@ systemctl --user try-restart felix-workstation-homepage.service 2>/dev/null || t
 log "注册 Forgejo Actions Runner"
 "$REPO_DIR/scripts/register-runner.sh"
 
-printf '\n\033[1;32mFelix-Workstation 部署完成！\033[0m\n'
+printf '\n\033[1;32mFelix-Homelab 部署完成！\033[0m\n'
 cat <<EOF
-  首页 Homepage : http://localhost:5729/   (直连 http://localhost:5732/)
+  主站(社区站)  : http://localhost:5729/   (直连 http://localhost:5733/)
   Forgejo Web   : http://localhost:5730/   (Caddy: http://forgejo.localhost:5729/)
   Forgejo SSH   : ssh -p 5731 git@localhost
+  Nextcloud     : http://cloud.localhost:5729/   (直连 http://localhost:5734/)
   公网访问      : 配置 frpc 后经云域名访问（见 README「公网访问（云服务器中转）」）
   数据目录      : $CONFIG_DIR
   单元目录      : $UNIT_DIR

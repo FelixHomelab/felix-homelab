@@ -1,0 +1,20 @@
+[Unit]
+Description=Felix-Homelab: frpc 内网穿透客户端（云服务器中转）
+After=felix-homelab-pod.service
+Requires=felix-homelab-pod.service
+Wants=felix-homelab-caddy.service felix-homelab-forgejo.service
+
+[Container]
+ContainerName=felix-homelab-frpc
+Image=docker.io/snowdreamtech/frpc:0.71.0-alpine
+Pod=felix-homelab.pod
+Label=autoheal=true
+Timezone=local
+Volume=%h/.config/felix-homelab/frp/frpc.toml:/etc/frp/frpc.toml:ro,Z
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

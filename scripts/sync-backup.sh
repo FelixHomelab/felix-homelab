@@ -11,8 +11,8 @@
 #
 set -euo pipefail
 
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-workstation"
-BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-workstation/backups"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-homelab"
+BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-homelab/backups"
 CONF="$CONFIG_DIR/sync/backup.conf"
 STATUS="$CONFIG_DIR/backup/sync.status"
 RCLONE_DIR="$CONFIG_DIR/rclone"

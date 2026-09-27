@@ -1,12 +1,13 @@
-# Felix-Workstation（Podman + Quadlet）
+# Felix-Homelab（Podman + Quadlet）
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-基于 **Podman** 的 rootless 工作站：创建一个名为 **Felix-Workstation** 的 Pod，
+基于 **Podman** 的 rootless 工作站：创建一个名为 **Felix-Homelab** 的 Pod，
 并在 Pod 内以多容器方式组合运行一整套常用自托管工具。
 
-- **主站**：`Felix/grant-felix-homepage`（Rust/Leptos 个人主页：博客、项目、光遇、账号与评论），
-  源码并入本仓库 `site/`，经 Caddy 挂在入口根路径；
+- **主站（Felix Homelab 社区站）**：Rust/Leptos 社区站：官方博客 / 项目 / 光遇，
+  注册用户可投稿社区内容，另有账号、评论与后台；源码在本仓库 `site/`，经 Caddy
+  挂在入口根路径；
 - **Forgejo 系列**：Forgejo + PostgreSQL + Forgejo Actions Runner；
 - **Homepage 控制台**：容器状态看板（`dash.localhost`）；
 - **公网入口（可选）**：云服务器 frp 中转 + 云侧 Caddy HTTPS（示例域名 `grantfelix.top`）；
@@ -20,10 +21,10 @@
 ## 架构
 
 ```
-                ┌──────────────────── Pod: Felix-Workstation (共享网络命名空间) ────────────────────┐
+                ┌──────────────────── Pod: Felix-Homelab (共享网络命名空间) ────────────────────────┐
                 │                                                                                      │
   宿主端口      │   ┌──────────┐      ┌──────────────┐      ┌───────────────────────┐                │
-  5729 ─────────┼──▶│  Caddy   │──┬──▶│  个人主页     │      │      PostgreSQL       │                │
+  5729 ─────────┼──▶│  Caddy   │──┬──▶│  主站         │      │      PostgreSQL       │                │
   5730 ─────────┼──▶│ 统一入口 │  │   │ (Leptos)     │      │   (Forgejo 数据库)    │                │
   5731 ─────────┼──▶│  根路径   │  │   │  :8090       │      └───────────────────────┘                │
   5732 ─────────┼──▶│          │  │   └──────────────┘      ┌───────────────────────┐                │
@@ -55,11 +56,11 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 
 | 宿主端口 | 容器 | 说明 |
 | -------- | ---- | ---- |
-| 5729     | Caddy (8080) | 统一入口：`/` 个人主页，`forgejo.localhost` Forgejo，`dash.localhost` 控制台，`cloud.localhost` Nextcloud |
+| 5729     | Caddy (8080) | 统一入口：`/` 主站，`forgejo.localhost` Forgejo，`dash.localhost` 控制台，`cloud.localhost` Nextcloud |
 | 5730     | Forgejo (3000) | Git Web / API 直连 |
 | 5731     | Forgejo SSH (2222) | Git over SSH |
 | 5732     | Homepage (3001) | 控制台直连 |
-| 5733     | 个人主页 (8090) | 主站直连 |
+| 5733     | 主站 (8090) | 站点直连 |
 | 5734     | Nextcloud (80) | 云盘直连 |
 | 3000     | Forgejo (3000) | 仅供 host 网络的作业容器经 `127.0.0.1:3000` 访问 |
 
@@ -112,7 +113,7 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 }
 ```
 
-**本地**：编辑 `~/.config/felix-workstation/frp/frpc.toml`
+**本地**：编辑 `~/.config/felix-homelab/frp/frpc.toml`
 （模板在 `config/frpc.toml.example`，填 `serverAddr` 与 `auth.token`），
 然后 `make install` —— 未填写前安装脚本不会链接并启动 frpc 单元。
 
@@ -130,18 +131,18 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 ├── LICENSE                      # MIT 开源许可
 ├── Makefile                     # 常用命令入口
 ├── quadlet/                     # Podman Quadlet 单元（唯一事实来源）
-│   ├── felix-workstation.pod            # Pod、hostname、端口发布
-│   ├── felix-workstation-db.container   # PostgreSQL
-│   ├── felix-workstation-forgejo.container
-│   ├── felix-workstation-site.container # 个人主页（主站）
-│   ├── felix-workstation-nextcloud.container # Nextcloud 云盘
-│   ├── felix-workstation-runner.container
-│   ├── felix-workstation-frpc.container     # 公网中转客户端（配置 frpc.toml 后启用）
-│   ├── felix-workstation-homepage.container
-│   ├── felix-workstation-caddy.container
-│   ├── felix-workstation-backup.container   # 定时备份（按源执行）
-│   ├── felix-workstation-autoheal.container # 健康自愈
-│   └── felix-workstation-*.volume        # 命名数据卷
+│   ├── felix-homelab.pod            # Pod、hostname、端口发布
+│   ├── felix-homelab-db.container   # PostgreSQL
+│   ├── felix-homelab-forgejo.container
+│   ├── felix-homelab-site.container # 主站（Felix Homelab 社区站）
+│   ├── felix-homelab-nextcloud.container # Nextcloud 云盘
+│   ├── felix-homelab-runner.container
+│   ├── felix-homelab-frpc.container     # 公网中转客户端（配置 frpc.toml 后启用）
+│   ├── felix-homelab-homepage.container
+│   ├── felix-homelab-caddy.container
+│   ├── felix-homelab-backup.container   # 定时备份（按源执行）
+│   ├── felix-homelab-autoheal.container # 健康自愈
+│   └── felix-homelab-*.volume        # 命名数据卷
 ├── config/
 │   ├── Caddyfile                # 反向代理入口，新增工具在此加路由
 │   ├── registries.conf          # docker.io 镜像加速（国内网络）
@@ -152,16 +153,17 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 │   ├── backup/backup-nextcloud.sh  # Nextcloud 备份（宿主机执行）
 │   ├── backup/backup.conf.example  # 备份源与渠道配置模板
 │   └── homepage/                # Homepage 控制台配置（首次安装植入）
-├── site/                        # 个人主页源码（并入自 Felix/grant-felix-homepage）
+├── site/                        # 主站源码（Felix Homelab 社区站）
 ├── containers/
 │   ├── runner-image/Containerfile   # 修复 Podman 回归的派生镜像
-│   └── site/Containerfile           # 个人主页构建镜像
+│   └── site/Containerfile           # 主站构建镜像
 └── scripts/
     ├── deploy.sh                # 交互式菜单入口（安装/备份/恢复/卸载）
     ├── install.sh               # 安装并启动
+    ├── migrate-rename.sh        # 从旧命名 Felix-Workstation 迁移到 Felix-Homelab
     ├── register-runner.sh       # 注册/启动 Actions Runner（幂等）
     ├── build-runner-images.sh   # 构建修复版作业镜像
-    ├── build-site.sh            # 构建个人主页镜像
+    ├── build-site.sh            # 构建主站镜像
     ├── backup-now.sh            # 立即备份一次
     ├── sync-backup.sh           # 备份异地同步（rclone/rsync）
     ├── restore-backup.sh        # 从备份恢复
@@ -190,53 +192,77 @@ make deploy         # 交互式菜单（推荐新手）
 make install        # 生成配置、拉取镜像、构建主站镜像、启动 Pod 并注册 Runner
 ```
 
-> 首次会**编译个人主页（Rust/Leptos）**，需要几分钟到十几分钟；之后有镜像缓存。
+> 首次会**编译主站（Rust/Leptos）**，需要几分钟到十几分钟；之后有镜像缓存。
 > 站长密码（`ADMIN_PASSWORD`）在安装时随机生成并打印，也可在
-> `~/.config/felix-workstation/.env` 查看/修改。
+> `~/.config/felix-homelab/.env` 查看/修改。
 
 完成后：
 
 | 服务          | 地址                                          |
 | ------------- | --------------------------------------------- |
-| 个人主页（主站） | http://localhost:5729/（直连 http://localhost:5733/） |
+| 主站 | http://localhost:5729/（直连 http://localhost:5733/） |
 | Forgejo Web   | http://localhost:5730/（或 http://forgejo.localhost:5729/） |
 | Nextcloud     | http://cloud.localhost:5729/（直连 http://localhost:5734/） |
 | Homepage 控制台 | http://dash.localhost:5729/（直连 http://localhost:5732/） |
 | Forgejo SSH   | `ssh -p 5731 git@localhost`                   |
 
-- 个人主页首次访问用 `.env` 里的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录后台 `/admin`
+- 主站首次访问用 `.env` 里的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录后台 `/admin`
 - Nextcloud 管理员用 `nextcloud.env` 里的 `NEXTCLOUD_ADMIN_USER` / `NEXTCLOUD_ADMIN_PASSWORD`
 - Forgejo 首次打开 http://localhost:5730/ 注册第一个账号即管理员
   （已通过 `INSTALL_LOCK=true` 跳过网页安装向导，自动完成数据库迁移）。
 - 若配置了公网中转：经云域名访问（如 `https://forgejo.example.com` 与
   `ssh -p 20022 git@forgejo.example.com`），见「公网访问（云服务器中转）」。
 
-## 个人主页（主站）
+## 从旧命名迁移（Felix-Workstation → Felix-Homelab）
 
-`Felix/grant-felix-homepage`（Leptos + Axum + SQLite）已**并入本仓库 `site/`**，
-作为 Felix-Workstation 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729/`。
+旧部署（pod / 单元 / 卷 / 配置目录名都是 `felix-workstation`）用一条命令迁移；
+数据是**复制**而不是搬移，旧卷默认保留：
 
-- **架构**：SSR + wasm（`cargo leptos`），单进程 + 单 SQLite 文件；
-  内容（博客/项目/光遇）是 `site/content/` 下的 Markdown，随仓库版本化。
+```bash
+make migrate          # 等价于 scripts/migrate-rename.sh [--yes] [--prune-old]
+make install          # 以新命名创建 Pod 并启动
+make register         # 重新注册 Runner（旧 Runner 会显示离线，可在 Forgejo 后台删除）
+```
+
+- 配置目录 `~/.config/felix-workstation` → `~/.config/felix-homelab`；
+  数据目录（含备份）`~/.local/share/felix-workstation` → `~/.local/share/felix-homelab`
+- 数据卷 `felix-workstation-*` → `felix-homelab-*`（逐个复制，原卷保留）
+- 旧备份归档 `felix-ws-*.tar.gz` 继续可被 `make restore` 与备份清理识别
+- 确认新服务正常后，可用 `--prune-old` 或 `podman volume rm felix-workstation-…` 清理旧卷
+
+> 全新安装无需迁移。安装脚本检测到旧配置目录且新目录不存在时，会提示先执行迁移。
+
+## 主站（Felix Homelab 社区站）
+
+Rust/Leptos 社区站（Leptos + Axum + SQLite）已**并入本仓库 `site/`**，作为
+Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729/`。
+
+- **两类内容**：**官方内容**（博客、项目、光遇、静态页）是 `site/content/` 下的
+  Markdown，随仓库版本化；**社区投稿**（文章 / 项目 / 光遇）由注册用户在站内发布，
+  存 SQLite，发布即公开，作者可编辑删除、管理员可下架删除。两者在页面上有
+  「官方内容 / 社区投稿」分区切换。
+- **架构**：SSR + wasm（`cargo leptos`），单进程 + 单 SQLite 文件。
 - **构建**：`containers/site/Containerfile` 两阶段构建（rust 编译 + debian-slim 运行），
-  `make build-site`；`make install` 在镜像缺失时自动构建。
-- **数据**：`felix-workstation-site-data` 卷挂到 `/app/data`（`site.db` 与上传图片）。
-- **路由**：`/` 主站；`forgejo.localhost` → Forgejo；`dash.localhost` → Homepage 控制台。
-- **Pod 管理**：登录主页后 `http://localhost:5729/admin/pod` 可查看本 Pod 内容器状态并重启
+  产物镜像 `localhost/felix-homelab-site:latest`；`make build-site`；
+  `make install` 在镜像缺失时自动构建。
+- **数据**：`felix-homelab-site-data` 卷挂到 `/app/data`（`site.db`、社区投稿与上传图片）。
+- **路由**：`/` 主站；`/community` 社区入口；`forgejo.localhost` → Forgejo；
+  `dash.localhost` → Homepage 控制台。
+- **Pod 管理**：登录主站后 `http://localhost:5729/admin/pod` 可查看本 Pod 内容器状态并重启
   （与站点后台同款版式）。站点容器因此挂载了 rootless `podman.sock` 并以宿主用户运行——
   这是明确的权限扩大，但页面本身仅管理员可访问；不接受可停用该页并移除挂载。
-- **备份**：随每小时/每日备份一起打包（`felix-ws-site-<时间戳>.tar.gz`，用 SQLite `.backup`
+- **备份**：随每小时/每日备份一起打包（`felix-homelab-site-<时间戳>.tar.gz`，用 SQLite `.backup`
   保证一致性），恢复时按相同时间戳与 Forgejo 归档配对还原。
-- **更新内容**：改 `site/content/*.md`（或从 Forgejo 仓库同步 `site/`）后
-  `make build-site && make restart`。
+- **更新官方内容**：改 `site/content/*.md` 后 `make build-site && make restart`；
+  社区内容不需要重建，站内直接发布。
 
 ## Nextcloud（私有云盘）
 
 - 官方 `nextcloud:apache` 镜像，复用同一个 PostgreSQL 容器中的独立库 `nextcloud`
   （角色/库由 `scripts/ensure-nextcloud-db.sh` 幂等创建，`make install` 会自动执行）
-- 数据卷 `felix-workstation-nextcloud-data` 挂到 `/var/www/html`（含 config、apps、data）
+- 数据卷 `felix-homelab-nextcloud-data` 挂到 `/var/www/html`（含 config、apps、data）
 - 入口：http://cloud.localhost:5729/ 或直连 http://localhost:5734/
-- 管理员账号在 `~/.config/felix-workstation/nextcloud.env`
+- 管理员账号在 `~/.config/felix-homelab/nextcloud.env`
   （`NEXTCLOUD_ADMIN_USER` / `NEXTCLOUD_ADMIN_PASSWORD`，安装时随机生成并打印）
 - **备份注意**：备份源可在后台「备份」页按需开关（Forgejo / 主站 / Nextcloud），
   Nextcloud 归档约 300MB（含数据卷与 `pg_dump`），默认保留 7 天。
@@ -266,7 +292,8 @@ make sync-backup # 备份异地同步（rclone/rsync）
 make restore    # 从最新备份恢复（ARGS="<归档|latest> --yes" 非交互）
 make register   # 重新注册并启动 Runner（幂等，含构建修复镜像）
 make build-images # 仅重建修复版作业镜像
-make build-site # 重建个人主页镜像
+make build-site # 重建主站镜像
+make migrate    # 从旧命名 Felix-Workstation 迁移到 Felix-Homelab
 make uninstall  # 停止并移除单元，保留数据
 make purge      # 连数据卷、配置一起删除（危险）
 ```
@@ -277,17 +304,17 @@ make purge      # 连数据卷、配置一起删除（危险）
 
 ## 配置
 
-- **机密与开关**：`~/.config/felix-workstation/.env`（首次由 `.env.example` 生成，
+- **机密与开关**：`~/.config/felix-homelab/.env`（首次由 `.env.example` 生成，
   数据库密码随机生成）。命名规则 `FORGEJO__<section>__<KEY>` 会映射为 Forgejo 的
   `app.ini` 配置，详见
   [配置备忘单](https://forgejo.org/docs/latest/admin/config-cheat-sheet/)。
-  数据库为 **PostgreSQL**（容器 `felix-workstation-db`，Pod 内 `127.0.0.1:5432`）。
-- **反向代理**：`~/.config/felix-workstation/Caddyfile`（源文件在仓库中）。
-- **首页**：`~/.config/felix-workstation/homepage/*.yaml`（源文件在 `config/homepage/`，
+  数据库为 **PostgreSQL**（容器 `felix-homelab-db`，Pod 内 `127.0.0.1:5432`）。
+- **反向代理**：`~/.config/felix-homelab/Caddyfile`（源文件在仓库中）。
+- **首页**：`~/.config/felix-homelab/homepage/*.yaml`（源文件在 `config/homepage/`，
   首次安装植入后即归你所有，后续 `make install` 不会覆盖）。
 - **Runner**：由 `scripts/register-runner.sh` 依据当前 Runner 镜像自动生成
   `runner-config.yml`，并注入 Forgejo 地址、uuid、token 与标签。
-- **公网中转**：`~/.config/felix-workstation/frp/frpc.toml`（模板
+- **公网中转**：`~/.config/felix-homelab/frp/frpc.toml`（模板
   `config/frpc.toml.example`；云侧 frps/Caddy 配置见「公网访问（云服务器中转）」）。
 
 ## 关键设计说明
@@ -343,7 +370,7 @@ make build-images   # 手动重建；make register / make install 会自动执�
 Forgejo 容器的 systemd 单元增加了：
 
 ```ini
-ExecStartPre=/usr/bin/podman wait --condition=healthy felix-workstation-db
+ExecStartPre=/usr/bin/podman wait --condition=healthy felix-homelab-db
 ```
 
 即等数据库 `healthy` 后再启动 Forgejo，消除启动竞态。
@@ -359,7 +386,7 @@ Homepage 以 bind mount 方式挂载了该 socket，一旦 inode 重建就会失
 安装脚本会写入 systemd drop-in，令其常驻：
 
 ```ini
-# ~/.config/systemd/user/podman.service.d/10-felix-workstation.conf
+# ~/.config/systemd/user/podman.service.d/10-felix-homelab.conf
 [Service]
 ExecStart=
 ExecStart=/usr/bin/podman $LOGGING system service --time=0
@@ -367,7 +394,7 @@ ExecStart=/usr/bin/podman $LOGGING system service --time=0
 
 ### 5. Pod hostname 用小写
 
-Pod 名称是 `Felix-Workstation`，但 Pod 内部 `HostName=felix-workstation`（小写）：
+Pod 名称是 `Felix-Homelab`，但 Pod 内部 `HostName=felix-homelab`（小写）：
 部分运行时（musl/Node）无法解析含大写的 `/etc/hosts` 名称，而 Homepage 会以
 hostname 作为监听地址。
 
@@ -383,23 +410,23 @@ hostname 作为监听地址。
 
 | 卷                               | 内容                 |
 | -------------------------------- | -------------------- |
-| `felix-workstation-db-data`      | PostgreSQL 数据（Forgejo + Nextcloud 两个库） |
-| `felix-workstation-forgejo-data` | 仓库、附件、app.ini  |
-| `felix-workstation-site-data`    | 主站 SQLite 与上传图片 |
-| `felix-workstation-nextcloud-data` | Nextcloud 程序、配置与文件 |
-| `felix-workstation-runner-data`  | Runner 注册与缓存    |
-| `felix-workstation-caddy-*`      | Caddy 证书与配置     |
+| `felix-homelab-db-data`      | PostgreSQL 数据（Forgejo + Nextcloud 两个库） |
+| `felix-homelab-forgejo-data` | 仓库、附件、app.ini  |
+| `felix-homelab-site-data`    | 主站 SQLite 与上传图片 |
+| `felix-homelab-nextcloud-data` | Nextcloud 程序、配置与文件 |
+| `felix-homelab-runner-data`  | Runner 注册与缓存    |
+| `felix-homelab-caddy-*`      | Caddy 证书与配置     |
 
 配置目录（含 `.env`、`Caddyfile`、`homepage/`、`runner-config.yml`、`runner.secret`）
-位于 `~/.config/felix-workstation/`，其中机密文件不入库；备份源与渠道配置在
+位于 `~/.config/felix-homelab/`，其中机密文件不入库；备份源与渠道配置在
 `sync/backup.conf`，同步状态在 `backup/sync.status`。
 
-备份目录：`~/.local/share/felix-workstation/backups/`（归宿主用户所有，可直接拷贝到外部存储）。
+备份目录：`~/.local/share/felix-homelab/backups/`（归宿主用户所有，可直接拷贝到外部存储）。
 
 ## 备份与恢复
 
 备份分**备份源**与**备份渠道**两层，全部配置集中在
-`~/.config/felix-workstation/sync/backup.conf`（可在后台「备份」页图形化编辑）：
+`~/.config/felix-homelab/sync/backup.conf`（可在后台「备份」页图形化编辑）：
 
 - **备份源**（各自独立开关）：Forgejo、主站、Nextcloud；
 - **备份渠道**（异地，各自独立开关）：rclone / rsync 随意添加多个，也可全部关闭；
@@ -410,20 +437,20 @@ hostname 作为监听地址。
 调度由**宿主机 systemd user timer** 负责（不在容器里跑 cron）：
 
 ```
-felix-workstation-backup.timer  (OnCalendar=03:00, Persistent=true)
-  └─ felix-workstation-backup-run.service
-       ├─ podman exec felix-workstation-backup sh /usr/local/bin/backup.sh once   # Forgejo + 主站
-       └─ ~/.config/felix-workstation/backup/backup-nextcloud.sh                 # Nextcloud
+felix-homelab-backup.timer  (OnCalendar=03:00, Persistent=true)
+  └─ felix-homelab-backup-run.service
+       ├─ podman exec felix-homelab-backup sh /usr/local/bin/backup.sh once   # Forgejo + 主站
+       └─ ~/.config/felix-homelab/backup/backup-nextcloud.sh                 # Nextcloud
 ```
 
 - `Persistent=true`：机器在 03:00 关机/休眠时，**开机后立刻补跑**错过的备份；
 - 备份容器常驻空闲，实际动作由 timer 触发（也便于手工 `make backup`）；
 - 归档与校验（默认保留 **7 天**，`KEEP_DAYS` 可调）：
-  - `felix-ws-dump-<时间>.tar.gz`：`forgejo dump`（数据库 + 仓库 + 附件 + LFS + 配置），
+  - `felix-homelab-dump-<时间>.tar.gz`：`forgejo dump`（数据库 + 仓库 + 附件 + LFS + 配置），
     必须含 `app.ini`、`forgejo-db.sql`、`repos/`；
-  - `felix-ws-site-<时间>.tar.gz`：主站 `site.db`（SQLite `.backup`）与上传图片，
+  - `felix-homelab-site-<时间>.tar.gz`：主站 `site.db`（SQLite `.backup`）与上传图片，
     必须含 `site.db`；
-  - `felix-ws-nextcloud-<时间>.tar.gz`：`pg_dump`（自定义格式）与数据卷打包，必须含
+  - `felix-homelab-nextcloud-<时间>.tar.gz`：`pg_dump`（自定义格式）与数据卷打包，必须含
     `nextcloud-db.dump`；
   - 任一校验不通过即删除该归档，避免“假绿灯”。
 - Nextcloud 备份放在宿主机侧执行（备份容器里没有 `pg_dump`，也不便直接读数据卷）：
@@ -432,7 +459,7 @@ felix-workstation-backup.timer  (OnCalendar=03:00, Persistent=true)
 ```bash
 make backup        # 立即备份一次（走上面同一个 systemd 服务，含已启用的源）
 make backup-list   # 列出备份
-systemctl --user list-timers felix-workstation-backup.timer   # 查看下次触发
+systemctl --user list-timers felix-homelab-backup.timer   # 查看下次触发
 ```
 
 > rootless 说明：备份容器以 root 运行（映射为宿主用户）负责落盘并修正属主，
@@ -440,7 +467,7 @@ systemctl --user list-timers felix-workstation-backup.timer   # 查看下次触�
 
 ### 异地容灾（多渠道）
 
-每日 04:00 由 `felix-workstation-backup-sync.timer` 把备份目录同步到**所有已启用**的渠道；
+每日 04:00 由 `felix-homelab-backup-sync.timer` 把备份目录同步到**所有已启用**的渠道；
 每个渠道可单独开关，也可以全部关闭（只保留本机备份）。渠道配置示例：
 
 ```
@@ -451,7 +478,7 @@ CHANNEL_1_ENABLE=1
 ```
 
 - **rclone**（推荐，覆盖 40+ 后端：Cloudflare R2 / 阿里云 OSS / S3 / WebDAV /
-  OneDrive / Google Drive…）：凭据放 `~/.config/felix-workstation/rclone/rclone.conf`，
+  OneDrive / Google Drive…）：凭据放 `~/.config/felix-homelab/rclone/rclone.conf`，
   脚本用官方 rclone 容器执行；
 - **rsync**：目标填外置硬盘挂载点 / NAS / `user@host:path`。
 
@@ -461,7 +488,7 @@ make sync-backup ARGS=--dry-run   # 预演
 # 后台「备份」页 →「立即同步」+「刷新状态」可查看每个渠道的结果
 ```
 
-每次同步的结果写入 `~/.config/felix-workstation/backup/sync.status`，后台页面直接展示。
+每次同步的结果写入 `~/.config/felix-homelab/backup/sync.status`，后台页面直接展示。
 
 > 云端私有仓库（GitHub/Gitee）方案注意：单文件 100MB 限制，而归档通常 >100MB，
 > 不适合直接托管；推荐对象存储或 WebDAV。
@@ -489,33 +516,33 @@ Nextcloud 归档需要手工恢复（脚本暂未自动化）：
 
 ```bash
 # 1) 停服务
-systemctl --user stop felix-workstation-nextcloud.service
+systemctl --user stop felix-homelab-nextcloud.service
 # 2) 恢复数据卷
-podman volume rm felix-workstation-nextcloud-data
-podman volume create felix-workstation-nextcloud-data
-podman run --rm -v felix-workstation-nextcloud-data:/data:Z \
-  -v ~/.local/share/felix-workstation/backups:/backup:ro \
+podman volume rm felix-homelab-nextcloud-data
+podman volume create felix-homelab-nextcloud-data
+podman run --rm -v felix-homelab-nextcloud-data:/data:Z \
+  -v ~/.local/share/felix-homelab/backups:/backup:ro \
   docker.io/library/alpine:3.20 \
-  tar -xzf /backup/felix-ws-nextcloud-<时间>.tar.gz -C /data nextcloud-files.tar.gz
-podman run --rm -v felix-workstation-nextcloud-data:/data:Z \
+  tar -xzf /backup/felix-homelab-nextcloud-<时间>.tar.gz -C /data nextcloud-files.tar.gz
+podman run --rm -v felix-homelab-nextcloud-data:/data:Z \
   docker.io/library/alpine:3.20 \
   tar -xzf /data/nextcloud-files.tar.gz -C /data && rm -f /data/nextcloud-files.tar.gz
 # 3) 恢复数据库
-systemctl --user start felix-workstation-db.service
-podman exec felix-workstation-db psql -U forgejo -d postgres \
+systemctl --user start felix-homelab-db.service
+podman exec felix-homelab-db psql -U forgejo -d postgres \
   -c 'DROP DATABASE IF EXISTS nextcloud;' -c 'CREATE DATABASE nextcloud OWNER forgejo;'
-podman run --rm -v ~/.local/share/felix-workstation/backups:/backup:ro \
+podman run --rm -v ~/.local/share/felix-homelab/backups:/backup:ro \
   docker.io/library/alpine:3.20 \
-  tar -xzf /backup/felix-ws-nextcloud-<时间>.tar.gz -C /tmp nextcloud-db.dump
-podman cp /tmp/nextcloud-db.dump felix-workstation-db:/tmp/  # 视宿主机路径调整
-podman exec felix-workstation-db pg_restore -U forgejo -d nextcloud --no-owner /tmp/nextcloud-db.dump
+  tar -xzf /backup/felix-homelab-nextcloud-<时间>.tar.gz -C /tmp nextcloud-db.dump
+podman cp /tmp/nextcloud-db.dump felix-homelab-db:/tmp/  # 视宿主机路径调整
+podman exec felix-homelab-db pg_restore -U forgejo -d nextcloud --no-owner /tmp/nextcloud-db.dump
 # 4) 启动
-systemctl --user start felix-workstation-nextcloud.service
+systemctl --user start felix-homelab-nextcloud.service
 ```
 
 ### 迁移到别的机器
 
-把 `~/.local/share/felix-workstation/backups/` 与仓库一起拷走，在新机器 `make install`
+把 `~/.local/share/felix-homelab/backups/` 与仓库一起拷走，在新机器 `make install`
 后用 `make restore ARGS="<归档> --yes"` 即可。备份归档含全部密钥与配置，
 注意离线妥善保管。
 
@@ -527,13 +554,13 @@ systemctl --user start felix-workstation-nextcloud.service
 | Forgejo 进程崩溃 | ✓ | 镜像内 s6 进程监督器 |
 | 容器整体退出 | ✓ | systemd `Restart=always` |
 | podman 服务重启 | ✓ | 单元依赖 + `Restart=always` |
-| 进程卡死但未退出 | ✓ | `felix-workstation-autoheal` 监视健康检查并重启 |
+| 进程卡死但未退出 | ✓ | `felix-homelab-autoheal` 监视健康检查并重启 |
 | 磁盘写满 / 数据损坏 | ✗ | 无法自动恢复，靠备份（见上节） |
 
 `autoheal` 与旧方案一致：监视带 `Label=autoheal=true` 的容器，发现 **unhealthy** 就重启。
 给 db / forgejo / caddy / homepage / runner 都打了该标签；`AUTOHEAL_START_PERIOD=120`
 避免容器刚启动就被误判。它挂载了 rootless `podman.sock`（权限扩大），
-如不需要可停用 `felix-workstation-autoheal.service` 并移除各单元的 `Label=`。
+如不需要可停用 `felix-homelab-autoheal.service` 并移除各单元的 `Label=`。
 
 > 已实测：构造一个健康检查恒失败的容器，autoheal 在数秒内将其重启（`StartedAt` 变化）。
 
@@ -543,7 +570,7 @@ systemctl --user start felix-workstation-nextcloud.service
   因此可以访问挂载进来的 rootless `podman.sock`。
 - 作业容器通过 `DOCKER_HOST=unix:///var/run/docker.sock` 由宿主的 rootless Podman 派发。
 - **标签与镜像**定义在 `config/runner-labels.txt`（首次安装植入到
-  `~/.config/felix-workstation/runner-labels.txt`，改完执行 `make register`）。
+  `~/.config/felix-homelab/runner-labels.txt`，改完执行 `make register`）。
   默认追求“能力完整”而非轻量：
 
   | 标签 | 镜像（原始） | 说明 |
@@ -567,19 +594,19 @@ systemctl --user start felix-workstation-nextcloud.service
 
 以添加一个 Web 工具（监听 `:8888`）为例：
 
-1. 新增 `quadlet/felix-workstation-<tool>.container`：
+1. 新增 `quadlet/felix-homelab-<tool>.container`：
 
    ```ini
    [Unit]
-   Description=Felix-Workstation: <tool>
-   After=felix-workstation-pod.service
-   Requires=felix-workstation-pod.service
+   Description=Felix-Homelab: <tool>
+   After=felix-homelab-pod.service
+   Requires=felix-homelab-pod.service
 
    [Container]
-   ContainerName=felix-workstation-<tool>
+   ContainerName=felix-homelab-<tool>
    Image=docker.io/example/tool:1
-   Pod=felix-workstation.pod
-   Volume=felix-workstation-<tool>-data.volume:/data
+   Pod=felix-homelab.pod
+   Volume=felix-homelab-<tool>-data.volume:/data
 
    [Service]
    Restart=always
@@ -595,7 +622,7 @@ systemctl --user start felix-workstation-nextcloud.service
 6. `make install`（重新软链单元、reload、启动）。
 
 > 端口发布只能写在 `.pod` 文件里；容器之间通过 `127.0.0.1:<port>` 互访
-> （若某容器监听 Pod hostname 而非回环，请用 `felix-workstation:<port>`）。
+> （若某容器监听 Pod hostname 而非回环，请用 `felix-homelab:<port>`）。
 
 ## 为什么用 Quadlet
 

@@ -14,7 +14,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-workstation"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-homelab"
 LABELS_FILE="${1:-$CONFIG_DIR/runner-labels.txt}"
 OUT_FILE="$CONFIG_DIR/runner-labels.resolved.txt"
 CONTAINERFILE="$REPO_DIR/containers/runner-image/Containerfile"

@@ -4,7 +4,7 @@
 #
 set -euo pipefail
 
-CONTAINER="${FORGEJO_CONTAINER:-felix-workstation-forgejo}"
+CONTAINER="${FORGEJO_CONTAINER:-felix-homelab-forgejo}"
 TRIES="${1:-60}"
 
 for _ in $(seq 1 "$TRIES"); do

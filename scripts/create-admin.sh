@@ -7,7 +7,7 @@
 #
 set -euo pipefail
 
-FORGEJO_CONTAINER="${FORGEJO_CONTAINER:-felix-workstation-forgejo}"
+FORGEJO_CONTAINER="${FORGEJO_CONTAINER:-felix-homelab-forgejo}"
 APP_INI="/data/gitea/conf/app.ini"
 
 die() { printf '\033[1;31m[felix]\033[0m %s\n' "$*" >&2; exit 1; }

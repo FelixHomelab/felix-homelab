@@ -1,5 +1,5 @@
 #!/bin/sh
-# Felix-Workstation 备份脚本（容器内执行；只负责 Forgejo 与主站）
+# Felix-Homelab 备份脚本（容器内执行；只负责 Forgejo 与主站）
 #
 # 备份源与保留天数来自 /config/backup.conf（后台可编辑）：
 #   BACKUP_FORGEJO=1 / BACKUP_SITE=1 / KEEP_DAYS=7
@@ -15,8 +15,8 @@ BACKUP_DIR="${BACKUP_DIR:-/backups}"
 CONF="${BACKUP_CONF:-/config/backup.conf}"
 CONFIG="${FORGEJO_CONFIG:-/data/gitea/conf/app.ini}"
 SITE_DIR="${SITE_DIR:-/site-data}"
-PREFIX="felix-ws-dump-"
-SITE_PREFIX="felix-ws-site-"
+PREFIX="felix-homelab-dump-"
+SITE_PREFIX="felix-homelab-site-"
 
 # 读取配置（缺失时用安全默认值）
 if [ -f "$CONF" ]; then
@@ -29,7 +29,7 @@ KEEP_DAYS="${KEEP_DAYS:-7}"
 
 log() { printf '%s [backup] %s\n' "$(date '+%F %T')" "$*"; }
 
-# 主站（个人主页）数据：SQLite + 上传图片，用 .backup 保证一致性
+# 主站（主站）数据：SQLite + 上传图片，用 .backup 保证一致性
 backup_site() {
 	stamp="$1"
 	[ -d "${SITE_DIR}" ] || { log "未挂载主站数据目录，跳过主站备份"; return 0; }
@@ -64,7 +64,8 @@ backup_site() {
 	fi
 	log "主站备份完成并校验通过（$(du -h "${target}" | cut -f1)）"
 
-	find "${BACKUP_DIR}" -maxdepth 1 -name "${SITE_PREFIX}*.tar.gz" -type f \
+	find "${BACKUP_DIR}" -maxdepth 1 -type f \
+		\( -name "${SITE_PREFIX}*.tar.gz" -o -name 'felix-ws-site-*.tar.gz' \) \
 		-mtime "+${KEEP_DAYS}" | while read -r old; do
 		rm -f "${old}"
 		log "已清理过期主站备份 $(basename "${old}")"
@@ -116,7 +117,8 @@ backup_forgejo() {
 	done
 	log "Forgejo 备份完成并校验通过（$(du -h "${target}" | cut -f1)）"
 
-	find "${BACKUP_DIR}" -maxdepth 1 -name "${PREFIX}*.tar.gz" -type f \
+	find "${BACKUP_DIR}" -maxdepth 1 -type f \
+		\( -name "${PREFIX}*.tar.gz" -o -name 'felix-ws-dump-*.tar.gz' \) \
 		-mtime "+${KEEP_DAYS}" | while read -r old; do
 		rm -f "${old}"
 		log "已清理过期备份 $(basename "${old}")"

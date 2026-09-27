@@ -1,12 +1,12 @@
 [Unit]
-Description=Felix-Workstation: 容器健康自愈（autoheal）
-After=felix-workstation-pod.service
-Requires=felix-workstation-pod.service
+Description=Felix-Homelab: 容器健康自愈（autoheal）
+After=felix-homelab-pod.service
+Requires=felix-homelab-pod.service
 
 [Container]
-ContainerName=felix-workstation-autoheal
+ContainerName=felix-homelab-autoheal
 Image=docker.io/willfarrell/autoheal:latest
-Pod=felix-workstation.pod
+Pod=felix-homelab.pod
 Timezone=local
 # 只处理带 autoheal=true 标签的容器
 Environment=AUTOHEAL_CONTAINER_LABEL=autoheal

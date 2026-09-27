@@ -1,16 +1,16 @@
 [Unit]
-Description=Felix-Workstation: PostgreSQL (Forgejo 数据库)
-After=felix-workstation-pod.service
-Requires=felix-workstation-pod.service
+Description=Felix-Homelab: PostgreSQL (Forgejo 数据库)
+After=felix-homelab-pod.service
+Requires=felix-homelab-pod.service
 
 [Container]
-ContainerName=felix-workstation-db
+ContainerName=felix-homelab-db
 Image=docker.io/library/postgres:17-alpine
-Pod=felix-workstation.pod
+Pod=felix-homelab.pod
 Label=autoheal=true
 Timezone=local
-EnvironmentFile=%h/.config/felix-workstation/.env
-Volume=felix-workstation-db-data.volume:/var/lib/postgresql/data
+EnvironmentFile=%h/.config/felix-homelab/.env
+Volume=felix-homelab-db-data.volume:/var/lib/postgresql/data
 HealthCmd=pg_isready -U forgejo -d forgejo
 HealthInterval=10s
 HealthTimeout=5s

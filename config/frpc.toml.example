@@ -1,6 +1,6 @@
-# Felix-Workstation: frpc 配置示例（经云服务器中转，可选）
+# Felix-Homelab: frpc 配置示例（经云服务器中转，可选）
 #
-# install.sh 会复制到 ~/.config/felix-workstation/frp/frpc.toml（仅在缺失时）。
+# install.sh 会复制到 ~/.config/felix-homelab/frp/frpc.toml（仅在缺失时）。
 # 使用前至少修改：
 #   - serverAddr / serverPort：云服务器公网 IP 与 frps 监听端口
 #   - auth.token：与云侧 /etc/frp/frps.toml 中的 auth.token 一致

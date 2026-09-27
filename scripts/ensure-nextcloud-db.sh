@@ -3,13 +3,13 @@
 # 确保 PostgreSQL 中存在 Nextcloud 的库与角色（幂等）
 #
 # Nextcloud 首次启动前必须已有数据库，否则容器会报错退出。
-# 这里复用 Felix-Workstation 的 PostgreSQL 容器，创建独立的 nextcloud 库/角色。
+# 这里复用 Felix-Homelab 的 PostgreSQL 容器，创建独立的 nextcloud 库/角色。
 #
 set -euo pipefail
 
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-workstation"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-homelab"
 ENV_FILE="$CONFIG_DIR/nextcloud.env"
-DB_CONTAINER="${DB_CONTAINER:-felix-workstation-db}"
+DB_CONTAINER="${DB_CONTAINER:-felix-homelab-db}"
 NC_DB="nextcloud"
 NC_USER="nextcloud"
 

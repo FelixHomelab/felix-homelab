@@ -1,0 +1,22 @@
+[Unit]
+Description=Felix-Homelab: Caddy 反向代理（统一入口）
+After=felix-homelab-pod.service felix-homelab-forgejo.service
+Requires=felix-homelab-pod.service
+Wants=felix-homelab-forgejo.service
+
+[Container]
+ContainerName=felix-homelab-caddy
+Image=docker.io/library/caddy:2
+Pod=felix-homelab.pod
+Label=autoheal=true
+Timezone=local
+Volume=%h/.config/felix-homelab/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+Volume=felix-homelab-caddy-data.volume:/data
+Volume=felix-homelab-caddy-config.volume:/config
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

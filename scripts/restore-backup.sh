@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 从备份归档恢复 Felix-Workstation 的 Forgejo
+# 从备份归档恢复 Felix-Homelab 的 Forgejo
 #
 # 用法：
 #   scripts/restore-backup.sh [归档路径|latest] [--yes] [--skip-safety]
@@ -17,9 +17,9 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-workstation/backups"
-FORGEJO_CONTAINER="felix-workstation-forgejo"
-DB_CONTAINER="felix-workstation-db"
+BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-homelab/backups"
+FORGEJO_CONTAINER="felix-homelab-forgejo"
+DB_CONTAINER="felix-homelab-db"
 FORGEJO_IMAGE="codeberg.org/forgejo/forgejo:16"
 
 ARCHIVE=""
@@ -38,9 +38,11 @@ log()  { printf '\033[1;36m[felix]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[felix]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[felix]\033[0m %s\n' "$*" >&2; exit 1; }
 
-# 1. 选择归档
+# 1. 选择归档（兼容旧命名 felix-ws-*）
 if [ -z "$ARCHIVE" ] || [ "$ARCHIVE" = "latest" ]; then
-	ARCHIVE="$(find "$BACKUP_DIR" -maxdepth 1 -name 'felix-ws-dump-*.tar.gz' -type f | sort | tail -n1)"
+	ARCHIVE="$(find "$BACKUP_DIR" -maxdepth 1 -type f \
+		\( -name 'felix-homelab-dump-*.tar.gz' -o -name 'felix-ws-dump-*.tar.gz' \) \
+		| sort | tail -n1)"
 fi
 [ -n "$ARCHIVE" ] && [ -f "$ARCHIVE" ] || die "找不到备份归档（目录: $BACKUP_DIR）"
 log "使用归档: $ARCHIVE"
@@ -74,8 +76,8 @@ fi
 
 # 4. 停止写入方
 log "停止 Forgejo / Runner / 备份服务"
-systemctl --user stop felix-workstation-runner.service felix-workstation-backup.service 2>/dev/null || true
-systemctl --user stop felix-workstation-forgejo.service 2>/dev/null || true
+systemctl --user stop felix-homelab-runner.service felix-homelab-backup.service 2>/dev/null || true
+systemctl --user stop felix-homelab-forgejo.service 2>/dev/null || true
 
 if ! podman container exists "$DB_CONTAINER"; then
 	die "数据库容器未运行，请先 make install"
@@ -107,8 +109,8 @@ fi
 #    以 root 运行：先把待删目录 chown 给自己以便删除，最后再 chown 回 uid 1000
 #    （rootless 下容器 root 映射为宿主用户，具备 user namespace 内的 CAP_CHOWN）
 log "还原 data/ 与 repos/ 到数据卷"
-podman run --rm --pod Felix-Workstation --user 0 --security-opt label=disable \
-	-v felix-workstation-forgejo-data:/data \
+podman run --rm --pod Felix-Homelab --user 0 --security-opt label=disable \
+	-v felix-homelab-forgejo-data:/data \
 	-v "$BACKUP_DIR":/backup:ro \
 	--entrypoint sh "$FORGEJO_IMAGE" -c '
 		set -e
@@ -123,16 +125,25 @@ podman run --rm --pod Felix-Workstation --user 0 --security-opt label=disable \
 		chown -R 1000:1000 /data/gitea /data/git
 	'
 
-# 6b. 恢复主站数据（若存在同时间戳的 felix-ws-site-*.tar.gz）
+# 6b. 恢复主站数据（若存在同时间戳的 felix-homelab-site-*.tar.gz，兼容 felix-ws-site-*）
 stamp="$(basename "$ARCHIVE")"
+stamp="${stamp#felix-homelab-dump-}"
 stamp="${stamp#felix-ws-dump-}"
 stamp="${stamp%.tar.gz}"
-site_archive="$BACKUP_DIR/felix-ws-site-${stamp}.tar.gz"
-if [ -f "$site_archive" ]; then
+site_archive=""
+for candidate in \
+	"$BACKUP_DIR/felix-homelab-site-${stamp}.tar.gz" \
+	"$BACKUP_DIR/felix-ws-site-${stamp}.tar.gz"; do
+	if [ -f "$candidate" ]; then
+		site_archive="$candidate"
+		break
+	fi
+done
+if [ -n "$site_archive" ]; then
 	log "还原主站数据（$(basename "$site_archive")）"
-	systemctl --user stop felix-workstation-site.service 2>/dev/null || true
-	podman run --rm --pod Felix-Workstation --user 1000 --security-opt label=disable \
-		-v felix-workstation-site-data:/data \
+	systemctl --user stop felix-homelab-site.service 2>/dev/null || true
+	podman run --rm --pod Felix-Homelab --user 1000 --security-opt label=disable \
+		-v felix-homelab-site-data:/data \
 		-v "$BACKUP_DIR":/backup:ro \
 		--entrypoint sh "$FORGEJO_IMAGE" -c '
 			set -e
@@ -148,19 +159,19 @@ fi
 
 # 7. 启动并等待
 log "启动服务"
-systemctl --user start felix-workstation-db.service
-systemctl --user start felix-workstation-forgejo.service
-systemctl --user start felix-workstation-site.service
+systemctl --user start felix-homelab-db.service
+systemctl --user start felix-homelab-forgejo.service
+systemctl --user start felix-homelab-site.service
 for _ in $(seq 1 60); do
 	podman healthcheck run "$FORGEJO_CONTAINER" >/dev/null 2>&1 && break
 	sleep 2
 done
 podman healthcheck run "$FORGEJO_CONTAINER" >/dev/null 2>&1 \
-	|| die "Forgejo 恢复后未能变为健康，请查看 journalctl --user -u felix-workstation-forgejo"
+	|| die "Forgejo 恢复后未能变为健康，请查看 journalctl --user -u felix-homelab-forgejo"
 
 log "重新注册 Runner"
 "$REPO_DIR/scripts/register-runner.sh" >/dev/null
-systemctl --user start felix-workstation-backup.service
+systemctl --user start felix-homelab-backup.service
 
 log "恢复完成。数据核对："
 podman exec "$DB_CONTAINER" psql -U forgejo -d forgejo -tAc \

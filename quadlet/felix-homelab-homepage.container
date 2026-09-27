@@ -1,19 +1,19 @@
 [Unit]
-Description=Felix-Workstation: Homepage 控制台（首页）
-After=felix-workstation-pod.service
-Requires=felix-workstation-pod.service
+Description=Felix-Homelab: Homepage 控制台（首页）
+After=felix-homelab-pod.service
+Requires=felix-homelab-pod.service
 
 [Container]
-ContainerName=felix-workstation-homepage
+ContainerName=felix-homelab-homepage
 Image=ghcr.io/gethomepage/homepage:v2.4.0
-Pod=felix-workstation.pod
+Pod=felix-homelab.pod
 Label=autoheal=true
 Timezone=local
 Environment=PORT=3001
 Environment=HOMEPAGE_ALLOWED_HOSTS=localhost,localhost:5729,localhost:5732,127.0.0.1,127.0.0.1:5729,127.0.0.1:5732,dash.localhost,dash.localhost:5729,dash.grantfelix.top,dash.grantfelix.top:443
 Environment=DOCKER_HOST=unix:///var/run/docker.sock
-Volume=%h/.config/felix-workstation/homepage:/app/config
-Volume=%h/.config/felix-workstation/homepage/icons:/app/public/icons:ro
+Volume=%h/.config/felix-homelab/homepage:/app/config
+Volume=%h/.config/felix-homelab/homepage/icons:/app/public/icons:ro
 Volume=%t/podman/podman.sock:/var/run/docker.sock
 SecurityLabelDisable=true
 

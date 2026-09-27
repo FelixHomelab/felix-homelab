@@ -4,9 +4,9 @@
 #
 set -euo pipefail
 
-BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-workstation/backups"
+BACKUP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-homelab/backups"
 
-systemctl --user start felix-workstation-backup-run.service
+systemctl --user start felix-homelab-backup-run.service
 
 echo
 echo "备份文件位于: $BACKUP_DIR"

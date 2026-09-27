@@ -8,11 +8,11 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-workstation"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-homelab"
 CONFIG_FILE="$CONFIG_DIR/runner-config.yml"
 CRED_FILE="$CONFIG_DIR/runner.secret"
 RUNNER_IMAGE="${RUNNER_IMAGE:-data.forgejo.org/forgejo/runner:13}"
-FORGEJO_CONTAINER="${FORGEJO_CONTAINER:-felix-workstation-forgejo}"
+FORGEJO_CONTAINER="${FORGEJO_CONTAINER:-felix-homelab-forgejo}"
 
 log() { printf '\033[1;36m[felix]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[felix]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -32,7 +32,7 @@ fi
 # 2. 幂等注册，取回 uuid
 UUID="$(podman exec --user 1000 -w /data/gitea "$FORGEJO_CONTAINER" \
 	forgejo forgejo-cli actions register --config /data/gitea/conf/app.ini \
-	--name felix-workstation --secret "$SECRET" 2>/dev/null \
+	--name felix-homelab --secret "$SECRET" 2>/dev/null \
 	| grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -n1)"
 [ -n "$UUID" ] || die "注册 Runner 失败，未取得 uuid"
 log "Runner uuid: $UUID"
@@ -84,12 +84,12 @@ sync "$CONFIG_FILE" 2>/dev/null || sync
 # 4. 安装单元、启动 Runner
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 log "链接 Quadlet 单元并启动 Runner"
-ln -sfn "$REPO_DIR/quadlet/felix-workstation-runner.container" \
-	"$UNIT_DIR/felix-workstation-runner.container"
+ln -sfn "$REPO_DIR/quadlet/felix-homelab-runner.container" \
+	"$UNIT_DIR/felix-homelab-runner.container"
 systemctl --user daemon-reload
-systemctl --user reset-failed felix-workstation-runner.service 2>/dev/null || true
-systemctl --user restart felix-workstation-runner.service
+systemctl --user reset-failed felix-homelab-runner.service 2>/dev/null || true
+systemctl --user restart felix-homelab-runner.service
 sleep 2
-systemctl --user is-active --quiet felix-workstation-runner.service \
-	|| die "Runner 启动失败，请查看 journalctl --user -u felix-workstation-runner.service"
+systemctl --user is-active --quiet felix-homelab-runner.service \
+	|| die "Runner 启动失败，请查看 journalctl --user -u felix-homelab-runner.service"
 log "Runner 已启动"
