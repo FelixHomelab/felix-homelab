@@ -18,9 +18,9 @@ async fn main() -> anyhow::Result<()> {
     use axum::extract::DefaultBodyLimit;
     use axum::routing::{get, post};
     use axum::{Json, Router};
-    use grant_felix_homepage::app::{shell, App};
-    use grant_felix_homepage::state::AppState;
-    use grant_felix_homepage::{auth, content, db, register_server_fns, seo, uploads};
+    use felix_homelab_site::app::{shell, App};
+    use felix_homelab_site::state::AppState;
+    use felix_homelab_site::{auth, content, db, register_server_fns, seo, uploads};
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
 

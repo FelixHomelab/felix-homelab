@@ -5,6 +5,7 @@
 //! 需要交互的部分。
 
 pub mod comments;
+pub mod community;
 pub mod reviews;
 
 use crate::auth::UserState;
@@ -17,10 +18,11 @@ pub fn SiteHeader() -> impl IntoView {
     view! {
         <header class="site-header">
             <div class="wrap header-inner">
-                <a class="brand" href="/">"Grant Felix"</a>
+                <a class="brand" href="/">"Felix Homelab"</a>
                 <div class="header-right">
                     <nav class="site-nav">
                         <a href="/blog">"博客"</a>
+                        <a href="/community">"社区"</a>
                         <a href="/projects">"项目"</a>
                         <a href="/sky">"光遇"</a>
                         <a href="/about">"关于"</a>
@@ -125,7 +127,7 @@ pub fn SiteFooter() -> impl IntoView {
     view! {
         <footer class="site-footer">
             <div class="wrap">
-                <p class="muted">"© 2026 Grant Felix · 用 Rust 构建"</p>
+                <p class="muted">"© 2026 Felix Homelab · 用 Rust 构建"</p>
             </div>
         </footer>
     }

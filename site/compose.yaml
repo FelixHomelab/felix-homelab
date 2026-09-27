@@ -11,7 +11,7 @@
 # 首次 `up` 会下载工具链并编译，需要几分钟；之后因为卷里存着 nix store 与 target/，
 # 重启很快。
 
-name: grant-felix-homepage
+name: felix-homelab-site
 
 services:
   dev:

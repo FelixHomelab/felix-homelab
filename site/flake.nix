@@ -1,5 +1,5 @@
 {
-  description = "Grant Felix Homepage —— 用 Leptos + Axum + SQLite 写的个人主页";
+  description = "Felix Homelab 社区站 —— 用 Leptos + Axum + SQLite 写的自托管社区站";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -41,7 +41,7 @@
     in {
       devShells = forAllSystems ({ pkgs, ... }: {
         default = pkgs.mkShell {
-          name = "grant-felix-homepage-dev";
+          name = "felix-homelab-site-dev";
 
           packages = [
             (mkToolchain pkgs)
@@ -58,7 +58,7 @@
           ];
 
           shellHook = ''
-            echo "Grant Felix Homepage 开发环境"
+            echo "Felix Homelab 社区站 开发环境"
             echo "  rustc  $(rustc --version)"
             echo "  wasm   $(rustc --print target-libdir --target wasm32-unknown-unknown 2>/dev/null || echo '目标缺失')"
             echo
@@ -72,14 +72,14 @@
 
       packages = forAllSystems ({ pkgs, ... }: {
         default = mkPackage pkgs;
-        grant-felix-homepage = mkPackage pkgs;
+        felix-homelab-site = mkPackage pkgs;
       });
 
       # 模块拿到的 `pkgs` 是**目标系统**的，因此默认包必须按 `pkgs.system` 取，
       # 不能按求值 flake 时的系统取——两者在交叉或远程部署时并不相同。
       nixosModules = {
-        grant-felix-homepage = import ./nix/module.nix { inherit self; };
-        default = self.nixosModules.grant-felix-homepage;
+        felix-homelab-site = import ./nix/module.nix { inherit self; };
+        default = self.nixosModules.felix-homelab-site;
       };
 
       # `nix flake check` 会真的去构建它；只想快速看求值通不通就加 --no-build

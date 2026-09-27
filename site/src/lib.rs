@@ -1,4 +1,4 @@
-//! Grant Felix 个人主页 — 前端库入口。
+//! Felix Homelab 社区站 — 前端库入口。
 //!
 //! 同一个 crate 同时编出两种产物：服务端（`ssr` feature，宿主为 Axum）
 //! 与浏览器端 wasm（`hydrate` feature）。因此本文件里凡涉及两者差异的部分
@@ -16,6 +16,7 @@ pub mod admin;
 pub mod app;
 pub mod auth;
 pub mod comments;
+pub mod community;
 pub mod components;
 pub mod content;
 pub mod pages;
@@ -64,6 +65,10 @@ pub fn register_server_fns() {
     server_fn::axum::register_explicit::<admin::AdminSetUserRole>();
     server_fn::axum::register_explicit::<admin::AdminListPod>();
     server_fn::axum::register_explicit::<admin::AdminRestartContainer>();
+    // admin：社区投稿（直接发布 + 事后管理）
+    server_fn::axum::register_explicit::<admin::AdminListCommunity>();
+    server_fn::axum::register_explicit::<admin::AdminSetCommunityStatus>();
+    server_fn::axum::register_explicit::<admin::AdminDeleteCommunity>();
     // admin：备份（分源 + 多渠道）
     server_fn::axum::register_explicit::<admin::AdminBackupConfig>();
     server_fn::axum::register_explicit::<admin::AdminBackupSaveConfig>();
@@ -83,6 +88,13 @@ pub fn register_server_fns() {
     // comments
     server_fn::axum::register_explicit::<comments::LoadCommentThread>();
     server_fn::axum::register_explicit::<comments::SubmitComment>();
+
+    // community
+    server_fn::axum::register_explicit::<community::ListCommunity>();
+    server_fn::axum::register_explicit::<community::GetCommunity>();
+    server_fn::axum::register_explicit::<community::SubmitCommunity>();
+    server_fn::axum::register_explicit::<community::UpdateCommunity>();
+    server_fn::axum::register_explicit::<community::DeleteCommunity>();
 
     // content
     server_fn::axum::register_explicit::<content::ListPosts>();

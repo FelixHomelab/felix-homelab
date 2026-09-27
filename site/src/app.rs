@@ -5,9 +5,10 @@
 
 use crate::auth::{current_user, UserState};
 use crate::pages::admin::{
-    AdminBackupPage, AdminCommentsPage, AdminDashboardPage, AdminPodPage, AdminReviewsPage,
-    AdminUsersPage,
+    AdminBackupPage, AdminCommentsPage, AdminCommunityPage, AdminDashboardPage, AdminPodPage,
+    AdminReviewsPage, AdminUsersPage,
 };
+use crate::pages::community::{CommunityDetailPage, CommunityIndex, CommunitySubmitPage};
 use crate::pages::{
     AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, ContactPage, HomePage, Layout,
     LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, SkyBoostingPage,
@@ -57,7 +58,7 @@ pub fn App() -> impl IntoView {
     provide_context(UserState::new(user));
 
     view! {
-        <Stylesheet id="leptos" href="/pkg/grant-felix-homepage.css" />
+        <Stylesheet id="leptos" href="/pkg/felix-homelab-site.css" />
 
         // 主题在第一帧就写进 <html>：class 决定亮暗，style 给出自定义的主色与背景图。
         // 这是「不闪烁」的全部秘密——服务端已经知道答案，不必等水合后再改样式。
@@ -75,6 +76,30 @@ pub fn App() -> impl IntoView {
                     // 标签路由必须排在 :slug 前面，否则 tag 会被当成文章 slug
                     <Route path=path!("/blog/tag/:tag") view=BlogTag ssr=SsrMode::Async />
                     <Route path=path!("/blog/:slug") view=BlogPost ssr=SsrMode::Async />
+                    // 社区投稿：静态子路径必须排在 :username/:slug 之前
+                    <Route path=path!("/community") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route path=path!("/community/posts") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/community/projects")
+                        view=CommunityIndex
+                        ssr=SsrMode::Async
+                    />
+                    <Route path=path!("/community/sky") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/community/new")
+                        view=CommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/community/:username/:slug/edit")
+                        view=CommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/community/:username/:slug")
+                        view=CommunityDetailPage
+                        ssr=SsrMode::Async
+                    />
                     <Route path=path!("/projects") view=ProjectIndex ssr=SsrMode::Async />
                     <Route path=path!("/projects/:slug") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about") view=AboutPage ssr=SsrMode::Async />
@@ -94,6 +119,11 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/admin") view=AdminDashboardPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/comments") view=AdminCommentsPage ssr=SsrMode::Async />
                     <Route
+                        path=path!("/admin/community")
+                        view=AdminCommunityPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
                         path=path!("/admin/sky-reviews")
                         view=AdminReviewsPage
                         ssr=SsrMode::Async
@@ -108,6 +138,33 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/blog/") view=BlogIndex ssr=SsrMode::Async />
                     <Route path=path!("/blog/tag/:tag/") view=BlogTag ssr=SsrMode::Async />
                     <Route path=path!("/blog/:slug/") view=BlogPost ssr=SsrMode::Async />
+                    <Route path=path!("/community/") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/community/posts/")
+                        view=CommunityIndex
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/community/projects/")
+                        view=CommunityIndex
+                        ssr=SsrMode::Async
+                    />
+                    <Route path=path!("/community/sky/") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/community/new/")
+                        view=CommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/community/:username/:slug/edit/")
+                        view=CommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/community/:username/:slug/")
+                        view=CommunityDetailPage
+                        ssr=SsrMode::Async
+                    />
                     <Route path=path!("/projects/") view=ProjectIndex ssr=SsrMode::Async />
                     <Route path=path!("/projects/:slug/") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about/") view=AboutPage ssr=SsrMode::Async />
@@ -123,6 +180,11 @@ pub fn App() -> impl IntoView {
                     <Route
                         path=path!("/admin/comments/")
                         view=AdminCommentsPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/admin/community/")
+                        view=AdminCommunityPage
                         ssr=SsrMode::Async
                     />
                     <Route

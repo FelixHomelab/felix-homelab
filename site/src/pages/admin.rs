@@ -9,12 +9,13 @@ use leptos_router::hooks::use_location;
 
 use crate::admin::{
     am_i_admin, admin_backup_config, admin_backup_list, admin_backup_now, admin_backup_save_config,
-    admin_backup_trigger_sync, admin_delete_comment, admin_delete_review, admin_list_comments,
-    admin_list_pod, admin_list_reviews, admin_list_users, admin_load_overview, admin_reply_review,
-    admin_restart_container, admin_set_comment_status, admin_set_review_status,
-    admin_set_user_role, admin_set_user_status, AdminComment, AdminReview, AdminUser, BackupChannel,
-    PodContainer,
+    admin_backup_trigger_sync, admin_delete_comment, admin_delete_community, admin_delete_review,
+    admin_list_comments, admin_list_community, admin_list_pod, admin_list_reviews, admin_list_users,
+    admin_load_overview, admin_reply_review, admin_restart_container, admin_set_comment_status,
+    admin_set_community_status, admin_set_review_status, admin_set_user_role, admin_set_user_status,
+    AdminComment, AdminCommunityPost, AdminReview, AdminUser, BackupChannel, PodContainer,
 };
+use crate::community::kind_label as community_kind_label;
 use crate::components::PageHeader;
 
 use super::set_status;
@@ -42,7 +43,7 @@ where
 fn forbidden() -> impl IntoView {
     set_status(403);
     view! {
-        <Title text="无权访问 — Grant Felix" />
+        <Title text="无权访问 — Felix Homelab" />
         <section class="wrap">
             <PageHeader title="无权访问" lede="这个页面只有管理员能看。".to_string() />
             <p><a href="/">"← 回首页"</a></p>
@@ -61,6 +62,7 @@ fn AdminNav() -> impl IntoView {
         <nav class="admin-nav">
             <a href="/admin" class:active=move || active("/admin")>"概览"</a>
             <a href="/admin/comments" class:active=move || active("/admin/comments")>"评论"</a>
+            <a href="/admin/community" class:active=move || active("/admin/community")>"社区"</a>
             <a href="/admin/sky-reviews" class:active=move || active("/admin/sky-reviews")>
                 "评价"
             </a>
@@ -138,7 +140,7 @@ pub fn AdminDashboardPage() -> impl IntoView {
     let pod = Resource::new_blocking(|| (), |_| admin_list_pod());
 
     view! {
-        <Title text="后台 — Grant Felix" />
+        <Title text="后台 — Felix Homelab" />
         <AdminPage title="后台" lede="审核评论、管理用户、回复评价、看护容器。".to_string()>
             <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
                 {move || match overview.get() {
@@ -160,6 +162,10 @@ pub fn AdminDashboardPage() -> impl IntoView {
                             <a class="stat" href="/admin/users">
                                 <span class="stat-value">{data.users}</span>
                                 <span class="stat-label">"注册用户"</span>
+                            </a>
+                            <a class="stat" href="/admin/community">
+                                <span class="stat-value">{data.community}</span>
+                                <span class="stat-label">"社区投稿"</span>
                             </a>
                             <a class="stat" href="/admin/users">
                                 <span class="stat-value">{data.banned}</span>
@@ -253,7 +259,7 @@ pub fn AdminCommentsPage() -> impl IntoView {
     );
 
     view! {
-        <Title text="评论审核 — Grant Felix" />
+        <Title text="评论审核 — Felix Homelab" />
         <AdminPage title="评论审核" lede="通过后才会显示在页面上。".to_string()>
             <StatusFilter only_pending=only_pending />
             <p class="notice" role="status">{move || message.get()}</p>
@@ -346,6 +352,126 @@ fn AdminCommentRow(
     }
 }
 
+/// 社区投稿管理：发布即公开，这里负责下架 / 恢复 / 删除。
+#[component]
+pub fn AdminCommunityPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let filter = RwSignal::new("published".to_string());
+
+    let posts = Resource::new_blocking(
+        move || (revision.get(), filter.get()),
+        |(_, status)| admin_list_community(status),
+    );
+
+    let filter_tab = move |label: &'static str, value: &'static str| {
+        view! {
+            <button
+                class="btn"
+                class:active=move || filter.get() == value
+                on:click=move |_| filter.set(value.to_string())
+            >
+                {label}
+            </button>
+        }
+    };
+
+    view! {
+        <Title text="社区管理 — Felix Homelab" />
+        <AdminPage title="社区管理" lede="发布即公开；这里负责下架、恢复与删除。".to_string()>
+            <div class="field-row">
+                {filter_tab("已发布", "published")}
+                {filter_tab("已下架", "hidden")}
+                {filter_tab("全部", "all")}
+            </div>
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match posts.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"载入社区内容失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) if list.is_empty() => {
+                        view! { <p class="muted">"这个筛选下没有内容。"</p> }.into_any()
+                    }
+                    Some(Ok(list)) => view! {
+                        <div class="admin-list">
+                            {list
+                                .into_iter()
+                                .map(|post| {
+                                    view! {
+                                        <AdminCommunityRow
+                                            post=post
+                                            revision=revision
+                                            message=message
+                                        />
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
+        </AdminPage>
+    }
+}
+
+/// 后台里的一行社区内容。
+#[component]
+fn AdminCommunityRow(
+    post: AdminCommunityPost,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let id = post.id;
+    let kind = community_kind_label(&post.kind).to_string();
+    let href = format!("/community/{}/{}", post.author_username, post.slug);
+    let published = post.status == "published";
+
+    view! {
+        <article class="admin-row">
+            <p class="admin-meta">
+                <span class=format!("status status-{}", post.status)>{post.status.clone()}</span>
+                <span class="badge">{kind}</span>
+                <strong>{post.author.clone()}</strong>
+                <span class="comment-time">{post.created_at.clone()}</span>
+                <a href=href>{post.title.clone()}</a>
+            </p>
+            <div class="admin-actions">
+                {published.then(|| view! {
+                    <button
+                        class="btn btn-small"
+                        on:click=move |_| {
+                            run_action(revision, message, admin_set_community_status(id, "hidden".into()))
+                        }
+                    >
+                        "下架"
+                    </button>
+                })}
+                {(!published).then(|| view! {
+                    <button
+                        class="btn btn-small"
+                        on:click=move |_| {
+                            run_action(revision, message, admin_set_community_status(id, "published".into()))
+                        }
+                    >
+                        "恢复"
+                    </button>
+                })}
+                <button
+                    class="btn btn-small btn-danger"
+                    on:click=move |_| run_action(revision, message, admin_delete_community(id))
+                >
+                    "删除"
+                </button>
+            </div>
+        </article>
+    }
+}
+
 /// 评价审核与回复。
 #[component]
 pub fn AdminReviewsPage() -> impl IntoView {
@@ -359,7 +485,7 @@ pub fn AdminReviewsPage() -> impl IntoView {
     );
 
     view! {
-        <Title text="评价审核 — Grant Felix" />
+        <Title text="评价审核 — Felix Homelab" />
         <AdminPage title="评价审核" lede="通过后才会显示在代跑页上。".to_string()>
             <StatusFilter only_pending=only_pending />
             <p class="notice" role="status">{move || message.get()}</p>
@@ -475,7 +601,7 @@ pub fn AdminUsersPage() -> impl IntoView {
     let users = Resource::new_blocking(move || revision.get(), |_| admin_list_users());
 
     view! {
-        <Title text="用户管理 — Grant Felix" />
+        <Title text="用户管理 — Felix Homelab" />
         <AdminPage
             title="用户管理"
             lede="封禁后该账号立刻无法登录，已登录的会话也会立即失效。".to_string()
@@ -564,7 +690,7 @@ fn AdminUserRow(
     }
 }
 
-/// Pod 管理：查看 Felix-Workstation 内的容器状态，并可重启。
+/// Pod 管理：查看 Felix-Homelab 内的容器状态，并可重启。
 ///
 /// 复用站点后台的布局与样式，和「评论 / 用户」等页面保持一致的观感。
 #[component]
@@ -574,10 +700,10 @@ pub fn AdminPodPage() -> impl IntoView {
     let containers = Resource::new_blocking(move || revision.get(), |_| admin_list_pod());
 
     view! {
-        <Title text="Pod 管理 — Grant Felix" />
+        <Title text="Pod 管理 — Felix Homelab" />
         <AdminPage
             title="Pod 管理"
-            lede="Felix-Workstation 内的容器状态；重启会短暂中断对应服务。".to_string()
+            lede="Felix-Homelab 内的容器状态；重启会短暂中断对应服务。".to_string()
         >
             <p class="notice" role="status">{move || message.get()}</p>
 
@@ -818,11 +944,12 @@ fn BackupChannelCard(index: usize, channels: RwSignal<Vec<BackupChannel>>) -> im
     }
 }
 
-/// 由归档文件名判断备份源。
+/// 由归档文件名判断备份源（兼容旧命名 felix-ws-*）。
 fn backup_source(name: &str) -> &'static str {
-    if name.starts_with("felix-ws-site-") {
+    if name.starts_with("felix-homelab-site-") || name.starts_with("felix-ws-site-") {
         "主站"
-    } else if name.starts_with("felix-ws-nextcloud-") {
+    } else if name.starts_with("felix-homelab-nextcloud-") || name.starts_with("felix-ws-nextcloud-")
+    {
         "Nextcloud"
     } else {
         "Forgejo"
@@ -912,7 +1039,7 @@ pub fn AdminBackupPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="备份 — Grant Felix" />
+        <Title text="备份 — Felix Homelab" />
         <AdminPage
             title="备份"
             lede="选择要备份的内容；每个备份源、每个异地渠道都能单独开关。".to_string()
@@ -932,7 +1059,7 @@ pub fn AdminBackupPage() -> impl IntoView {
                     />
                     <SourceToggle
                         label="主站"
-                        hint="个人主页文章、评论、上传的图片"
+                        hint="主站文章、社区投稿、评论与上传图片"
                         checked=site
                     />
                     <SourceToggle
@@ -1036,7 +1163,7 @@ pub fn AdminBackupPage() -> impl IntoView {
             <section class="admin-quick">
                 <h2 class="admin-section-title">"3. 备份归档（本机）"</h2>
                 <p class="muted">
-                    "归档保存在宿主机 ~/.local/share/felix-workstation/backups/；按上面保存的保留天数自动清理。"
+                    "归档保存在宿主机 ~/.local/share/felix-homelab/backups/；按上面保存的保留天数自动清理。"
                 </p>
                 <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
                     {move || match backups.get() {

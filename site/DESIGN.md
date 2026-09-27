@@ -1,18 +1,20 @@
-# Grant Felix Homepage — 设计文档
+# Felix Homelab 社区站 — 设计文档
 
-> 用 Leptos + Axum + SQLite 重写的个人主页。本文说明**为什么这样切**、边界在哪、
+> 用 Leptos + Axum + SQLite 写的自托管社区站。本文说明**为什么这样切**、边界在哪、
 > 以及明确不做什么。实施拆解与验证命令见 `TODO.md`。
 
 ---
 
 ## 一、定位与边界
 
-一个自持的个人主页，对外是博客、项目展示、光遇子站与个人介绍；对内是一套只有
-站长需要登录的后台。代码托管在本地 Forgejo 私有仓库，不出公开镜像。
+一个自持的社区站：**官方内容**（博客、项目、光遇、静态页）由管理员随仓库维护，
+**社区内容**由注册用户发布（发布即公开，事后可下架），两类内容分区展示。账号体系
+对外开放注册，另有仅管理员可见的后台。代码开源在 `FelixHomelab/felix-homelab`。
 
 明确落在范围内的事：
 
-- 内容区：博客、项目、光遇（攻略 / 画廊 / 代跑评价）、关于、联系
+- 官方内容：博客、项目、光遇（攻略 / 画廊 / 代跑评价）、关于、联系
+- 社区内容：文章、项目、光遇投稿（UGC，存数据库，注册用户可发）
 - 互动区：注册登录、评论、光遇代跑评价
 - 个性化：亮暗自动 / 手动切换、自定义配色、自定义背景图（**偏好存在账号里**）
 - 运维面：单进程 + 单 SQLite 文件，配一条构建命令
@@ -50,13 +52,14 @@
 
 ---
 
-## 三、内容模型：Markdown 随仓库走
+## 三、内容模型：官方 Markdown + 社区 UGC
 
-文章与项目介绍以 Markdown 文件存在仓库里，**改内容 = 提交**。理由是这个站的作者
-是唯一作者，且已经在用 git；把内容放进数据库只会多出一套 CRUD 后台与备份逻辑，
-而换不来任何版本化能力。
+**官方内容**以 Markdown 文件存在仓库里，**改内容 = 提交**，天然版本化：这是
+博客、项目、光遇与静态页的发布方式。
 
-目录约定如下。
+**社区内容**由注册用户在站内发布，存在数据库（`community_posts`），与官方内容
+分区展示、互不混淆；因此配套了作者自编辑 / 删除与管理员下架 / 删除（见下）。
+官方内容的目录约定如下。
 
 | 目录 | 放什么 | 关键 front matter |
 |---|---|---|
@@ -105,24 +108,45 @@ front matter 都认 `author`，值填**站点账号的用户名**；省略时用
 分类是从 URL 传来的，因此分类页也先与白名单比对，不在名单里直接 404——「这里还没有
 内容」和「没有这个页面」是两回事。
 
+### 社区投稿（UGC）
+
+与官方内容的「改内容就是提交」相反，社区内容面向注册用户，不经过 Git：
+
+- 一张 `community_posts` 表承载三种类型（`kind`：`post` / `project` / `sky`）；
+  类型专属字段（项目的 `kind/repo/demo`、光遇的 `category/cover`）存 `meta` JSON，
+  标题、摘要、标签、正文是公共列。
+- **发布即公开**：`status` 默认 `published`；管理员可在后台改成 `hidden`（下架）
+  或删除，作者可以编辑 / 删除自己的内容。评论用「先审后发」，是因为灌水成本低、
+  量大；投稿篇幅长、频率低，事前审核会让发布体验变差，因此选择事后管理。
+- 链接（`repo` / `demo` / `cover`）**只放行 http(s) 与站内 `/uploads/` 路径**，
+  封死 `javascript:`、`data:` 这类注入面；正文与评论同一条线：
+  `render_markdown(md, false)`，过滤裸 HTML。
+- 详情地址为 `/community/:username/:slug`（同作者内 slug 唯一，冲突自动加后缀）。
+- 评论表的多态目标扩展出 `community`，文章与光遇投稿共用评论区（项目不设评论，
+  与官方项目页一致）。
+- 首页与列表页都提供「官方内容 / 社区投稿」分区切换；sitemap 收录已发布的社区内容。
+
 ---
 
-## 四、数据库：只存互动数据
+## 四、数据库：用户产生的东西
 
-数据库里只有「用户产生的东西」，内容一律不进库。表结构如下。
+数据库只存用户产生的东西：账号、会话、社区投稿、评论、评价与偏好。官方内容一律
+不进库。表结构如下。
 
 | 表 | 用途 | 关键字段 |
 |---|---|---|
 | `users` | 账号 | `username`、`password_hash`、`role`、`status` |
 | `sessions` | 登录会话 | `token_hash`、`user_id`、`expires_at` |
+| `community_posts` | 社区投稿 | `kind`、`slug`、`author_id`、`status`、`meta` |
 | `comments` | 评论 | `target_kind`、`target_slug`、`user_id`、`parent_id`、`status` |
 | `sky_reviews` | 光遇代跑评价 | `user_id`、`rating`、`body`、`reply`、`status` |
 | `user_prefs` | 个性化偏好 | `theme_mode`、`accent`、`bg_kind`、`bg_value` |
 
 几处刻意设计：
 
-`comments.target_kind` 与 `target_slug` 组成多态目标，取值 `post` 与 `sky`。
-这样博客与光遇页面共用一张评论表、一套审核逻辑，而不必为每个板块复制一份。
+`comments.target_kind` 与 `target_slug` 组成多态目标，取值 `post`、`sky` 与
+`community`。这样官方博客、光遇与社区投稿共用一张评论表、一套审核逻辑，而不必为
+每个板块复制一份。
 
 `comments.status` 取值 `pending`、`approved`、`rejected`。新评论一律先落
 `pending`，因为开放注册的站点必然会被灌水，先审后显示比事后清理省力。
@@ -262,11 +286,15 @@ POST 不需要额外的令牌。
 | `/projects`、`/projects/:slug` | 项目 | 按 `kind` 分组 |
 | `/sky`、`/sky/gameplay`、`/sky/gallery` | 光遇 | 攻略与画廊 |
 | `/sky/boosting` | 光遇代跑 | 介绍 + 评价区（可提交） |
+| `/community`、`/community/posts`、`/community/projects`、`/community/sky` | 社区列表 | 按类型筛选，发布即公开 |
+| `/community/new` | 社区发布 | 需登录（未登录引导去登录） |
+| `/community/:username/:slug` | 社区详情 | 评论区（文章 / 光遇），作者与管理员可编辑删除 |
+| `/community/:username/:slug/edit` | 社区编辑 | 仅作者与管理员 |
 | `/about`、`/contact` | 关于、联系 | 静态页 |
 | `/login`、`/register`、`/logout` | 认证 | |
 | `/me` | 个人设置 | 主题、配色、背景图、改密码 |
 | `/user/:username` | 公开资料页 | |
-| `/admin`、`/admin/comments`、`/admin/users`、`/admin/sky-reviews` | 后台 | 仅管理员 |
+| `/admin`、`/admin/comments`、`/admin/community`、`/admin/users`、`/admin/sky-reviews` | 后台 | 仅管理员 |
 | `/rss.xml`、`/sitemap.xml`、`/robots.txt`、`/healthz` | 机器可读 | `healthz` 顺带探测数据库 |
 
 旧站的「图标导航首页」保留：首页三个入口（博客 / 光遇 / 项目）是它的核心识别度。
@@ -298,13 +326,14 @@ POST 不需要额外的令牌。
 │   ├── admin.rs          # 后台的 server function（每个自带授权校验）
 │   ├── auth.rs           # 账号、会话、资料
 │   ├── comments.rs       # 评论
+│   ├── community.rs      # 社区投稿（UGC）的模型与 server function
 │   ├── reviews.rs        # 光遇评价
 │   ├── theme.rs          # 外观偏好（cookie 与账号同步）
 │   ├── seo.rs            # RSS、sitemap、robots.txt
 │   ├── uploads.rs        # 背景图上传与提供
-│   ├── components/       # 布局、评论与评价组件
-│   └── pages/            # 各路由页面（含 admin.rs）
-├── migrations/           # sqlx 迁移
+│   ├── components/       # 布局、评论、评价与社区组件
+│   └── pages/            # 各路由页面（含 admin.rs、community.rs）
+├── migrations/           # sqlx 迁移（0003 起含社区投稿表）
 └── data/                 # 运行时：site.db、uploads/（已忽略，绝不进 store）
 ```
 
@@ -429,12 +458,12 @@ import 它、填几个选项，`nixos-rebuild switch` 就完成部署与升级�
 
 ```nix
 {
-  inputs.grant-felix-homepage.url = "git+http://127.0.0.1:3000/Felix/grant-felix-homepage.git?ref=leptos";
+  inputs.felix-homelab-site.url = "git+http://127.0.0.1:3000/Felix/felix-homelab-site.git?ref=leptos";
 
   # 在 hosts/<你的主机>/default.nix 里
-  imports = [ inputs.grant-felix-homepage.nixosModules.default ];
+  imports = [ inputs.felix-homelab-site.nixosModules.default ];
 
-  services.grant-felix-homepage = {
+  services.felix-homelab-site = {
     enable = true;
     siteUrl = "https://example.com";     # 必填
     nginx = {
@@ -443,7 +472,7 @@ import 它、填几个选项，`nixos-rebuild switch` 就完成部署与升级�
       enableACME = true;                 # 自动申请证书
     };
     backup.enable = true;
-    environmentFile = "/run/secrets/grant-felix-homepage.env";
+    environmentFile = "/run/secrets/felix-homelab-site.env";
   };
 }
 ```
@@ -483,7 +512,8 @@ import 它、填几个选项，`nixos-rebuild switch` 就完成部署与升级�
 
 这一节是为了防止范围悄悄扩大，也是给未来的自己看的边界。
 
-- **不做富文本编辑器**：内容走 Markdown 提交，后台不碰内容
+- **不做富文本编辑器**：官方内容走仓库 Markdown，社区投稿用 Markdown 文本框，
+  不引入所见即所得编辑器
 - **不做多语言**：只做中文，但在文案取值处预留 i18n 位置，不实现
 - **不做第三方登录**：不接 OAuth，账号只有用户名 + 密码
 - **暂时不做邮件**：不验邮箱、不发通知，`email` 字段仍可空且没人用。
@@ -492,7 +522,8 @@ import 它、填几个选项，`nixos-rebuild switch` 就完成部署与升级�
   忘了密码只能删账号重建
 - **不做全文搜索**：内容量在数百篇以内，标签与归档够用
 - **不把秘密入库**：令牌与密钥只放本地 `.env` 或环境变量，`.env` 已在 `.gitignore` 中
-- **不做公开镜像**：仓库保持私有
+- **官方内容不开放投稿**：官方内容只随仓库发布，社区投稿走 `/community`，两者
+  分区展示、互不混淆
 
 ---
 
@@ -500,14 +531,15 @@ import 它、填几个选项，`nixos-rebuild switch` 就完成部署与升级�
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 1 | 骨架：SSR + 水合 + SQLite 打通 | 进行中 |
-| 2 | 内容层：Markdown 载入与索引、博客与项目页 | 待办 |
-| 3 | 主题系统：亮暗 + 自定义配色 + 背景图 | 待办 |
-| 4 | 账号与会话：注册、登录、登出 | 待办 |
-| 5 | 互动：评论与光遇评价 | 待办 |
-| 6 | 后台：审核评论、管理用户、回复评价 | 待办 |
-| 7 | SEO：RSS、sitemap、meta | 待办 |
-| 8 | 部署：按第十节定稿后实施 | 待办 |
+| 1 | 骨架：SSR + 水合 + SQLite 打通 | 完成 |
+| 2 | 内容层：Markdown 载入与索引、博客与项目页 | 完成 |
+| 3 | 主题系统：亮暗 + 自定义配色 + 背景图 | 完成 |
+| 4 | 账号与会话：注册、登录、登出 | 完成 |
+| 5 | 互动：评论与光遇评价 | 完成 |
+| 6 | 后台：审核评论、管理用户、回复评价 | 完成 |
+| 7 | SEO：RSS、sitemap、meta | 完成 |
+| 8 | 部署：按第十节定稿后实施 | 完成 |
+| 9 | 社区投稿：文章 / 项目 / 光遇（发布即公开 + 事后管理） | 完成 |
 
 每个阶段的**完成判据与可复现验证命令**写在 `TODO.md`，以那里为准。
 

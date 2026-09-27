@@ -686,6 +686,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "felix-homelab-site"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "axum",
+ "chrono",
+ "console_error_panic_hook",
+ "gray_matter",
+ "hex",
+ "js-sys",
+ "leptos",
+ "leptos_axum",
+ "leptos_meta",
+ "leptos_router",
+ "percent-encoding",
+ "pulldown-cmark",
+ "rand 0.10.3",
+ "serde",
+ "serde_json",
+ "server_fn",
+ "sha2 0.11.0",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -902,36 +933,6 @@ dependencies = [
  "js-sys",
  "serde",
  "serde_json",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "grant-felix-homepage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "argon2",
- "axum",
- "chrono",
- "console_error_panic_hook",
- "gray_matter",
- "hex",
- "js-sys",
- "leptos",
- "leptos_axum",
- "leptos_meta",
- "leptos_router",
- "percent-encoding",
- "pulldown-cmark",
- "rand 0.10.3",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "sqlx",
- "tokio",
- "tracing",
- "tracing-subscriber",
  "wasm-bindgen",
  "web-sys",
 ]

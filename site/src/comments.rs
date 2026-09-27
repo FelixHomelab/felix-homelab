@@ -1,7 +1,7 @@
 //! 评论。
 //!
-//! 用 `target_kind` + `target_slug` 做多态目标（`post` / `sky`），博客与光遇共用
-//! 一张表、一套审核逻辑，不必为每个板块复制一份。
+//! 用 `target_kind` + `target_slug` 做多态目标（`post` / `sky` / `community`），
+//! 官方博客、光遇与社区内容共用一张表、一套审核逻辑，不必为每个板块复制一份。
 //!
 //! **新评论一律先落 `pending`**：开放注册的站点必然会被灌水，先审后显示比事后清理省力。
 //!
@@ -22,7 +22,7 @@ const BODY_MAX: usize = 2000;
 /// 这是**用户输入，必须白名单校验**：库里的 `CHECK` 约束虽然拦得住，但那要先打一次
 /// 数据库、并让一个本来无效的请求留下错误日志；在这里挡掉更干净。
 #[cfg(feature = "ssr")]
-const TARGET_KINDS: [&str; 2] = ["post", "sky"];
+const TARGET_KINDS: [&str; 3] = ["post", "sky", "community"];
 
 /// 一条已批准的评论。
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]

@@ -1,9 +1,9 @@
 [package]
-name = "grant-felix-homepage"
+name = "felix-homelab-site"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.86"
-description = "Grant Felix 个人主页 — Leptos + Axum + SQLite"
+description = "Felix Homelab 社区站 — Leptos + Axum + SQLite"
 license = "MIT"
 
 [lib]
@@ -101,7 +101,7 @@ codegen-units = 1
 panic = "abort"
 
 [package.metadata.leptos]
-output-name = "grant-felix-homepage"
+output-name = "felix-homelab-site"
 site-root = "target/site"
 site-pkg-dir = "pkg"
 style-file = "style/main.css"

@@ -50,6 +50,9 @@ pub struct AdminOverview {
     pub pending_reviews: i64,
     pub users: i64,
     pub banned: i64,
+    /// 社区投稿总数与已下架数。
+    pub community: i64,
+    pub hidden_community: i64,
 }
 
 /// 后台看到的评论。
@@ -120,6 +123,12 @@ pub async fn admin_load_overview() -> Result<AdminOverview, ServerFnError> {
         banned: count("SELECT COUNT(*) FROM users WHERE status = 'banned'")
             .await
             .map_err(|e| ServerFnError::new(format!("统计封禁用户失败: {e}")))?,
+        community: count("SELECT COUNT(*) FROM community_posts")
+            .await
+            .map_err(|e| ServerFnError::new(format!("统计社区投稿失败: {e}")))?,
+        hidden_community: count("SELECT COUNT(*) FROM community_posts WHERE status = 'hidden'")
+            .await
+            .map_err(|e| ServerFnError::new(format!("统计已下架内容失败: {e}")))?,
     })
 }
 
@@ -454,7 +463,146 @@ pub async fn admin_set_user_role(id: i64, role: String) -> ActionResult {
 }
 
 // ---------------------------------------------------------------------------
-// Pod 管理（Felix-Workstation）
+// 社区投稿：直接发布 + 事后管理
+//
+// 与评论的「先审后发」不同：社区内容发布即公开，这里负责事后下架 / 恢复 / 删除。
+// ---------------------------------------------------------------------------
+
+/// 社区内容状态（后台可切换）。
+#[cfg(feature = "ssr")]
+const COMMUNITY_STATUSES: [&str; 2] = ["published", "hidden"];
+
+/// 后台看到的社区内容。
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct AdminCommunityPost {
+    pub id: i64,
+    pub kind: String,
+    pub slug: String,
+    pub title: String,
+    pub author: String,
+    pub author_username: String,
+    pub status: String,
+    pub created_at: String,
+}
+
+/// 列出社区内容。`status` 传 `hidden` 只看已下架，传 `all` 看全部。
+#[server]
+pub async fn admin_list_community(status: String) -> Result<Vec<AdminCommunityPost>, ServerFnError> {
+    use crate::state::AppState;
+    use sqlx::Row;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    require_admin()
+        .await
+        .map_err(|message| ServerFnError::new(message))?;
+
+    let base = "SELECT c.id, c.kind, c.slug, c.title, c.status, c.created_at, \
+                       u.display_name, u.username \
+                FROM community_posts c JOIN users u ON u.id = c.author_id";
+    let rows = if status == "all" {
+        sqlx::query(&format!("{base} ORDER BY c.created_at DESC, c.id DESC LIMIT 500"))
+            .fetch_all(&app.pool)
+            .await
+    } else {
+        let wanted = if COMMUNITY_STATUSES.contains(&status.as_str()) {
+            status
+        } else {
+            "hidden".to_string()
+        };
+        sqlx::query(&format!(
+            "{base} WHERE c.status = ?1 ORDER BY c.created_at DESC, c.id DESC LIMIT 500"
+        ))
+        .bind(wanted)
+        .fetch_all(&app.pool)
+        .await
+    }
+    .map_err(|e| ServerFnError::new(format!("查询社区内容失败: {e}")))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| AdminCommunityPost {
+            id: row.get("id"),
+            kind: row.get("kind"),
+            slug: row.get("slug"),
+            title: row.get("title"),
+            author: row.get("display_name"),
+            author_username: row.get("username"),
+            status: row.get("status"),
+            created_at: row.get("created_at"),
+        })
+        .collect())
+}
+
+/// 下架 / 恢复一条社区内容。
+#[server]
+pub async fn admin_set_community_status(id: i64, status: String) -> ActionResult {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    if let Err(message) = require_admin().await {
+        return Ok(Err(message));
+    }
+
+    if !COMMUNITY_STATUSES.contains(&status.as_str()) {
+        return Ok(Err("状态取值不合法。".to_string()));
+    }
+
+    let affected = sqlx::query("UPDATE community_posts SET status = ?1 WHERE id = ?2")
+        .bind(&status)
+        .bind(id)
+        .execute(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("更新社区内容状态失败: {e}")))?
+        .rows_affected();
+
+    if affected == 0 {
+        return Ok(Err("这条内容已经不存在了。".to_string()));
+    }
+    Ok(Ok(()))
+}
+
+/// 彻底删除一条社区内容（连同其评论）。
+#[server]
+pub async fn admin_delete_community(id: i64) -> ActionResult {
+    use crate::state::AppState;
+    use sqlx::Row;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    if let Err(message) = require_admin().await {
+        return Ok(Err(message));
+    }
+
+    let row = sqlx::query(
+        "SELECT (SELECT u.username || '/' || c.slug FROM users u WHERE u.id = c.author_id) AS target \
+         FROM community_posts c WHERE c.id = ?1",
+    )
+    .bind(id)
+    .fetch_optional(&app.pool)
+    .await
+    .map_err(|e| ServerFnError::new(format!("读取社区内容失败: {e}")))?;
+    let Some(row) = row else {
+        return Ok(Err("这条内容已经不存在了。".to_string()));
+    };
+
+    // 评论没有外键（多态关联），删除内容时手动清理
+    let target: String = row.get("target");
+    sqlx::query("DELETE FROM comments WHERE target_kind = 'community' AND target_slug = ?1")
+        .bind(&target)
+        .execute(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("删除关联评论失败: {e}")))?;
+
+    sqlx::query("DELETE FROM community_posts WHERE id = ?1")
+        .bind(id)
+        .execute(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("删除社区内容失败: {e}")))?;
+
+    Ok(Ok(()))
+}
+
+// ---------------------------------------------------------------------------
+// Pod 管理（Felix-Homelab）
 //
 // 站点容器挂载了 rootless podman.sock，这里通过 Docker 兼容 API 读取容器状态、
 // 执行重启。授权同样由 require_admin 自己完成。
@@ -497,13 +645,13 @@ fn podman_api(path: &str, method: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// 该容器是否属于 Felix-Workstation（用于过滤与校验）。
+/// 该容器是否属于 Felix-Homelab（用于过滤与校验）。
 #[cfg(feature = "ssr")]
 fn is_workstation_container(name: &str) -> bool {
-    name.starts_with("felix-workstation-") || name.starts_with("Felix-Workstation")
+    name.starts_with("felix-homelab-") || name.starts_with("Felix-Homelab")
 }
 
-/// 后台 Pod 管理页：列出 Felix-Workstation 内的容器与状态。
+/// 后台 Pod 管理页：列出 Felix-Homelab 内的容器与状态。
 #[server]
 pub async fn admin_list_pod() -> Result<Vec<PodContainer>, ServerFnError> {
     require_admin().await.map_err(ServerFnError::new)?;
@@ -683,7 +831,7 @@ fn write_backup_config(config: &BackupConfig) -> Result<(), String> {
     };
     let days = config.keep_days.clamp(1, 90);
     let mut text = String::from(
-        "# Felix-Workstation 备份配置（由后台保存；也可手工编辑）\n\
+        "# Felix-Homelab 备份配置（由后台保存；也可手工编辑）\n\
          # 备份源：1 开启 / 0 关闭\n",
     );
     text.push_str(&format!(
@@ -820,7 +968,9 @@ fn list_backup_files() -> Vec<BackupFile> {
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_backup = name.starts_with("felix-ws-") && name.ends_with(".tar.gz");
+        // 兼容旧命名 felix-ws-* 的历史归档
+        let is_backup = (name.starts_with("felix-homelab-") || name.starts_with("felix-ws-"))
+            && name.ends_with(".tar.gz");
         if !is_backup {
             continue;
         }

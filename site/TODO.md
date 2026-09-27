@@ -1,4 +1,4 @@
-# Grant Felix Homepage — 实施计划
+# Felix Homelab 社区站 — 实施计划
 
 > 设计与取舍见 `DESIGN.md`，本文只讲**怎么做**与**怎么证明做完了**。
 > 「完成」的判据是产物 + 可直接复制执行的验证命令，且命令要真跑过。
@@ -22,7 +22,7 @@ curl -s http://127.0.0.1:8080/healthz
 # 期望：{"sqlite":"3.46.0","status":"ok"}
 
 curl -s http://127.0.0.1:8080/ | grep -o '<h1>[^<]*</h1>'
-# 期望：<h1>Grant Felix</h1>（证明是服务端渲染，不是空壳 HTML）
+# 期望：<h1>Felix Homelab</h1>（证明是服务端渲染，不是空壳 HTML）
 ```
 
 **环境前提**（本机非默认，换机器需照做）：Arch 包版 Rust 不含
@@ -562,7 +562,7 @@ HTML**。用它的输入框在首屏全是空的：
 ```bash
 # 服务端渲染的 HTML 里必须看得到已有值
 curl -s -H "Cookie: gf_session=$ADM" http://127.0.0.1:8080/me \
-  | grep -oE '<input type="text" value="[^"]*"'          # value="Grant Felix"
+  | grep -oE '<input type="text" value="[^"]*"'          # value="Felix Homelab"
 curl -s -H "Cookie: gf_session=$ADM" http://127.0.0.1:8080/admin/sky-reviews \
   | grep -oE '<textarea[^>]*>[^<]{0,40}'                 # 含已有的站长回复
 ```
@@ -619,16 +619,16 @@ docker exec -w /work gf-nix nix eval --impure --expr '…nixosSystem…'
 
 # 端到端：把 store 里的产物真跑起来
 OUT=$(readlink -f /work/result)
-LEPTOS_SITE_ROOT=$OUT/share/grant-felix-homepage/site \
+LEPTOS_SITE_ROOT=$OUT/share/felix-homelab-site/site \
 DATABASE_URL=sqlite:///tmp/nixrun/site.db \
-CONTENT_DIR=$OUT/share/grant-felix-homepage/content \
+CONTENT_DIR=$OUT/share/felix-homelab-site/content \
 SITE_URL=https://example.com \
-$OUT/bin/grant-felix-homepage
+$OUT/bin/felix-homelab-site
 ```
 
 | 检查项 | 实测结果 |
 |---|---|
-| `nix build .#default` | **成功**，产物 `/nix/store/h4xlgzv0…-grant-felix-homepage-0.1.0` |
+| `nix build .#default` | **成功**，产物 `/nix/store/h4xlgzv0…-felix-homelab-site-0.1.0` |
 | 产物内容 | `bin/` 二进制 33MB、`site/pkg/` 前端三件套、`content/` 七个 Markdown |
 | wasm 体积 | **1.43MB**（wasm-opt 生效；debug 版是 4.5MB） |
 | 模块求值 | `ExecStart`、`SITE_URL`、`LEPTOS_SITE_ROOT`、`COOKIE_SECURE=1`、`ReadWritePaths`、nginx vhost、备份定时器全部正确 |
@@ -700,11 +700,11 @@ done
 
 | 检查项 | 实测结果 |
 |---|---|
-| 容器起来 | `grant-felix-homepage-dev-1`，端口映射 `127.0.0.1:8080->8080/tcp` |
+| 容器起来 | `felix-homelab-site-dev-1`，端口映射 `127.0.0.1:8080->8080/tcp` |
 | 容器内日志 | `Serving at http://0.0.0.0:8080`、数据库就绪、内容已载入 |
 | **宿主机访问** | 15 条路由全部 **200** |
 | 健康检查 | `{"sqlite":"3.46.0","status":"ok"}` |
-| 首页服务端渲染 | `<title>Grant Felix</title>` 与 `<h1 class="hero-title">` |
+| 首页服务端渲染 | `<title>Felix Homelab</title>` 与 `<h1 class="hero-title">` |
 
 **顺带清理**：删掉了我走弯路时起的 `gf-nix` 容器（17.9G）与 `nix-portable` 二进制，
 Docker 容器占用从 17.89GB 降到 272MB。
@@ -826,7 +826,7 @@ docker compose restart dev                                  # 启动时跑迁移
 | `scripts/check-migration.sh` | 21 条断言**全部通过**（合并后账号数、保留写法、管理员提升、封禁提升、引用零孤儿、大小写变体被拒、新用户名仍可注册） |
 | `scripts/check-links.sh` | 全部通过：16 个路由 + 27 个站内链接 |
 | 真实开发库跑完迁移 | `_sqlx_migrations` 里有 `2\|username nocase\|1`；账号只剩 `Felix`(id 3) 且 `role` 升为 `admin`；1 条评论、3 个会话、1 条偏好仍挂在 id 3 上；索引已建 |
-| `/user/Felix`、`/user/felix`、`/user/FELIX` | 都是 200，标题同为 `Felix — Grant Felix` |
+| `/user/Felix`、`/user/felix`、`/user/FELIX` | 都是 200，标题同为 `Felix — Felix Homelab` |
 | 在库副本上起第二个实例跑注册/登录 | 注册 `CaseTest` → Ok；注册 `casetest` → 「这个用户名已经被用了。」；登录 `CASETEST` → Ok；登录 `CaSeTeSt` → Ok；密码错 → 「用户名或密码不对。」 |
 
 ### 两个踩到的坑
@@ -933,3 +933,28 @@ UPDATE users SET role = 'admin' WHERE username = 'Felix' COLLATE NOCASE;
 
 - 私信对管理员（你）是否可见：治理与隐私的取舍，未答。
 - 其余模块（头像、消息通知、关注、个人主页聚合、@提及）同样暂缓。
+
+---
+
+## 社区投稿（UGC）— 已完成
+
+官方内容与社区内容分区：官方内容仍是 `content/` 下的 Markdown，社区内容存 SQLite。
+发布即公开（直接发布 + 事后管理），与评论的「先审后发」策略不同。
+
+- 迁移：`migrations/0003_community.sql`：新增 `community_posts` 表（`kind` =
+  `post` / `project` / `sky`，`meta` JSON 存类型专属字段），并把
+  `comments.target_kind` 的 CHECK 扩展到 `community`
+- 实现：
+  - `src/community.rs`：输入校验（标题 / 摘要 / 正文 / slug / 标签 / 链接白名单）、
+    列表、详情、发布、编辑、删除；正文用 `render_markdown(md, false)` 过滤裸 HTML
+  - `src/pages/community.rs`：`/community`（按类型筛选）、`/community/new`、
+    `/community/:username/:slug`、`.../edit`
+  - `src/components/community.rs`：官方 / 社区分区切换条、内容卡片
+  - 后台 `/admin/community`：按状态筛选，下架 / 恢复 / 删除（删除连带清理评论）
+  - 首页与官方列表页都有分区入口；sitemap 收录已发布的社区内容
+- 验证命令：
+  - `cargo check --no-default-features --features ssr`
+  - `cargo check --no-default-features --features hydrate --target wasm32-unknown-unknown`
+  - 迁移 SQL 在内存库按 0001 → 0002 → 0003 执行：评论数据保留、
+    唯一约束与 CHECK 生效（见提交记录中的验证）
+  - 运行后 `scripts/check-links.sh`，路由列表已覆盖社区各入口

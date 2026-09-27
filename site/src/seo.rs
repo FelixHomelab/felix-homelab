@@ -115,9 +115,9 @@ pub async fn rss() -> Response {
               xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" \
               xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
          <channel>\
-         <title>Grant Felix</title>\
+         <title>Felix Homelab</title>\
          <link>{base}/</link>\
-         <description>用 Rust 写东西，顺便记录过程。</description>\
+         <description>Felix Homelab 官方博客：官方内容与项目随仓库版本化。</description>\
          <language>zh-CN</language>\
          <atom:link href=\"{base}/rss.xml\" rel=\"self\" type=\"application/rss+xml\"/>\
          <lastBuildDate>{last_build}</lastBuildDate>\
@@ -138,7 +138,9 @@ pub async fn rss() -> Response {
 ///
 /// 只列**对外可访问且值得收录**的地址。后台、个人设置、上传目录都由 `robots.txt`
 /// 挡在外面，这里也不列。
-pub async fn sitemap() -> Response {
+pub async fn sitemap(
+    axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+) -> Response {
     let base = site_url();
     let index = crate::content::store::get();
 
@@ -188,6 +190,24 @@ pub async fn sitemap() -> Response {
     // 项目
     for project in index.projects.iter() {
         push(&format!("/projects/{}", project.summary.slug), None);
+    }
+
+    // 社区投稿：固定入口 + 已发布内容（查询失败不影响其余 sitemap）
+    push("/community", None);
+    push("/community/posts", None);
+    push("/community/projects", None);
+    push("/community/sky", None);
+    if let Ok(rows) = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT u.username, c.slug, substr(c.created_at, 1, 10) \
+         FROM community_posts c JOIN users u ON u.id = c.author_id \
+         WHERE c.status = 'published' ORDER BY c.created_at DESC LIMIT 500",
+    )
+    .fetch_all(&state.pool)
+    .await
+    {
+        for (username, slug, day) in rows {
+            push(&format!("/community/{username}/{slug}"), Some(&day));
+        }
     }
 
     // 标签页：只列真的存在文章的标签

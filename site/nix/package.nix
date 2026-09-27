@@ -16,7 +16,7 @@ let
   };
 in
 rustPlatform.buildRustPackage (finalAttrs: {
-  pname = "grant-felix-homepage";
+  pname = "felix-homelab-site";
   version = "0.1.0";
 
   # 必须排掉这些目录：`target/` 是构建产物（可能几个 G），`data/` 是运行时数据
@@ -55,7 +55,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   # 产出浏览器端 wasm 包与服务端二进制。
   buildPhase = ''
     runHook preBuild
-    export LEPTOS_OUTPUT_NAME=grant-felix-homepage
+    export LEPTOS_OUTPUT_NAME=felix-homelab-site
     cargo leptos build --release
     runHook postBuild
   '';
@@ -63,25 +63,25 @@ rustPlatform.buildRustPackage (finalAttrs: {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/bin $out/share/grant-felix-homepage
+    mkdir -p $out/bin $out/share/felix-homelab-site
 
-    install -m755 target/release/grant-felix-homepage $out/bin/
+    install -m755 target/release/felix-homelab-site $out/bin/
 
     # 前端产物：wasm 包、JS 胶水与编译后的 CSS
-    cp -r target/site $out/share/grant-felix-homepage/site
+    cp -r target/site $out/share/felix-homelab-site/site
 
     # 内容（Markdown）在构建时一并固定进 store：内容改动 = 重新构建 + 切换世代，
     # 因此「线上跑的到底是哪一版内容」是可追溯的。
-    cp -r content $out/share/grant-felix-homepage/content
+    cp -r content $out/share/felix-homelab-site/content
 
     runHook postInstall
   '';
 
   meta = {
-    description = "Grant Felix 个人主页（Leptos + Axum + SQLite）";
-    homepage = "http://127.0.0.1:3000/Felix/grant-felix-homepage";
+    description = "Felix Homelab 社区站（Leptos + Axum + SQLite）";
+    homepage = "http://127.0.0.1:3000/Felix/felix-homelab-site";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
-    mainProgram = "grant-felix-homepage";
+    mainProgram = "felix-homelab-site";
   };
 })

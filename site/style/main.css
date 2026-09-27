@@ -1,4 +1,4 @@
-/* Grant Felix Homepage —— 设计令牌与全局样式
+/* Felix Homelab 社区站 —— 设计令牌与全局样式
  *
  * 版式是「现代作品集」：大字号标题、克制的留白、卡片为主要视觉单元。
  *
@@ -1370,4 +1370,70 @@ html.dark .btn-danger:hover {
     word-break: break-all;
     max-height: 12rem;
     overflow-y: auto;
+}
+
+/* ---------- 社区投稿 ---------- */
+
+/* 分区切换条本质是链接，去掉下划线，保持按钮观感 */
+.content-tabs {
+    margin: 0 0 1.5rem;
+}
+
+.content-tabs a {
+    text-decoration: none;
+}
+
+.community-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.community-bar .content-tabs {
+    margin: 0;
+}
+
+.community-cover {
+    display: block;
+    width: 100%;
+    max-height: 24rem;
+    object-fit: cover;
+    border-radius: var(--radius);
+    margin: 0 0 1.5rem;
+}
+
+.badge-hidden,
+.status-hidden {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-published {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.community-form select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9375rem;
+}
+
+html.dark .badge-hidden,
+html.dark .status-hidden {
+    background: #450a0a;
+    color: #fca5a5;
+}
+
+html.dark .status-published {
+    background: #052e16;
+    color: #86efac;
 }

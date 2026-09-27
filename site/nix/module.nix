@@ -2,7 +2,7 @@
 { config, lib, pkgs, ... }:
 
 let
-  cfg = config.services.grant-felix-homepage;
+  cfg = config.services.felix-homelab-site;
 
   inherit (lib)
     mkIf mkOption mkEnableOption mkMerge types literalExpression optional;
@@ -10,15 +10,15 @@ let
   # 服务端二进制与它用到的静态资源、内容都在 store 里（只读），
   # 会变的只有数据库与上传的图片。
   package = cfg.package;
-  siteRoot = "${package}/share/grant-felix-homepage/site";
-  contentDir = "${package}/share/grant-felix-homepage/content";
+  siteRoot = "${package}/share/felix-homelab-site/site";
+  contentDir = "${package}/share/felix-homelab-site/content";
 
   # 只有真的经 HTTPS 提供服务时才给 cookie 加 Secure：加了却走明文会让浏览器
   # 直接不回传 cookie，表现成「登录后一刷新就掉登录」。
   behindTls = cfg.nginx.enable && (cfg.nginx.forceSSL || cfg.nginx.enableACME);
 in {
-  options.services.grant-felix-homepage = {
-    enable = mkEnableOption "Grant Felix 个人主页";
+  options.services.felix-homelab-site = {
+    enable = mkEnableOption "Felix Homelab 社区站";
 
     package = mkOption {
       type = types.package;
@@ -53,26 +53,26 @@ in {
 
     dataDir = mkOption {
       type = types.path;
-      default = "/var/lib/grant-felix-homepage";
+      default = "/var/lib/felix-homelab-site";
       description = "SQLite 数据库与上传图片的存放目录。**备份要连它一起备。**";
     };
 
     user = mkOption {
       type = types.str;
-      default = "grant-felix";
+      default = "felix-homelab";
       description = "运行服务的系统用户。";
     };
 
     group = mkOption {
       type = types.str;
-      default = "grant-felix";
+      default = "felix-homelab";
       description = "运行服务的系统组。";
     };
 
     environmentFile = mkOption {
       type = types.nullOr types.path;
       default = null;
-      example = "/run/secrets/grant-felix-homepage.env";
+      example = "/run/secrets/felix-homelab-site.env";
       description = ''
         秘密环境变量文件，首次启动至少要给出 `ADMIN_PASSWORD=`（配合
         `ADMIN_USERNAME=` 创建站长账号）。
@@ -117,7 +117,7 @@ in {
 
       destination = mkOption {
         type = types.path;
-        default = "/var/backup/grant-felix-homepage";
+        default = "/var/backup/felix-homelab-site";
         description = "备份文件存放目录。异地同步请另行配置。";
       };
 
@@ -137,7 +137,7 @@ in {
         isSystemUser = true;
         group = cfg.group;
         home = cfg.dataDir;
-        description = "Grant Felix 个人主页";
+        description = "Felix Homelab 社区站";
       };
 
       # 用 tmpfiles 而不是 StateDirectory：dataDir 是可配置的，tmpfiles 能处理任意路径
@@ -146,8 +146,8 @@ in {
         "d ${cfg.dataDir}/uploads 0750 ${cfg.user} ${cfg.group} -"
       ];
 
-      systemd.services.grant-felix-homepage = {
-        description = "Grant Felix 个人主页（Leptos + Axum + SQLite）";
+      systemd.services.felix-homelab-site = {
+        description = "Felix Homelab 社区站（Leptos + Axum + SQLite）";
         wantedBy = [ "multi-user.target" ];
         after = [ "network.target" ];
         wants = [ "network.target" ];
@@ -155,7 +155,7 @@ in {
         environment = {
           # 静态资源与内容都在 store 里；跑起来必须告诉 Leptos 它们在哪，
           # 否则二进制会去相对路径找，找不到就等于站点没有样式与脚本。
-          LEPTOS_OUTPUT_NAME = "grant-felix-homepage";
+          LEPTOS_OUTPUT_NAME = "felix-homelab-site";
           LEPTOS_SITE_ROOT = siteRoot;
           LEPTOS_SITE_PKG_DIR = "pkg";
           LEPTOS_SITE_ADDR = "${cfg.host}:${toString cfg.port}";
@@ -172,7 +172,7 @@ in {
         };
 
         serviceConfig = {
-          ExecStart = "${package}/bin/grant-felix-homepage";
+          ExecStart = "${package}/bin/felix-homelab-site";
           User = cfg.user;
           Group = cfg.group;
           WorkingDirectory = cfg.dataDir;
@@ -219,8 +219,8 @@ in {
     })
 
     (mkIf cfg.backup.enable {
-      systemd.services.grant-felix-homepage-backup = {
-        description = "备份 Grant Felix 个人主页的数据";
+      systemd.services.felix-homelab-site-backup = {
+        description = "备份 Felix Homelab 社区站的数据";
         # 服务在跑（WAL 模式下文件随时在变），但备份用它自己的 sqlite3 快照，
         # 不需要停服
         serviceConfig = {
@@ -257,8 +257,8 @@ in {
         '';
       };
 
-      systemd.timers.grant-felix-homepage-backup = {
-        description = "定时备份 Grant Felix 个人主页的数据";
+      systemd.timers.felix-homelab-site-backup = {
+        description = "定时备份 Felix Homelab 社区站的数据";
         wantedBy = [ "timers.target" ];
         timerConfig = {
           OnCalendar = cfg.backup.interval;
