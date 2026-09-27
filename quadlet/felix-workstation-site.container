@@ -20,7 +20,7 @@ Environment=LEPTOS_ENV=PROD
 Environment=CONTENT_DIR=/app/content
 Environment=DATABASE_URL=sqlite:///app/data/site.db
 Environment=UPLOAD_DIR=/app/data/uploads
-Environment=SITE_URL=http://localhost:5729
+Environment=SITE_URL=https://grantfelix.top
 Environment=RUST_LOG=info,sqlx=warn
 Volume=felix-workstation-site-data.volume:/app/data
 Volume=%t/podman/podman.sock:/run/podman/podman.sock

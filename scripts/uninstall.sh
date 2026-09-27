@@ -20,6 +20,7 @@ SERVICES=(
 	felix-workstation-backup.service
 	felix-workstation-autoheal.service
 	felix-workstation-runner.service
+	felix-workstation-frpc.service
 	felix-workstation-homepage.service
 	felix-workstation-site.service
 	felix-workstation-nextcloud.service

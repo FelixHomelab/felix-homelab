@@ -14,12 +14,12 @@
 SHELL := /usr/bin/env bash
 REPO_DIR := $(shell pwd)
 
-# 容器服务；runner 在注册后才存在，故启动时忽略其错误
+# 容器服务；runner（注册后）与 frpc（配置中转后）可能不存在，故启动时忽略其错误
 SERVICES := felix-workstation-db.service felix-workstation-forgejo.service \
 	felix-workstation-site.service felix-workstation-nextcloud.service \
 	felix-workstation-caddy.service felix-workstation-homepage.service \
-	felix-workstation-runner.service felix-workstation-backup.service \
-	felix-workstation-autoheal.service
+	felix-workstation-runner.service felix-workstation-frpc.service \
+	felix-workstation-backup.service felix-workstation-autoheal.service
 
 .PHONY: install register build-images build-site status logs restart stop start \
 	backup backup-list sync-backup restore deploy uninstall purge help

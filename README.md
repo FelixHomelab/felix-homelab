@@ -1,5 +1,7 @@
 # Felix-Workstation（Podman + Quadlet）
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 基于 **Podman** 的 rootless 工作站：创建一个名为 **Felix-Workstation** 的 Pod，
 并在 Pod 内以多容器方式组合运行一整套常用自托管工具。
 
@@ -7,6 +9,7 @@
   源码并入本仓库 `site/`，经 Caddy 挂在入口根路径；
 - **Forgejo 系列**：Forgejo + PostgreSQL + Forgejo Actions Runner；
 - **Homepage 控制台**：容器状态看板（`dash.localhost`）；
+- **公网入口（可选）**：云服务器 frp 中转 + 云侧 Caddy HTTPS（示例域名 `grantfelix.top`）；
 - **运维**：Caddy 统一入口、定时备份/异地同步/一键恢复、autoheal 自愈。
 
 部署方式选用 **Podman Quadlet**（声明式 systemd 单元），无需 docker-compose，
@@ -42,11 +45,13 @@
 
 多容器同处一个 Pod，**共享 network namespace**，因此彼此可通过 `127.0.0.1` 或
 Pod hostname 直接互访；端口只在 Pod 级别发布一次。
+`frpc`（公网中转）为可选组件，未配置时不会加入 Pod；见「公网访问（云服务器中转）」。
 
 ## 端口规划
 
-所有端口**只绑定回环 `127.0.0.1`**，局域网/外部无法直连（这些服务没有 TLS）。
-若确需其它设备访问，再按需改为 `0.0.0.0`，并同步修改 `ROOT_URL`。
+所有端口**只绑定回环 `127.0.0.1`**，局域网/外部无法直连。
+需要公网访问时，推荐走「公网访问（云服务器中转）」的 frp 方案（本地服务保持只监听回环），
+而不是把端口改成 `0.0.0.0` 直接暴露。
 
 | 宿主端口 | 容器 | 说明 |
 | -------- | ---- | ---- |
@@ -64,11 +69,65 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 > （runner 配置 `container.docker_host: "-"`），所以无法直接操作容器运行时。
 > 若不接受该代价，可改用「自建 bridge 网络 + 在作业容器内解析宿主网关」的方案。
 
+## 公网访问（云服务器中转）
+
+本机端口只绑回环；需要公网访问时，推荐用一台云服务器做 **frp 中转 + 云侧 Caddy HTTPS**
+（本仓库在阿里云 + `grantfelix.top` 实测通过）：
+
+```
+访客 ──HTTPS──▶ 云 Caddy :443（Let's Encrypt，Host 原样透传）
+                     ▼
+                frps :8443（强制 TLS + token）──隧道──▶ frpc（本 Pod 内）
+                     ├─ 20080 → 本地 Caddy :8080（承载全部 HTTP 服务）
+                     └─ 20022 → Forgejo SSH :2222
+```
+
+- 本机只发起**出站 TCP**，不改路由/DNS，不影响宿主机的 VPN / Clash / sing-box 等代理环境；
+- 本地服务仍只监听回环，frps 的转发端口由云侧 Caddy 经回环调用，无需对外开放；
+- 域名规划示例：主站 `example.com`，`forgejo.` / `cloud.` / `dash.` 子域共用同一隧道。
+
+**云侧**（以 Fedora 为例，安全组放行 `80/443/8443/20022`）：
+
+```toml
+# /etc/frp/frps.toml（systemd 服务运行 frps -c 本文件）
+bindPort = 8443
+proxyBindAddr = "0.0.0.0"
+
+auth.method = "token"
+auth.token = "<随机 token>"
+
+transport.tls.force = true
+allowPorts = [{ start = 20000, end = 20100 }]
+```
+
+```caddyfile
+# /etc/caddy/Caddyfile
+{
+	email admin@example.com
+}
+
+example.com, forgejo.example.com, cloud.example.com, dash.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:20080
+}
+```
+
+**本地**：编辑 `~/.config/felix-workstation/frp/frpc.toml`
+（模板在 `config/frpc.toml.example`，填 `serverAddr` 与 `auth.token`），
+然后 `make install` —— 未填写前安装脚本不会链接并启动 frpc 单元。
+
+切换真实域名时需同步修改：`config/Caddyfile` 的 host 匹配、`.env` 的
+`FORGEJO__server__{DOMAIN,ROOT_URL,SSH_DOMAIN,SSH_PORT}`、`nextcloud.env` 的
+`NEXTCLOUD_TRUSTED_DOMAINS` / `OVERWRITEHOST` / `OVERWRITEPROTOCOL`，
+以及 homepage / site 单元中的 `HOMEPAGE_ALLOWED_HOSTS` / `SITE_URL`
+（本仓库已按 `grantfelix.top` 配好）。
+
 ## 目录结构
 
 ```
 .
 ├── .env.example                 # 环境变量模板（install.sh 复制为 .env 并生成随机密码）
+├── LICENSE                      # MIT 开源许可
 ├── Makefile                     # 常用命令入口
 ├── quadlet/                     # Podman Quadlet 单元（唯一事实来源）
 │   ├── felix-workstation.pod            # Pod、hostname、端口发布
@@ -77,6 +136,7 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 │   ├── felix-workstation-site.container # 个人主页（主站）
 │   ├── felix-workstation-nextcloud.container # Nextcloud 云盘
 │   ├── felix-workstation-runner.container
+│   ├── felix-workstation-frpc.container     # 公网中转客户端（配置 frpc.toml 后启用）
 │   ├── felix-workstation-homepage.container
 │   ├── felix-workstation-caddy.container
 │   ├── felix-workstation-backup.container   # 定时备份（按源执行）
@@ -87,6 +147,7 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 │   ├── registries.conf          # docker.io 镜像加速（国内网络）
 │   ├── runner-labels.txt        # Runner 标签与作业镜像定义
 │   ├── nextcloud.env.example    # Nextcloud 环境变量模板
+│   ├── frpc.toml.example        # 公网中转 frpc 配置模板（可选）
 │   ├── backup/backup.sh         # 备份脚本（容器内执行 Forgejo/主站）
 │   ├── backup/backup-nextcloud.sh  # Nextcloud 备份（宿主机执行）
 │   ├── backup/backup.conf.example  # 备份源与渠道配置模板
@@ -112,6 +173,8 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 
 ## 前置要求
 
+- Linux + systemd 环境（本项目在 Fedora 上开发验证）
+- Git 与 make（克隆仓库并执行 Makefile 目标）
 - Podman ≥ 5（推荐 5.4+，本项目在 5.8 验证）
 - systemd（用户服务 + `linger` 已开启：`loginctl enable-linger "$USER"`）
 - 若无法直连 `docker.io`，`config/registries.conf` 已预置 daocloud 镜像加速（可自行修改）
@@ -119,6 +182,9 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 ## 快速开始
 
 ```bash
+git clone https://github.com/Grant-Felix/felix-homelab.git
+cd felix-homelab
+
 make deploy         # 交互式菜单（推荐新手）
 # 或直接：
 make install        # 生成配置、拉取镜像、构建主站镜像、启动 Pod 并注册 Runner
@@ -142,6 +208,8 @@ make install        # 生成配置、拉取镜像、构建主站镜像、启动 
 - Nextcloud 管理员用 `nextcloud.env` 里的 `NEXTCLOUD_ADMIN_USER` / `NEXTCLOUD_ADMIN_PASSWORD`
 - Forgejo 首次打开 http://localhost:5730/ 注册第一个账号即管理员
   （已通过 `INSTALL_LOCK=true` 跳过网页安装向导，自动完成数据库迁移）。
+- 若配置了公网中转：经云域名访问（如 `https://forgejo.example.com` 与
+  `ssh -p 20022 git@forgejo.example.com`），见「公网访问（云服务器中转）」。
 
 ## 个人主页（主站）
 
@@ -219,6 +287,8 @@ make purge      # 连数据卷、配置一起删除（危险）
   首次安装植入后即归你所有，后续 `make install` 不会覆盖）。
 - **Runner**：由 `scripts/register-runner.sh` 依据当前 Runner 镜像自动生成
   `runner-config.yml`，并注入 Forgejo 地址、uuid、token 与标签。
+- **公网中转**：`~/.config/felix-workstation/frp/frpc.toml`（模板
+  `config/frpc.toml.example`；云侧 frps/Caddy 配置见「公网访问（云服务器中转）」）。
 
 ## 关键设计说明
 
@@ -303,9 +373,9 @@ hostname 作为监听地址。
 
 ### 6. Caddy 与证书
 
-当前使用 HTTP `:8080`（宿主 `5729`），未启用 HTTPS，因此不涉及证书信任问题。
-若以后绑定真实域名：把 `config/Caddyfile` 的站点地址改为域名并移除 `auto_https off`，
-同时将 `.pod` 中的端口改为 `80:8080`、`443:8443`，Caddy 会自动申请 Let's Encrypt 证书。
+本机 Caddy 只提供明文 HTTP（Pod 内 `:8080`，宿主回环 `5729`），不涉及本机证书。
+公网访问时 HTTPS 由**云侧 Caddy** 终止（自动 Let's Encrypt，本仓库实测走 TLS-ALPN-01），
+再经 frp 隧道回源到本机 Caddy；见「公网访问（云服务器中转）」。
 
 ## 数据与持久化
 
@@ -532,3 +602,10 @@ systemctl --user start felix-workstation-nextcloud.service
 - **声明式**：单元文件即基础设施，进 Git 后可完整复现。
 - **systemd 原生**：开机自启、依赖编排（`After`/`Requires`）、失败重启。
 - **rootless 友好**：整个 Pod 以普通用户运行，无需 root 守护进程。
+
+## 开源许可
+
+本项目采用 [MIT License](LICENSE) 开源，欢迎 fork 自用、提交 Issue 与 PR。
+
+> 注意：`site/content/` 下的个人博文、图片等内容版权归作者所有，不在 MIT 授权范围内。
+

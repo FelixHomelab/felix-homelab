@@ -1,0 +1,20 @@
+[Unit]
+Description=Felix-Workstation: frpc 内网穿透客户端（云服务器中转）
+After=felix-workstation-pod.service
+Requires=felix-workstation-pod.service
+Wants=felix-workstation-caddy.service felix-workstation-forgejo.service
+
+[Container]
+ContainerName=felix-workstation-frpc
+Image=docker.io/snowdreamtech/frpc:0.71.0-alpine
+Pod=felix-workstation.pod
+Label=autoheal=true
+Timezone=local
+Volume=%h/.config/felix-workstation/frp/frpc.toml:/etc/frp/frpc.toml:ro,Z
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

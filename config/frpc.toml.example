@@ -1,0 +1,39 @@
+# Felix-Workstation: frpc 配置示例（经云服务器中转，可选）
+#
+# install.sh 会复制到 ~/.config/felix-workstation/frp/frpc.toml（仅在缺失时）。
+# 使用前至少修改：
+#   - serverAddr / serverPort：云服务器公网 IP 与 frps 监听端口
+#   - auth.token：与云侧 /etc/frp/frps.toml 中的 auth.token 一致
+#
+# 云侧还需要：
+#   - Caddy：reverse_proxy 127.0.0.1:20080（全部 Web 服务共用）
+#   - 安全组：放行 frps 端口（8443）与对外端口（20022）
+#   - frps：transport.tls.force = true + allowPorts 覆盖 20000-20100
+#
+# 端口约定：web 承载全部 HTTP 服务（到本地 Caddy :8080），
+# forgejo-ssh 暴露 Git over SSH（到本地 Forgejo SSH :2222）。
+
+serverAddr = "CHANGE_ME"
+serverPort = 8443
+
+auth.method = "token"
+auth.token = "CHANGE_ME"
+
+transport.tls.enable = true
+
+log.to = "console"
+log.level = "info"
+
+[[proxies]]
+name = "workstation-web"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8080
+remotePort = 20080
+
+[[proxies]]
+name = "forgejo-ssh"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 2222
+remotePort = 20022

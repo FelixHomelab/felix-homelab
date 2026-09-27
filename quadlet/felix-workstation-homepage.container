@@ -10,7 +10,7 @@ Pod=felix-workstation.pod
 Label=autoheal=true
 Timezone=local
 Environment=PORT=3001
-Environment=HOMEPAGE_ALLOWED_HOSTS=localhost,localhost:5729,localhost:5732,127.0.0.1,127.0.0.1:5729,127.0.0.1:5732,dash.localhost,dash.localhost:5729
+Environment=HOMEPAGE_ALLOWED_HOSTS=localhost,localhost:5729,localhost:5732,127.0.0.1,127.0.0.1:5729,127.0.0.1:5732,dash.localhost,dash.localhost:5729,dash.grantfelix.top,dash.grantfelix.top:443
 Environment=DOCKER_HOST=unix:///var/run/docker.sock
 Volume=%h/.config/felix-workstation/homepage:/app/config
 Volume=%h/.config/felix-workstation/homepage/icons:/app/public/icons:ro

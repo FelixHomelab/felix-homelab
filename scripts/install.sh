@@ -107,6 +107,14 @@ if [ ! -f "$CONFIG_DIR/nextcloud.env" ]; then
 	log "Nextcloud 管理员密码（NEXTCLOUD_ADMIN_PASSWORD）: $NPW"
 fi
 
+# frpc 配置（可选：经云服务器中转）。仅在首次安装时植入模板；
+# 未填写 serverAddr/token 前不会链接并启动 frpc 单元（见第 5 节）。
+mkdir -p "$CONFIG_DIR/frp"
+if [ ! -f "$CONFIG_DIR/frp/frpc.toml" ]; then
+	log "植入 frpc 配置模板 $CONFIG_DIR/frp/frpc.toml（可选，启用公网中转用）"
+	install -m 0600 "$REPO_DIR/config/frpc.toml.example" "$CONFIG_DIR/frp/frpc.toml"
+fi
+
 # 从旧版端口方案（8080/3000/2222）迁移到 5729 起
 sed -i \
 	-e 's|^FORGEJO__server__ROOT_URL=http://localhost:8080/$|FORGEJO__server__ROOT_URL=http://localhost:5730/|' \
@@ -243,12 +251,29 @@ systemctl --user enable --now felix-workstation-backup-sync-request.path >/dev/n
 log "链接 Quadlet 单元到 $UNIT_DIR"
 # runner 单元在注册时（register-runner.sh）才链接并启动，
 # 避免 pod 在 runner 尚未注册时反复拉起它。
+# frpc 同理：云服务器地址/token 未配置前不链接，避免容器反复重启。
 for f in "$REPO_DIR"/quadlet/*; do
 	case "$(basename "$f")" in
-		felix-workstation-runner.container) continue ;;
+		felix-workstation-runner.container)
+			continue
+			;;
+		felix-workstation-frpc.container)
+			if ! grep -q 'CHANGE_ME' "$CONFIG_DIR/frp/frpc.toml" 2>/dev/null; then
+				ln -sfn "$f" "$UNIT_DIR/$(basename "$f")"
+			else
+				rm -f "$UNIT_DIR/$(basename "$f")"
+				warn "跳过 frpc：请先编辑 $CONFIG_DIR/frp/frpc.toml（serverAddr/token）后重跑 make install"
+			fi
+			continue
+			;;
 	esac
 	ln -sfn "$f" "$UNIT_DIR/$(basename "$f")"
 done
+
+# 已配置 frpc 时纳入本次启动列表
+if [ -L "$UNIT_DIR/felix-workstation-frpc.container" ]; then
+	CORE_SERVICES+=(felix-workstation-frpc.service)
+fi
 
 # ---------------------------------------------------------------------------
 # 6. 预拉取镜像（走镜像加速）
@@ -261,6 +286,11 @@ podman pull data.forgejo.org/forgejo/runner:13
 podman pull ghcr.io/gethomepage/homepage:v2.4.0
 podman pull docker.io/willfarrell/autoheal:latest
 podman pull docker.io/library/nextcloud:apache
+
+# frpc 镜像仅在启用公网中转（已链接 frpc 单元）时拉取
+if [ -L "$UNIT_DIR/felix-workstation-frpc.container" ]; then
+	podman pull docker.io/snowdreamtech/frpc:0.71.0-alpine
+fi
 
 # 个人主页镜像：本地构建（Leptos 首次编译较慢，仅在缺失时构建）
 if ! podman image exists localhost/felix-homepage:latest; then
@@ -301,6 +331,7 @@ cat <<EOF
   首页 Homepage : http://localhost:5729/   (直连 http://localhost:5732/)
   Forgejo Web   : http://localhost:5730/   (Caddy: http://forgejo.localhost:5729/)
   Forgejo SSH   : ssh -p 5731 git@localhost
+  公网访问      : 配置 frpc 后经云域名访问（见 README「公网访问（云服务器中转）」）
   数据目录      : $CONFIG_DIR
   单元目录      : $UNIT_DIR
 
