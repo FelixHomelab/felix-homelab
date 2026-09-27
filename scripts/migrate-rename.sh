@@ -119,7 +119,7 @@ systemctl --user disable --now felix-workstation-backup.timer \
 	felix-workstation-backup-sync-request.path 2>/dev/null || true
 
 log "移除旧单元与 drop-in"
-for f in "$UNIT_DIR"/felix-workstation.*; do
+for f in "$UNIT_DIR"/felix-workstation*; do
 	[ -L "$f" ] && rm -f "$f"
 done
 rm -f "$SYSTEMD_USER_DIR"/felix-workstation-backup.timer \
@@ -158,7 +158,11 @@ for old in "${OLD_VOLUMES[@]}"; do
 	fi
 	log "复制卷 $old → $new"
 	podman volume create "$new" >/dev/null
-	podman run --rm -v "$old":/from:Z -v "$new":/to:Z \
+	# 刻意不用 :Z：:Z 会给卷内容打上该复制容器的 category 标签，
+	# 正式容器（另一套 category）会被 SELinux 拒绝 setattr。
+	# 关闭标签隔离执行复制，新文件继承卷根目录的通用 container_file_t 标签。
+	podman run --rm --security-opt label=disable \
+		-v "$old":/from -v "$new":/to \
 		docker.io/library/alpine:3.20 \
 		sh -c 'cd /from && tar cf - . | tar xf - -C /to'
 done

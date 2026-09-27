@@ -60,7 +60,7 @@ rm -f "$SYSTEMD_USER_DIR/felix-homelab-backup.timer" \
 	"$SYSTEMD_USER_DIR/felix-homelab-backup-sync-request.path"
 
 log "移除 Quadlet 软链接"
-for f in "$UNIT_DIR"/felix-homelab.*; do
+for f in "$UNIT_DIR"/felix-homelab*; do
 	[ -L "$f" ] && rm -f "$f"
 done
 
