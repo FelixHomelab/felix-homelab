@@ -48,14 +48,25 @@ AGENT_PORT_MAX="${AGENT_PORT_MAX:-20099}"
 AGENT_MEMORY="${AGENT_MEMORY:-2g}"
 AGENT_CPUS="${AGENT_CPUS:-1.5}"
 AGENT_PIDS_LIMIT="${AGENT_PIDS_LIMIT:-512}"
-AGENT_POD="${AGENT_POD:-Felix-Homelab}"
-AGENT_SITE_PORT="${AGENT_SITE_PORT:-8090}"
-CADDY_CONTAINER="${CADDY_CONTAINER:-felix-homelab-caddy}"
+# 站点容器在宿主回环上的直连端口（供外置 Agent 网关 forward_auth 调用）
+AGENT_SITE_PORT="${AGENT_SITE_PORT:-5735}"
+# Agent 网关（host 网络 Caddy）单元与容器：每用户路由由它承载
+GATEWAY_UNIT="${GATEWAY_UNIT:-felix-homelab-agent-gateway.service}"
+GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-felix-homelab-agent-gateway}"
+# 每个 Agent 独立 bridge 网络（felix-agent-<slug>）
+AGENT_NET_PREFIX="${AGENT_NET_PREFIX:-felix-agent-}"
+# 定期重建容器（清掉可写层里的持久化改动；数据卷/工作区保留）
+AGENT_RECREATE_DAYS="${AGENT_RECREATE_DAYS:-7}"
+# 默认丢弃的危险能力（rootless 下本就无法取得宿主特权，这里进一步收窄攻击面）
+AGENT_CAP_DROP="${AGENT_CAP_DROP:-SYS_ADMIN,SYS_MODULE,SYS_RAWIO,SYS_PTRACE,SYS_BOOT,MKNOD,NET_ADMIN,AUDIT_WRITE,AUDIT_READ,WAKE_ALARM,SYS_TIME,SYS_TTY_CONFIG}"
 # 空闲睡眠：无活动超过该秒数则停容器（desired=sleeping，下次访问自动唤醒）
 AGENT_IDLE_SECONDS="${AGENT_IDLE_SECONDS:-300}"
 # 撤销后保留数据+域名多久（天），期间续期原样复活
 AGENT_GRACE_DAYS="${AGENT_GRACE_DAYS:-30}"
 ACTIVITY_DIR="$AGENTS_DIR/activity"
+
+# 路由文件内容是否发生变化（决定是否需要重启网关；start/唤醒不该重启）
+ROUTE_CHANGED=0
 
 log()  { printf '\033[1;36m[agent]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[agent]\033[0m %s\n' "$*" >&2; }
@@ -161,6 +172,22 @@ import json, os, sys, tempfile
 path, key = sys.argv[1], sys.argv[2]
 data = json.load(open(path))
 data.get("agents", {}).pop(key, None)
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+with os.fdopen(fd, "w") as handle:
+    json.dump(data, handle, ensure_ascii=False, indent=2)
+os.replace(tmp, path)
+PY
+}
+
+state_set_recreated() {
+	python3 - "$STATE_FILE" "$1" <<'PY'
+import json, os, sys, tempfile, time
+path, key = sys.argv[1], sys.argv[2]
+data = json.load(open(path))
+entry = data.setdefault("agents", {}).get(key)
+if entry is None:
+    sys.exit("state 中没有该项")
+entry["recreated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
 fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
 with os.fdopen(fd, "w") as handle:
     json.dump(data, handle, ensure_ascii=False, indent=2)
@@ -290,6 +317,8 @@ route_write() {
 	fi
 
 	b64="$(printf 'opencode:%s' "$password" | base64 | tr -d '\n')"
+	local before=""
+	[ -f "$CADDY_DIR/$slug.caddy" ] && before="$(cat "$CADDY_DIR/$slug.caddy")"
 	cat >"$CADDY_DIR/$slug.caddy" <<EOF
 # Felix-Homelab Agent：$username（实例 #$slot，由 scripts/agent-ctl.sh 生成，请勿手改）
 @agent_$slug host $subdomain.$AGENT_LOCAL_DOMAIN $subdomain.$AGENT_BASE_DOMAIN
@@ -305,6 +334,9 @@ EOF
 	chmod 600 "$CADDY_DIR/$slug.caddy"
 	# 宿主新建的文件可能带上默认 SELinux 类型，Caddy 容器读不了，尽力修正
 	chcon -t container_file_t "$CADDY_DIR/$slug.caddy" 2>/dev/null || true
+	if [ "$before" != "$(cat "$CADDY_DIR/$slug.caddy")" ]; then
+		ROUTE_CHANGED=1
+	fi
 }
 
 route_remove() {
@@ -315,16 +347,16 @@ route_remove() {
 }
 
 caddy_reload() {
-	# Caddy 是 systemd（Quadlet）管理的容器：必须让 systemd 重启单元。
-	# 直接 `podman restart` 会让 conmon 脱离 systemd 的 cgroup，与单元管理打架。
-	if systemctl --user cat felix-homelab-caddy.service >/dev/null 2>&1; then
-		log "重载 Caddy（systemctl --user restart felix-homelab-caddy.service）"
-		systemctl --user restart felix-homelab-caddy.service
-	elif podman container exists "$CADDY_CONTAINER" 2>/dev/null; then
-		warn "未见 systemd 单元，退化为 podman restart $CADDY_CONTAINER"
-		podman restart "$CADDY_CONTAINER" >/dev/null
+	# Agent 流量由独立网关（host 网络 Caddy）承载；它是 systemd（Quadlet）单元，
+	# 必须让 systemd 重启，直接 podman restart 会与单元 cgroup 管理打架。
+	if systemctl --user cat "$GATEWAY_UNIT" >/dev/null 2>&1; then
+		log "重载 Agent 网关（systemctl --user restart $GATEWAY_UNIT）"
+		systemctl --user restart "$GATEWAY_UNIT"
+	elif podman container exists "$GATEWAY_CONTAINER" 2>/dev/null; then
+		warn "未见 systemd 单元，退化为 podman restart $GATEWAY_CONTAINER"
+		podman restart "$GATEWAY_CONTAINER" >/dev/null
 	else
-		warn "找不到 $CADDY_CONTAINER，跳过 Caddy 重载"
+		warn "找不到 $GATEWAY_CONTAINER，跳过网关重载"
 	fi
 }
 
@@ -358,17 +390,28 @@ container_create() {
 	mkdir -p "$workspace"
 	podman volume exists "$volume" 2>/dev/null || podman volume create "$volume" >/dev/null
 
-	log "创建容器 $(container_of "$key")（$kind，端口 $port，内存 $AGENT_MEMORY，CPU $AGENT_CPUS）"
+	# 每个 Agent 独立 bridge 网络：与主 Pod / 其他 Agent 网络层隔离
+	local network="${AGENT_NET_PREFIX}${slug}"
+	if ! podman network exists "$network" 2>/dev/null; then
+		podman network create --label felix.agent=1 "$network" >/dev/null
+	fi
+
+	log "创建容器 $(container_of "$key")（$kind，端口 $port，内存 $AGENT_MEMORY，CPU $AGENT_CPUS，网络 $network）"
 
 	local -a args=(
 		-d
 		--name "$(container_of "$key")"
-		--pod "$AGENT_POD"
+		--network "$network"
+		# 只发布到宿主回环：外置 Agent 网关经 127.0.0.1 反代
+		--publish "127.0.0.1:$port:$port"
+		--security-opt no-new-privileges
+		--cap-drop "$AGENT_CAP_DROP"
 		--label felix.agent=1
 		--label "felix.agent.user=$username"
 		--label "felix.agent.slug=$slug"
 		--label "felix.agent.kind=$kind"
 		--label "felix.agent.port=$port"
+		--label "felix.agent.network=$network"
 		--label autoheal=true
 		--memory "$AGENT_MEMORY"
 		--cpus "$AGENT_CPUS"
@@ -377,7 +420,9 @@ container_create() {
 		--env XDG_DATA_HOME=/data/.local/share
 		--env XDG_CONFIG_HOME=/data/.config
 		--env XDG_CACHE_HOME=/data/.cache
-		--volume "$volume:/data"
+		# 数据卷带 :Z：每次启动按当前容器的 SELinux MCS 类别重打标签，
+		# 否则容器重建后（新类别）会读不了旧卷里的文件
+		--volume "$volume:/data:Z"
 		# 工作区是宿主 bind mount：必须带 :Z 重打 SELinux 标签，
 		# 否则容器内读不到（表现为 agent/pnpm “权限拒绝/功能缺失”）
 		--volume "$workspace:/workspace:Z"
@@ -400,9 +445,13 @@ container_create() {
 		dsh_host="$(state_field "$key" subdomain)"
 		[ -n "$dsh_host" ] || dsh_host="$slug"
 		args+=(--env "DSH_HOME=/data/dsh")
+		# 见镜像内 allow-nonloopback-host.py：独立网络下允许绑 0.0.0.0
+		args+=(--env "DSH_ALLOW_NON_LOOPBACK=1")
 		# --patch：容器内禁用市场的一键重启（重启由平台/管理员操作）
+		# 独立网络里绑 0.0.0.0 才能被宿主端口映射转发；该网络仅此容器，
+		# 外部仍只能经网关（回环发布）访问。
 		args+=("$(image_of "$kind")" web --patch /opt/dsh-home/agent-patch.yml
-			--host 127.0.0.1 --port "$port" --no-open
+			--host 0.0.0.0 --port "$port" --no-open
 			--trusted-host "$dsh_host.$AGENT_LOCAL_DOMAIN"
 			--trusted-host "$dsh_host.$AGENT_BASE_DOMAIN")
 		;;
@@ -413,6 +462,22 @@ container_create() {
 	esac
 
 	podman run "${args[@]}" >/dev/null
+	state_set_recreated "$key"
+}
+
+# 宿主侧就绪探测：发布端口在宿主回环，只有真正能响应 HTTP 才算就绪
+wake_ready() {
+	local key="$1" port waited=0
+	port="$(state_field "$key" port)"
+	[ -n "$port" ] || return 1
+	while [ "$waited" -lt 40 ]; do
+		if curl -s --max-time 2 -o /dev/null "http://127.0.0.1:$port/"; then
+			return 0
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+	return 1
 }
 
 do_create() {
@@ -454,6 +519,8 @@ do_create() {
 	route_write "$key"
 	# 计入一次活动：避免刚授权/启动就被睡眠判定误睡
 	: >"$ACTIVITY_DIR/$(state_field "$key" subdomain)"
+	# 等真正能响应再返回：站点唤醒回调依赖状态里的 ready
+	wake_ready "$key" || warn "$username #$slot 启动后 40s 内未就绪（站点会继续重试）"
 }
 
 do_start() {
@@ -471,6 +538,7 @@ do_start() {
 	route_write "$key"
 	# 唤醒即计一次活动
 	: >"$ACTIVITY_DIR/$(state_field "$key" subdomain)"
+	wake_ready "$key" || warn "$username #$slot 唤醒后 40s 内未就绪（站点会继续重试）"
 }
 
 do_stop() {
@@ -509,6 +577,7 @@ do_purge() {
 	log "永久删除：$username #$slot（$subdomain）"
 	podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
 	podman volume rm -f "felix-agent-$slug-data" >/dev/null 2>&1 || true
+	podman network rm -f "${AGENT_NET_PREFIX}${slug}" >/dev/null 2>&1 || true
 	rm -rf "$WORK_ROOT/$slug"
 	rm -f "$CADDY_DIR/$slug.caddy"
 	state_remove "$key"
@@ -675,7 +744,13 @@ apply_requests() {
 			;;
 		start)
 			log "处理启动：$username #$slot"
-			if (do_start "$username" "$slot"); then changed=1; else
+			# 动作在子 shell 里跑，变量出不来：用路由目录内容哈希判断是否要重载
+			local routes_before routes_after
+			routes_before="$(cat "$CADDY_DIR"/*.caddy 2>/dev/null | md5sum)"
+			if (do_start "$username" "$slot"); then
+				routes_after="$(cat "$CADDY_DIR"/*.caddy 2>/dev/null | md5sum)"
+				[ "$routes_before" = "$routes_after" ] || changed=1
+			else
 				warn "启动失败，保留请求稍后重试：$(basename "$file")"
 				continue
 			fi
@@ -719,11 +794,25 @@ apply_requests() {
 
 reconcile() {
 	ensure_layout
-	local key username slot desired state
+	local key username slot desired state recreated age now
+	now="$(date +%s)"
 	while IFS=$'\t' read -r key username slot; do
 		[ -n "$key" ] || continue
 		desired="$(state_field "$key" desired)"
 		state="$(container_state "$key")"
+
+		# 定期重建：可写层非持久（数据卷/工作区保留），清掉可能的持久化改动。
+		# 睡眠中的实例直接删容器，下次唤醒会按新镜像/新配置重建。
+		recreated="$(state_field "$key" recreated_at)"
+		if [ -n "$recreated" ] && [ "$desired" != "removed" ] && [ "$desired" != "stopped" ]; then
+			age=$((now - $(date -d "$recreated" +%s 2>/dev/null || echo "$now")))
+			if [ "$age" -gt $((AGENT_RECREATE_DAYS * 86400)) ]; then
+				log "定期重建：$username #$slot（可写层已用 $((age / 86400)) 天）"
+				podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
+				state="missing"
+			fi
+		fi
+
 		case "$desired:$state" in
 		started:running | stopped:exited | stopped:created | sleeping:* | removed:* | :*) ;;
 		started:*)
@@ -833,6 +922,7 @@ for key in removed_keys:
     print(f"[agent] 宽限期到期回收：{entry.get('username')} #{slot}")
     subprocess.run(["podman", "rm", "-f", f"felix-agent-{slug}"], capture_output=True, text=True, timeout=60)
     subprocess.run(["podman", "volume", "rm", "-f", f"felix-agent-{slug}-data"], capture_output=True, text=True, timeout=60)
+    subprocess.run(["podman", "network", "rm", "-f", f"felix-agent-{slug}"], capture_output=True, text=True, timeout=60)
     shutil.rmtree(os.path.join(work_root, slug), ignore_errors=True)
     if slug:
         try:
@@ -906,7 +996,8 @@ for entry in state.get("agents", {}).values():
     name = f"felix-agent-{slug}"
     record = {"kind": kind, "port": entry.get("port", 0),
               "state": "missing", "health": None, "token": None, "keys": [],
-              "desired": entry.get("desired", ""), "subdomain": subdomain}
+              "desired": entry.get("desired", ""), "subdomain": subdomain,
+              "ready": False}
     started_at = None
     try:
         proc = subprocess.run(["podman", "inspect", name], capture_output=True, text=True, timeout=15)
@@ -919,6 +1010,19 @@ for entry in state.get("agents", {}).values():
             record["health"] = health.get("Status")
     except Exception:
         record["state"] = "unknown"
+
+    # 就绪：发布端口在宿主回环上能响应 HTTP（站点唤醒回调据此放行）
+    ready = False
+    port = record.get("port") or 0
+    if record["state"] == "running" and port:
+        try:
+            probe = subprocess.run(
+                ["curl", "-s", "--max-time", "2", "-o", "/dev/null", f"http://127.0.0.1:{port}/"],
+                capture_output=True, text=True, timeout=5)
+            ready = probe.returncode == 0
+        except Exception:
+            ready = False
+    record["ready"] = ready
     record["keys"] = read_ref_names(volume_dir(slug))
     # DSH 自带令牌登录：只取“本次启动之后”的日志，避免抓到上一次启动的 token。
     # 新进程可能还没来得及打印，短轮询等待。
@@ -1003,9 +1107,10 @@ start | stop | remove)
 	shift
 	[ $# -ge 1 ] || die "用法：agent-ctl.sh $action <user> [slot]"
 	ensure_layout
+	ROUTE_CHANGED=0
 	"do_$action" "$1" "${2:-1}"
 	sync_status
-	if [ "$action" != "stop" ]; then
+	if [ "$action" != "stop" ] && { [ "$action" = "remove" ] || [ "$ROUTE_CHANGED" = 1 ]; }; then
 		caddy_reload
 	fi
 	;;

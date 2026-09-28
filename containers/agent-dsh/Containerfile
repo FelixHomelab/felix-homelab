@@ -67,6 +67,11 @@ RUN npm install -g \
 COPY unlock-remote-settings.py /tmp/unlock-remote-settings.py
 RUN python3 /tmp/unlock-remote-settings.py && rm -f /tmp/unlock-remote-settings.py
 
+# 独立 bridge 网络里允许绑 0.0.0.0（端口映射需要），门控变量由平台容器设置；
+# 本机/其他部署仍保持 DSH 默认的拒绝行为。
+COPY allow-nonloopback-host.py /tmp/allow-nonloopback-host.py
+RUN python3 /tmp/allow-nonloopback-host.py && rm -f /tmp/allow-nonloopback-host.py
+
 # ---- 构建期初始化 web profile 并验证真能服务（模板完整性的硬校验）----
 ENV DSH_HOME=/opt/dsh-home
 RUN set -eux; \

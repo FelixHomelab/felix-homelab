@@ -40,10 +40,9 @@ http://:8080 {
 		reverse_proxy 127.0.0.1:80
 	}
 
-	# 多租户 AI Agent：每个授权用户一个 <用户名>.agent.* 子域。
-	# 路由文件由 scripts/agent-ctl.sh 生成（forward_auth 到主站做会话+订阅校验），
-	# 这里的 glob 永远有 00-empty.caddy 占位，避免“零匹配”。
-	import /etc/caddy/agents/*.caddy
+	# 多租户 AI Agent 已迁到独立网关（felix-homelab-agent-gateway，host 网络）：
+	# Agent 各自在独立 bridge 网络里，Pod 内的 Caddy 到不了；
+	# 每用户路由仍由 scripts/agent-ctl.sh 生成，由 Agent 网关消费。
 
 	# 默认：主站首页
 	handle {

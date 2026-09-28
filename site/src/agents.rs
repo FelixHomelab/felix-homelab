@@ -68,6 +68,8 @@ pub struct AgentRuntime {
     pub state: String,
     /// 宿主意愿：started / sleeping / stopped / removed
     pub desired: String,
+    /// 宿主探测：发布端口已在宿主回环上响应 HTTP（唤醒放行条件）
+    pub ready: bool,
     pub health: Option<String>,
     pub kind: String,
     pub port: i64,
@@ -248,22 +250,6 @@ fn touch_activity(subdomain: &str) {
     let _ = std::fs::write(&path, b"");
 }
 
-/// 在共享 Pod 网络里探测实例端口是否已经在响应 HTTP。
-#[cfg(feature = "ssr")]
-async fn http_ready(port: u16) -> bool {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    let Ok(mut stream) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await else {
-        return false;
-    };
-    let request = b"GET / HTTP/1.0\r\nHost: agent.localhost\r\nConnection: close\r\n\r\n";
-    if stream.write_all(request).await.is_err() {
-        return false;
-    }
-    let mut buffer = [0u8; 64];
-    matches!(stream.read(&mut buffer).await, Ok(read) if read > 0)
-}
-
 /// `/api/agent/auth`：Caddy 在每个 Agent 请求前调用。
 ///
 /// 2xx 放行；401 未登录；402 到期；403 未开通/停用/非本人；
@@ -377,8 +363,13 @@ pub async fn agent_auth(
     touch_activity(&subdomain);
 
     // 睡眠/未运行 → 唤醒并等待就绪
+    //
+    // 就绪由**宿主**判定：Agent 在独立 bridge 网络里，站点（Pod 内）探不到它的
+    // 端口；宿主启动后会探测「发布在宿主回环的端口是否响应 HTTP」并写入
+    // status.json 的 ready 字段，站点只轮询该字段。
+    let ready = |runtime: Option<&AgentRuntime>| runtime.map(|r| r.ready).unwrap_or(false);
     let mut runtime = read_agent_status().get(&subdomain).cloned();
-    if runtime.as_ref().map(|r| r.state.as_str()) != Some("running") {
+    if !ready(runtime.as_ref()) {
         if let Err(error) = write_agent_request("start", &username, slot, &kind, Some(&subdomain), None)
         {
             tracing::warn!("唤醒请求失败：{error}");
@@ -388,26 +379,13 @@ pub async fn agent_auth(
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             waited += 500;
             runtime = read_agent_status().get(&subdomain).cloned();
-            if runtime.as_ref().map(|r| r.state.as_str()) == Some("running") {
+            if ready(runtime.as_ref()) {
                 break;
             }
         }
     }
 
-    // 进程 running ≠ 服务就绪：在共享 Pod 网络里发一次最小 HTTP 请求探测，
-    // 否则代理会对着刚启动、还没开始响应的端口拿 502。
-    let mut ready = false;
-    if let Some(port) = runtime.as_ref().map(|r| r.port).filter(|port| *port > 0) {
-        for _ in 0..60 {
-            if http_ready(port as u16).await {
-                ready = true;
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-    }
-
-    if ready {
+    if ready(runtime.as_ref()) {
         StatusCode::NO_CONTENT.into_response()
     } else {
         (
@@ -554,6 +532,10 @@ fn read_agent_status() -> std::collections::HashMap<String, AgentRuntime> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
+                ready: entry
+                    .get("ready")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
                 health: entry
                     .get("health")
                     .and_then(|v| v.as_str())

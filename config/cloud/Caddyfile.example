@@ -29,10 +29,12 @@ grantfelix.top, home.grantfelix.top, forgejo.grantfelix.top, cloud.grantfelix.to
 # 多租户 Agent 子域：<随机>.<用户名>.<agent名>.agent.grantfelix.top
 # 通配符只能匹配一级，多级子域用 catch-all + on-demand TLS：
 # ask 只放行订阅表里存在的域名，其余 SNI 一律拒绝签发。
+# 回源走 **第二隧道 20081** → 本地 Agent 网关（Agent 已迁到独立 bridge 网络，
+# Pod 内的主 Caddy 够不到它们）。
 :443 {
 	encode zstd gzip
 	tls {
 		on_demand
 	}
-	reverse_proxy 127.0.0.1:20080
+	reverse_proxy 127.0.0.1:20081
 }

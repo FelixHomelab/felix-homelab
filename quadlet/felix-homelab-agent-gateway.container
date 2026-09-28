@@ -1,0 +1,31 @@
+[Unit]
+Description=Felix-Homelab: Agent 网关（每用户子域 → 独立容器）
+Documentation=https://github.com/FelixHomelab/felix-homelab
+After=felix-homelab-pod.service
+Wants=felix-homelab-pod.service
+
+[Container]
+ContainerName=felix-homelab-agent-gateway
+Image=docker.io/library/caddy:2
+# host 网络：一边能到各 Agent 发布在宿主回环的端口，一边能到 Pod 发布的站点端口
+Network=host
+Label=autoheal=true
+Timezone=local
+Volume=%h/.config/felix-homelab/agent-gateway/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+# 与主 Caddy 共用同一份每用户路由文件（agent-ctl.sh 生成）
+Volume=%h/.config/felix-homelab/agents/caddy:/etc/caddy/agents:ro,Z
+Volume=felix-homelab-agent-gateway-data.volume:/data
+Volume=felix-homelab-agent-gateway-config.volume:/config
+HealthCmd=wget -q -O /dev/null http://127.0.0.1:5740/healthz
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=10s
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

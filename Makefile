@@ -18,14 +18,16 @@ REPO_DIR := $(shell pwd)
 # 容器服务；runner（注册后）与 frpc（配置中转后）可能不存在，故启动时忽略其错误
 SERVICES := felix-homelab-db.service felix-homelab-forgejo.service \
 	felix-homelab-site.service felix-homelab-nextcloud.service \
-	felix-homelab-caddy.service felix-homelab-homepage.service \
+	felix-homelab-caddy.service felix-homelab-agent-gateway.service \
+	felix-homelab-homepage.service \
 	felix-homelab-runner.service felix-homelab-frpc.service \
+	felix-homelab-agent-frpc.service \
 	felix-homelab-backup.service felix-homelab-autoheal.service
 
 .PHONY: install register build-images build-site status logs restart stop start \
 	backup backup-list sync-backup restore deploy uninstall purge migrate help \
 	agent-build agent-build-dsh agent-list agent-apply agent-stop agent-remove \
-	agent-setkey
+	agent-setkey doctor
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -99,6 +101,21 @@ stop: ## 停止所有容器与 Pod
 
 start: ## 启动所有容器（Pod 会自动创建）
 	systemctl --user start $(SERVICES) || true
+
+doctor: ## 自检：Pod/单元/端口/Agent/定时器/错误日志
+	@echo "=== 1. Pod ==="
+	@podman pod ps --format "table {{.Name}}\t{{.Status}}" || true
+	@podman ps --filter pod=Felix-Homelab --format "table {{.Names}}\t{{.Status}}" || true
+	@echo "=== 2. Agent 网关与隧道 ==="
+	@systemctl --user is-active felix-homelab-agent-gateway.service felix-homelab-agent-frpc.service 2>/dev/null || true
+	@echo "=== 3. 回环端口 ==="
+	@ss -tln 2>/dev/null | grep -E "127.0.0.1:(5729|5730|5731|5732|5733|5734|5735|5740)" || true
+	@echo "=== 4. Agent 实例 ==="
+	@$(REPO_DIR)/scripts/agent-ctl.sh list || true
+	@echo "=== 5. 最近 1 小时错误日志 ==="
+	@journalctl --user --since "1 hour ago" -p err --no-pager 2>/dev/null | tail -15 || true
+	@echo "=== 6. 磁盘 ==="
+	@df -h "$$HOME" | tail -1
 
 uninstall: ## 停止并移除单元（保留数据）
 	$(REPO_DIR)/scripts/uninstall.sh

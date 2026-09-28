@@ -1,0 +1,28 @@
+# Felix-Homelab Agent 网关（host 网络 Caddy）
+#
+# 承载所有 <随机>.<用户名>.<agent名>.agent.<域名> 子域：
+#   · 路由文件由 scripts/agent-ctl.sh 生成（与主 Caddy 共用 agents/caddy 目录）；
+#   · forward_auth 调主站宿主机端口（AGENT_SITE_PORT，默认 5735）做会话+订阅校验；
+#   · reverse_proxy 到各 Agent 发布在宿主回环上的端口（127.0.0.1:20001+）。
+#
+# 之所以独立于主 Pod 的 Caddy：Agent 已迁到各自的 bridge 网络（网络隔离），
+# Pod 内的 Caddy 够不到它们；本网关跑在 host 网络，两边都能到。
+{
+	auto_https off
+	admin off
+}
+
+# 站点地址用「仅端口」：Host 匹配交给下面 import 的每用户路由；
+# 若写成 127.0.0.1:5740，Caddy 会把 127.0.0.1 也当作 Host 匹配，子域请求全部落空。
+# 用 bind 限定只监听宿主回环：网关是内部组件，绝不能暴露到局域网/公网。
+http://:5740 {
+	bind 127.0.0.1
+	encode zstd gzip
+
+	# 健康检查（不经过鉴权）
+	@health path /healthz
+	respond @health "ok" 200
+
+	# 每个 Agent 一条：host 匹配 + forward_auth + 反向代理
+	import /etc/caddy/agents/*.caddy
+}

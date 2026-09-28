@@ -25,6 +25,7 @@ CORE_SERVICES=(
 	felix-homelab-site.service
 	felix-homelab-nextcloud.service
 	felix-homelab-caddy.service
+	felix-homelab-agent-gateway.service
 	felix-homelab-homepage.service
 	felix-homelab-autoheal.service
 	felix-homelab-backup.service
@@ -118,6 +119,7 @@ ensure_env_default AGENT_CPUS 1.5
 ensure_env_default AGENT_PIDS_LIMIT 512
 ensure_env_default AGENT_IDLE_SECONDS 300
 ensure_env_default AGENT_GRACE_DAYS 30
+ensure_env_default AGENT_RECREATE_DAYS 7
 ensure_env_default OPENCODE_VERSION 2.0.18
 ensure_env_default DSH_VERSION 0.1.7-rc.2
 ensure_env_default DSHMARKET_VERSION 1.66.3
@@ -143,6 +145,18 @@ if [ ! -f "$CONFIG_DIR/frp/frpc.toml" ]; then
 	install -m 0600 "$REPO_DIR/config/frpc.toml.example" "$CONFIG_DIR/frp/frpc.toml"
 fi
 
+# Agent 网关隧道配置：从 frpc.toml 同步 serverAddr/serverPort/token，
+# 只多一条 20081 → 5740（Agent 网关）的隧道。
+install -m 0600 "$REPO_DIR/config/frpc-agent.toml.example" "$CONFIG_DIR/frp/frpc-agent.toml"
+if ! grep -q 'CHANGE_ME' "$CONFIG_DIR/frp/frpc.toml" 2>/dev/null; then
+	addr="$(sed -n 's/^serverAddr[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$CONFIG_DIR/frp/frpc.toml" | head -1)"
+	port="$(sed -n 's/^serverPort[[:space:]]*=[[:space:]]*\([0-9]*\).*/\1/p' "$CONFIG_DIR/frp/frpc.toml" | head -1)"
+	token="$(sed -n 's/^auth\.token[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$CONFIG_DIR/frp/frpc.toml" | head -1)"
+	[ -n "$addr" ] && sed -i "s|^serverAddr = .*|serverAddr = \"$addr\"|" "$CONFIG_DIR/frp/frpc-agent.toml"
+	[ -n "$port" ] && sed -i "s|^serverPort = .*|serverPort = $port|" "$CONFIG_DIR/frp/frpc-agent.toml"
+	[ -n "$token" ] && sed -i "s|^auth\.token = .*|auth.token = \"$token\"|" "$CONFIG_DIR/frp/frpc-agent.toml"
+fi
+
 # 从旧版端口方案（8080/3000/2222）迁移到 5729 起
 sed -i \
 	-e 's|^FORGEJO__server__ROOT_URL=http://localhost:8080/$|FORGEJO__server__ROOT_URL=http://localhost:5730/|' \
@@ -154,6 +168,10 @@ sed -i \
 # ---------------------------------------------------------------------------
 log "安装 Caddyfile"
 install -m 0644 "$REPO_DIR/config/Caddyfile" "$CONFIG_DIR/Caddyfile"
+
+# Agent 网关（host 网络 Caddy）配置
+mkdir -p "$CONFIG_DIR/agent-gateway"
+install -m 0644 "$REPO_DIR/config/agent-gateway/Caddyfile" "$CONFIG_DIR/agent-gateway/Caddyfile"
 
 # Homepage 配置仅在首次安装时植入，之后保留用户自定义
 if [ ! -d "$CONFIG_DIR/homepage" ]; then
@@ -185,8 +203,9 @@ if [ ! -f "$CONFIG_DIR/sync/backup.conf" ]; then
 	install -m 0644 "$REPO_DIR/config/backup/backup.conf.example" "$CONFIG_DIR/sync/backup.conf"
 fi
 
-# —— 多租户 AI Agent（P1 试点）——
-# 配置目录：state.json（宿主）、status.json（回写后台）、requests/（后台请求）、caddy/（每用户路由）
+# —— 多租户 AI Agent（独立 bridge 网络 + Agent 网关）——
+# 配置目录：state.json（宿主）、status.json（回写后台）、requests/（后台请求）、
+# caddy/（每用户路由，同时被 Agent 网关容器挂载）
 mkdir -p "$CONFIG_DIR/agents/caddy" "$CONFIG_DIR/agents/requests"
 if [ ! -f "$CONFIG_DIR/agents/state.json" ]; then
 	printf '{"agents":{}}\n' >"$CONFIG_DIR/agents/state.json"
@@ -343,12 +362,12 @@ for f in "$REPO_DIR"/quadlet/*; do
 		felix-homelab-runner.container)
 			continue
 			;;
-		felix-homelab-frpc.container)
+		felix-homelab-frpc.container | felix-homelab-agent-frpc.container)
 			if ! grep -q 'CHANGE_ME' "$CONFIG_DIR/frp/frpc.toml" 2>/dev/null; then
 				ln -sfn "$f" "$UNIT_DIR/$(basename "$f")"
 			else
 				rm -f "$UNIT_DIR/$(basename "$f")"
-				warn "跳过 frpc：请先编辑 $CONFIG_DIR/frp/frpc.toml（serverAddr/token）后重跑 make install"
+				warn "跳过 $(basename "$f")：请先编辑 $CONFIG_DIR/frp/frpc.toml（serverAddr/token）后重跑 make install"
 			fi
 			continue
 			;;
@@ -356,9 +375,12 @@ for f in "$REPO_DIR"/quadlet/*; do
 	ln -sfn "$f" "$UNIT_DIR/$(basename "$f")"
 done
 
-# 已配置 frpc 时纳入本次启动列表
+# 已配置 frpc 时纳入本次启动列表（含 Agent 网关隧道）
 if [ -L "$UNIT_DIR/felix-homelab-frpc.container" ]; then
 	CORE_SERVICES+=(felix-homelab-frpc.service)
+fi
+if [ -L "$UNIT_DIR/felix-homelab-agent-frpc.container" ]; then
+	CORE_SERVICES+=(felix-homelab-agent-frpc.service)
 fi
 
 # ---------------------------------------------------------------------------
@@ -405,9 +427,10 @@ log "等待 Forgejo 就绪..."
 
 # Homepage 挂载了 podman.sock；升级安装时重启它以刷新 socket inode
 systemctl --user try-restart felix-homelab-homepage.service 2>/dev/null || true
-# Caddyfile 是单文件 bind mount，install 替换后 inode 会变；同时 agents 路由目录
-# 的挂载点也可能随单元更新，重启用新配置（时间极短）
+# Caddyfile 是单文件 bind mount，install 替换后 inode 会变；Agent 网关同理
+# （主 Caddy 已不再承载 Agent 路由，这里顺带重启网关以载入新 Caddyfile）
 systemctl --user try-restart felix-homelab-caddy.service 2>/dev/null || true
+systemctl --user try-restart felix-homelab-agent-gateway.service 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # 8. 注册 Actions Runner

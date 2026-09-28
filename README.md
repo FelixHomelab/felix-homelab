@@ -65,7 +65,9 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 | 5733     | 主站 (8090) | 站点直连 |
 | 5734     | Nextcloud (80) | 云盘直连 |
 | 3000     | Forgejo (3000) | 仅供 host 网络的作业容器经 `127.0.0.1:3000` 访问 |
-| 20001+   | AI Agent（动态分配） | 仅 Pod 内回环；经 `<用户名>.agent.<域名>` 由 Caddy 鉴权后访问 |
+| 5735     | 主站 (8090) | 仅供 Agent 网关 forward_auth 调用 |
+| 5740     | Agent 网关 (Caddy) | 仅宿主回环；<子域>.agent.<域名> 统一入口 |
+| 20001+   | AI Agent（动态分配） | 各 Agent 发布到宿主回环；经 5740 网关鉴权后访问 |
 
 > **Host 网络的代价**：Runner 派发的作业容器使用 `container.network: host`，
 > 因此作业内的进程能访问宿主机上仅监听回环的本地服务，并能绑定宿主端口。
@@ -306,15 +308,24 @@ Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729
 入口**，后台只负责指定用户、指定类型（OpenCode / DeepSeek Harness）、数量与备注。
 
 ```
-用户首屏「我的 Agent」 ──▶ <随机>.<用户名>.<agent名>.agent.grantfelix.top ─▶ 云 Caddy
-      ─▶ frp 20080 ─▶ 本机 Caddy :5729
-            ├─ forward_auth ─▶ 主站 /api/agent/auth?user=…&slot=…
-            │                   （会话 + 订阅校验；睡眠实例在这里被唤醒并等待就绪）
-            └─ reverse_proxy ─▶ 127.0.0.1:20001..（Pod 内该实例的容器）
+用户首屏「我的 Agent」 ─▶ <随机>.<用户名>.<agent名>.agent.grantfelix.top
+      ─▶ 云 Caddy（按需证书；ask 只放行订阅表里的域名）
+      ─▶ frp 第二隧道 20081 ─▶ Agent 网关（独立容器，host 网络，只监听 127.0.0.1:5740）
+            ├─ forward_auth ─▶ 127.0.0.1:5735（主站 /api/agent/auth：会话 + 订阅校验；
+            │                   睡眠实例在这里被唤醒，等宿主探测到 ready 才放行）
+            └─ reverse_proxy ─▶ 127.0.0.1:20001..（各 Agent 的独立 bridge 网络）
+主站/Forgejo/Nextcloud 继续走原隧道 20080 → Pod 内 Caddy（与 Agent 完全隔离）
 ```
+
+**每个 Agent 一个独立 bridge 网络**：彼此不可见，也到不了主 Pod 内的
+Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
+`https://forgejo.<域名>` / `ssh -p 20022`，无需入站端口）。
 
 - **域名样式**：`r4nd0m.<用户名>.<opencode|deepseekharness>.agent.<域名>`。
   随机段由站点生成并入库（同用户多实例不重复），续期/宽限期内复活时**原样复用**。
+  本地测试：主 Caddy 不再承载 Agent 路由，用
+  `curl -H "Host: <子域>.agent.localhost" http://127.0.0.1:5740/`（或开发者自行
+  hosts 绑定）；生产出口仍是云域名。
 - **后台开通（只新建）**：`后台 → Agent` 顶部的「开通新实例」：填用户名、模板、
   数量（1–9）、天数（0 = 长期）、备注——每次都会占用新的 slot 与新的随机域名，
   不影响已有实例。页面写订阅表并落请求文件，宿主
@@ -332,6 +343,13 @@ Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729
 - **删除记录的留存与显示**：已删除（待宽限）与彻底删除记录都保留 30 天，
   **后台默认隐藏**；勾选「显示已删除 / 彻底删除记录」即可查看与操作
   （彻底删除记录只读展示，30 天后自动清理）。
+- **容器加固**：rootless + `no-new-privileges` + 危险能力显式丢弃 + 独立网络 +
+  端口只发布宿主回环 + 不挂载 `podman.sock`；数据卷挂载带 `:Z`（SELinux 类别）。
+- **定期重建**：容器可写层非持久——超过 `AGENT_RECREATE_DAYS`（默认 7 天）
+  由 reconcile 重建容器（数据卷/工作区/域名/登录态保留），清掉潜在的持久化改动。
+- **安全边界说明（重要）**：rootless 容器仍是**共享内核**，对“不受信的人”不算
+  安全边界（逃逸即宿主用户）。当前方案适合“可信任的朋友/试用”档；正式面向
+  陌生人应上 microVM（Kata/gVisor）或独立主机（本仓库暂不包含）。
 - **空闲睡眠**：实例无请求超过 `AGENT_IDLE_SECONDS`（默认 300 秒）自动停容器
   （`desired=sleeping`，数据/域名/登录态保留）；用户再次打开时由网关**自动
   唤醒并等端口就绪**再放行——首开多等几秒，之后与常驻无异。
