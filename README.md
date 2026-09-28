@@ -406,9 +406,16 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
 - **自带 ego 浏览器 dsh-ego-browser**（`DSHEGOBROWSER_VERSION`，默认 0.8.5）：
   30+ 个 `ego_*` 浏览器自动化工具 + 实时观察窗（装了 better-sidebar 时注册为
   侧边栏原生 Tab，否则浮动观察球）。浏览器由镜像内置的 Fedora Chromium 提供
-  （安装约 370MB；插件自带 `--no-sandbox` wrapper 适配容器/root，无显示器
-  自动 headless）。Chromium 吃内存，默认 `AGENT_MEMORY=2g` 下重网页场景可
-  调大；每次启动入口脚本会补齐 wrapper 可执行位（npm 包不保留执行位）。
+  （安装约 370MB；插件自带 `--no-sandbox` wrapper 适配容器/root）。**镜像内置
+  Noto CJK / Emoji 字体**（否则观察窗里中文全是方框）。
+  **登录/人机验证在观察窗里做**：点击、拖拽、滚动、键盘输入（含中文 IME、
+  粘贴）都回传 CDP 到容器里的真实浏览器，登录态随磁盘 Profile 持久化，
+  不需要桌面窗口。**有头「弹出窗口」在容器内不可用**（实测无桌面容器里
+  Fedora Chromium 有头模式不启动 DevTools，Xvfb/GL/D-Bus 组合均无效）；
+  多租户下也不会把宿主桌面套接字挂进容器——那等于把整台桌面的输入/截屏
+  权限交给每个用户的 Agent。Chromium 吃内存，默认 `AGENT_MEMORY=2g` 下
+  重网页场景可调大；每次启动入口脚本会补齐 wrapper 可执行位（npm 包不
+  保留执行位）。
 - **自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin**
   （`OPENCODE2DSH_VERSION`，默认 0.3.3）：匿名免费通道，无需 API key，
   在模型选择器里以 `opencode2dsh` 分组出现；需要出站 HTTPS 访问
