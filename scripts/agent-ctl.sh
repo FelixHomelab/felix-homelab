@@ -60,6 +60,8 @@ GATEWAY_CONTAINER="${GATEWAY_CONTAINER:-felix-homelab-agent-gateway}"
 AGENT_NET_PREFIX="${AGENT_NET_PREFIX:-felix-agent-}"
 # 定期重建容器（清掉可写层里的持久化改动；数据卷/工作区保留）
 AGENT_RECREATE_DAYS="${AGENT_RECREATE_DAYS:-7}"
+# noVNC 端口基址（DSH 实例才有）：实际端口 = 基址 + (agent 端口 - AGENT_PORT_BASE)
+AGENT_VNC_PORT_BASE="${AGENT_VNC_PORT_BASE:-21001}"
 # 默认丢弃的危险能力（rootless 下本就无法取得宿主特权，这里进一步收窄攻击面）
 AGENT_CAP_DROP="${AGENT_CAP_DROP:-SYS_ADMIN,SYS_MODULE,SYS_RAWIO,SYS_PTRACE,SYS_BOOT,MKNOD,NET_ADMIN,AUDIT_WRITE,AUDIT_READ,WAKE_ALARM,SYS_TIME,SYS_TTY_CONFIG}"
 # 空闲睡眠：无活动超过该秒数则停容器（desired=sleeping，下次访问自动唤醒）
@@ -320,11 +322,30 @@ route_write() {
 	fi
 
 	b64="$(printf 'opencode:%s' "$password" | base64 | tr -d '\n')"
+	local kind vnc_block=""
+	kind="$(state_field "$key" kind)"
+	if [ "$kind" = "dsh" ]; then
+		local vnc_port=$((AGENT_VNC_PORT_BASE + port - AGENT_PORT_BASE))
+		vnc_block="
+# 容器内虚拟桌面（noVNC）：真实 Chromium 窗口，跨设备查看/操作
+@agent_${slug}_vnc host $subdomain.$AGENT_LOCAL_DOMAIN $subdomain.$AGENT_BASE_DOMAIN
+handle_path /vnc/* {
+	forward_auth 127.0.0.1:$AGENT_SITE_PORT {
+		uri /api/agent/auth?user=$username&slot=$slot
+	}
+	reverse_proxy 127.0.0.1:$vnc_port
+}"
+	fi
 	local before=""
 	[ -f "$CADDY_DIR/$slug.caddy" ] && before="$(cat "$CADDY_DIR/$slug.caddy")"
 	cat >"$CADDY_DIR/$slug.caddy" <<EOF
 # Felix-Homelab Agent：$username（实例 #$slot，由 scripts/agent-ctl.sh 生成，请勿手改）
-@agent_$slug host $subdomain.$AGENT_LOCAL_DOMAIN $subdomain.$AGENT_BASE_DOMAIN
+# 命名匹配器必须用块状写法：单行里塞多个匹配器（host + not path）会被
+# 当作 host 的参数解析，导致 /vnc/* 也被主路由吞掉。
+@agent_$slug {
+	host $subdomain.$AGENT_LOCAL_DOMAIN $subdomain.$AGENT_BASE_DOMAIN
+	not path /vnc/*
+}
 handle @agent_$slug {
 	forward_auth 127.0.0.1:$AGENT_SITE_PORT {
 		uri /api/agent/auth?user=$username&slot=$slot
@@ -332,7 +353,7 @@ handle @agent_$slug {
 	reverse_proxy 127.0.0.1:$port {
 		header_up Authorization "Basic $b64"
 	}
-}
+}$vnc_block
 EOF
 	chmod 600 "$CADDY_DIR/$slug.caddy"
 	# 宿主新建的文件可能带上默认 SELinux 类型，Caddy 容器读不了，尽力修正
@@ -450,6 +471,16 @@ container_create() {
 		args+=(--env "DSH_HOME=/data/dsh")
 		# 见镜像内 allow-nonloopback-host.py：独立网络下允许绑 0.0.0.0
 		args+=(--env "DSH_ALLOW_NON_LOOPBACK=1")
+		# 容器内虚拟桌面（Xvfb+openbox+x11vnc+noVNC）：
+		#   · DISPLAY 让 ego-browser 以“原生有头”跑真实 Chromium；
+		#   · EGO_LINUX_CHROME 指向镜像内包装（私有会话 D-Bus + --no-sandbox）；
+		#   · noVNC 端口发布到宿主回环，网关以 <子域>/vnc/ 路径暴露，跨设备可用。
+		local vnc_port=$((AGENT_VNC_PORT_BASE + port - AGENT_PORT_BASE))
+		args+=(--publish "127.0.0.1:$vnc_port:$vnc_port")
+		args+=(--label "felix.agent.vnc=$vnc_port")
+		args+=(--env "DISPLAY=:${FELIX_DISPLAY_NUM:-99}")
+		args+=(--env "FELIX_NOVNC_PORT=$vnc_port")
+		args+=(--env "EGO_LINUX_CHROME=/usr/local/bin/felix-ego-chrome.sh")
 		# --patch：容器内禁用市场的一键重启（重启由平台/管理员操作）
 		# 独立网络里绑 0.0.0.0 才能被宿主端口映射转发；该网络仅此容器，
 		# 外部仍只能经网关（回环发布）访问。

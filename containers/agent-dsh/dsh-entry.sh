@@ -33,6 +33,15 @@ if [ -d "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin" ]; then
 	chmod 0755 "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin"/*.sh 2>/dev/null || true
 fi
 
+# 容器内虚拟桌面：让 ego-browser 以「原生有头」方式运行在虚拟显示上，
+# 用户经 <子域>/vnc/vnc.html 跨设备查看/操作真实浏览器窗口。
+if [ "${FELIX_DESKTOP:-1}" = "1" ] && [ -x /usr/local/bin/felix-desktop-start.sh ]; then
+	if [ ! -S "/tmp/.X11-unix/X${FELIX_DISPLAY_NUM:-99}" ]; then
+		setsid /usr/local/bin/felix-desktop-start.sh >/tmp/felix-desktop.log 2>&1 &
+	fi
+	export DISPLAY=":${FELIX_DISPLAY_NUM:-99}"
+fi
+
 # 平台默认开发规则：网络搜索走无头浏览器 + Bing。仅在装了 dsh-dev-rules 且
 # 规则文件为空/不存在时播种，不覆盖用户已有规则。
 if [ -d "$DSH_HOME/profiles/web/node_modules/dsh-dev-rules" ] \

@@ -27,22 +27,36 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 	tzdata \
 	ca-certificates \
 	chromium \
+	xorg-x11-server-Xvfb \
+	openbox \
+	x11vnc \
+	novnc \
+	python3-websockify \
+	dbus-daemon \
+	dbus-tools \
+	mesa-libGLES \
+	mesa-libEGL \
+	mesa-dri-drivers \
+	libglvnd-gles \
 	google-noto-sans-cjk-fonts \
 	google-noto-emoji-fonts \
 	&& dnf clean all
 
 # ---- fnm + Node 24（国内走 npmmirror 的 Node 发行镜像）----
-# fnm 官网安装脚本域名（fnm.vercel.app）在国内不可达，改从 GitHub Release 安装。
+# fnm 官网安装脚本域名（fnm.vercel.app）在国内不可达，改从 GitHub Release 安装；
+# github.com 直连不稳时回退 gh-proxy，并给 curl 明确连接超时，避免构建卡死。
 ARG FNM_VERSION=v1.39.0
 ENV FNM_DIR=/opt/fnm
-RUN curl -fsSL -o /tmp/fnm.zip \
-	"https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/fnm-linux.zip" \
- && unzip -o /tmp/fnm.zip -d /usr/local/bin \
- && chmod 0755 /usr/local/bin/fnm \
- && rm -f /tmp/fnm.zip \
- && fnm --version \
- && fnm install 24 --node-dist-mirror https://npmmirror.com/mirrors/node \
- && fnm default 24
+RUN set -eux; \
+	url="https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/fnm-linux.zip"; \
+	curl -fsSL --connect-timeout 15 --retry 2 -o /tmp/fnm.zip "$url" \
+		|| curl -fsSL --connect-timeout 15 --retry 2 -o /tmp/fnm.zip "https://gh-proxy.com/$url"; \
+	unzip -o /tmp/fnm.zip -d /usr/local/bin; \
+	chmod 0755 /usr/local/bin/fnm; \
+	rm -f /tmp/fnm.zip; \
+	fnm --version; \
+	fnm install 24 --node-dist-mirror https://npmmirror.com/mirrors/node; \
+	fnm default 24
 ENV PATH="/opt/fnm/aliases/default/bin:${PATH}"
 
 # ---- corepack：开启 yarn / pnpm，并把准备好的版本烤进镜像 ----
@@ -53,6 +67,10 @@ RUN corepack enable \
  && corepack prepare pnpm@11.7.0 --activate \
  && corepack prepare yarn@1.22.22 --activate \
  && pnpm -v && yarn -v
+
+# npm/pnpm 走 npmmirror（国内网络下 registry.npmjs.org 经常中断，实测构建因此失败）；
+# 该 ENV 一直保留到运行期，用户从插件市场装插件也会走镜像，更快更稳。
+ENV npm_config_registry=https://registry.npmmirror.com
 
 # ---- 官方方式安装 dsh（固定版本）----
 # 注意：npm 11 起默认不执行依赖的安装脚本（allow-scripts 安全策略），
@@ -158,7 +176,9 @@ RUN dsh plugin --profile web add "dsh-better-sidebar@${DSHBETTERSIDEBAR_VERSION}
 # 来源分发（国内可用 Gitee 镜像）。固定到 main 的一个提交保证可复现；
 # 升级时把 DSHDEV_RULES_REF 换成新的 SHA（见 .env）。
 ARG DSHDEV_RULES_REF=83c5ff329a1ecb9e8dc37da02eee17998f904dee
-RUN dsh plugin --profile web add "github:Grant-Felix/dev-rules#${DSHDEV_RULES_REF}" \
+# GitHub 直连不稳时回退 Gitee 镜像（同一提交）；都按官方方式固定版本
+RUN (dsh plugin --profile web add "github:Grant-Felix/dev-rules#${DSHDEV_RULES_REF}" \
+		|| dsh plugin --profile web add "git+https://gitee.com/Grant-Felix/dev-rules.git#${DSHDEV_RULES_REF}") \
 	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-dev-rules/package.json \
 	&& grep -q '"dsh-dev-rules"' /opt/dsh-home/profiles/web/package.json
 
@@ -191,7 +211,12 @@ RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN
 COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh
 COPY dsh-merge-profile.py /usr/local/bin/dsh-merge-profile.py
 COPY seed-dev-rules.py /usr/local/bin/seed-dev-rules.py
-RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py /usr/local/bin/seed-dev-rules.py
+# 容器内虚拟桌面（有头 Chromium 的显示）与 ego 浏览器启动包装（私有 D-Bus + no-sandbox）
+COPY felix-desktop-start.sh /usr/local/bin/felix-desktop-start.sh
+COPY felix-ego-chrome.sh /usr/local/bin/felix-ego-chrome.sh
+RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py \
+	/usr/local/bin/seed-dev-rules.py /usr/local/bin/felix-desktop-start.sh \
+	/usr/local/bin/felix-ego-chrome.sh
 
 # 运行态统一挂到 /data（命名卷），工作目录统一 /workspace（宿主 bind mount）。
 # 注意：必须与 scripts/agent-ctl.sh 注入的环境变量保持一致。

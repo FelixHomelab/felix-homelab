@@ -408,14 +408,16 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   侧边栏原生 Tab，否则浮动观察球）。浏览器由镜像内置的 Fedora Chromium 提供
   （安装约 370MB；插件自带 `--no-sandbox` wrapper 适配容器/root）。**镜像内置
   Noto CJK / Emoji 字体**（否则观察窗里中文全是方框）。
-  **登录/人机验证在观察窗里做**：点击、拖拽、滚动、键盘输入（含中文 IME、
-  粘贴）都回传 CDP 到容器里的真实浏览器，登录态随磁盘 Profile 持久化，
-  不需要桌面窗口。**有头「弹出窗口」在容器内不可用**（实测无桌面容器里
-  Fedora Chromium 有头模式不启动 DevTools，Xvfb/GL/D-Bus 组合均无效）；
-  多租户下也不会把宿主桌面套接字挂进容器——那等于把整台桌面的输入/截屏
-  权限交给每个用户的 Agent。Chromium 吃内存，默认 `AGENT_MEMORY=2g` 下
-  重网页场景可调大；每次启动入口脚本会补齐 wrapper 可执行位（npm 包不
-  保留执行位）。
+  **原生有头浏览器 + 跨设备网页桌面（noVNC）**：容器内自带虚拟桌面
+  （Xvfb + openbox + x11vnc + noVNC），ego 浏览器以「有头原生 Chromium」
+  跑在虚拟显示上——缺会话 D-Bus 或 mesa GL 库时有头模式起不来（实测），
+  镜像已内置 `dbus-tools`/mesa，并用 `felix-ego-chrome.sh` 包装启动。
+  任何设备打开 **`https://<你的Agent子域>/vnc/vnc.html`**（同样需要登录
+  会话）即可看到并操作容器里真实的 Chromium 窗口：登录、验证码、弹窗、
+  下载都在真实浏览器里完成，登录态随磁盘 Profile 持久化；不依赖用户
+  自己的桌面/设备，多租户下也不挂宿主桌面套接字。Chromium 吃内存，默认
+  `AGENT_MEMORY=2g` 下重网页场景可调大；每次启动入口脚本会补齐 wrapper
+  可执行位（npm 包不保留执行位）。
 - **自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin**
   （`OPENCODE2DSH_VERSION`，默认 0.3.3）：匿名免费通道，无需 API key，
   在模型选择器里以 `opencode2dsh` 分组出现；需要出站 HTTPS 访问
