@@ -50,8 +50,30 @@ def merge_package_json(src: str, dst: str) -> None:
         **(image_pkg.get("dependencies") or {}),
         **(user_pkg.get("dependencies") or {}),
     }
+    # 名册取并集：镜像自带的 bundle（顺序以镜像为准）在前，用户在插件市场自己
+    # 装的插件/主题追加在后——否则镜像一升级，用户的主题就从名册里消失。
+    image_bundles = (
+        ((image_pkg.get("dsh") or {}).get("profile") or {}).get("bundles") or []
+    )
+    user_bundles = (
+        ((user_pkg.get("dsh") or {}).get("profile") or {}).get("bundles") or []
+    )
+    bundles = list(image_bundles)
+    for name in user_bundles:
+        if name not in bundles:
+            bundles.append(name)
+    # 守护是看门狗，必须最先加载（名册并集后仍强制置顶）
+    if "dsh-my-guardian" in bundles:
+        bundles.remove("dsh-my-guardian")
+        bundles.insert(0, "dsh-my-guardian")
+
     merged = dict(image_pkg)
     merged["dependencies"] = dependencies
+    dsh = dict(image_pkg.get("dsh") or {})
+    profile = dict(dsh.get("profile") or {})
+    profile["bundles"] = bundles
+    dsh["profile"] = profile
+    merged["dsh"] = dsh
     # 保留用户自定义的其它顶层字段（版本、脚本等），但 name/dsh/profile 以镜像为准
     for key, value in user_pkg.items():
         if key not in ("name", "private", "dsh", "dependencies"):

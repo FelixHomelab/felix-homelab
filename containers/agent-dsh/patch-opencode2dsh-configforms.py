@@ -40,15 +40,21 @@ def main() -> None:
     pkg_path = plugin_dir / "package.json"
     client_path = plugin_dir / "lib/client.js"
 
+    if not pkg_path.exists():
+        # 未安装该插件（或用户已卸载）：无需处理，入口脚本每次启动都会调用本脚本
+        print("未安装 @opencode2dsh/dsh-plugin，跳过")
+        return
     pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
     inject = pkg.get("dsh", {}).get("client", {}).get("inject")
     if not inject:
         raise SystemExit("package.json 缺少 dsh.client.inject，请人工复核")
     if "settingsScope" not in inject:
         if "configForms" in inject:
-            print("已打过补丁（或上游已修复），跳过")
+            print("补丁已生效（或上游已修复），跳过")
             return
-        raise SystemExit("inject 里既没有 settingsScope 也没有 configForms，请人工复核")
+        # 上游若改成 package row 形式（PR #23 方案），无需本补丁
+        print("inject 未包含 settingsScope（上游已修复），跳过")
+        return
     pkg["dsh"]["client"]["inject"] = [
         "configForms" if name == "settingsScope" else name for name in inject
     ]
@@ -56,6 +62,8 @@ def main() -> None:
         json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
+    if not client_path.exists():
+        raise SystemExit("lib/client.js 不存在，请人工复核")
     text = client_path.read_text(encoding="utf-8")
     if BIND_CALL not in text:
         raise SystemExit("client.js 未找到 settingsScope 绑定调用点，请人工复核")

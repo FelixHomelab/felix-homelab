@@ -220,6 +220,9 @@ if [ ! -f "$CONFIG_DIR/agents/caddy/00-empty.caddy" ]; then
 fi
 # 执行面脚本复制到配置目录（systemd 单元引用它，不依赖仓库路径）
 install -m 0755 "$REPO_DIR/scripts/agent-ctl.sh" "$CONFIG_DIR/agents/agent-ctl.sh"
+# DSH 兼容补丁脚本（tick 自愈用；与镜像内 /usr/local/bin 下的同一份）
+install -m 0755 "$REPO_DIR/containers/agent-dsh/patch-opencode2dsh-configforms.py" \
+	"$CONFIG_DIR/agents/patch-opencode2dsh-configforms.py"
 
 # 后台触发用的请求文件（Path 单元监视；必须先存在，否则会被建成目录）
 : >"$CONFIG_DIR/sync/backup-request"

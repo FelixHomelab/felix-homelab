@@ -18,4 +18,12 @@ if [ "$IMAGE_VERSION" != "$VOLUME_VERSION" ] || [ ! -e "$DSH_HOME/profiles" ]; t
 	cp -a /opt/dsh-home/.dsh-image-version "$DSH_HOME/.dsh-image-version"
 fi
 
+# 运行期从插件市场安装/更新插件会跑 pnpm install，可能把打过兼容补丁的官方
+# 插件还原成原版（实测装主题后 opencode2dsh 恢复 settingsScope 依赖，界面起不来）。
+# 每次启动都幂等重打一遍；上游修复后脚本自动跳过。
+if [ -f /usr/local/bin/patch-opencode2dsh-configforms.py ]; then
+	python3 /usr/local/bin/patch-opencode2dsh-configforms.py "$DSH_HOME/profiles/web" \
+		|| echo "[dsh-entry] 警告：opencode2dsh 兼容补丁未应用（见上），界面可能异常" >&2
+fi
+
 exec dsh "$@"

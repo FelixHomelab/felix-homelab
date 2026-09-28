@@ -400,6 +400,12 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   由 `patch-opencode2dsh-configforms.py` 把它迁到 `configForms`（幂等，上游
   发版后自动跳过）；启动与模型路由正常，IP 池设置卡在 0.1.7 上可能不显示
   （该卡片槽位也改版了，随上游 0.3.4 一起恢复）。
+- **补丁自愈**：用户从插件市场装主题/插件会跑 pnpm install，可能把补丁文件
+  还原（实测复现）。两层兜底：① 容器每次启动入口脚本幂等重打；② 宿主每轮
+  tick 检查数据卷，发现还原就自动重打并重启该实例（2 分钟内自愈）。
+- **用户自装插件/主题升级不丢**：镜像升级的 profile 合并对
+  `dsh.profile.bundles` 取并集——镜像自带的在前、用户市场装的追加在后
+  （守护 `dsh-my-guardian` 强制置顶），`dependencies` 同样并集保留。
 - **pnpm store 一致性（运行时装插件的前提）**：pnpm 把 store 路径写进
   `node_modules/.modules.yaml`，构建期与运行期 HOME 必须一致（`/data`）；
   镜像升级时 `dsh-merge-profile.py` 会随镜像刷新该文件，否则用户从插件
