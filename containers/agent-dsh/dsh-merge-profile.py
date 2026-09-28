@@ -69,6 +69,13 @@ def merge_dir(image_dir: str, volume_dir: str) -> None:
             for child in os.listdir(src):
                 child_src = os.path.join(src, child)
                 child_dst = os.path.join(dst, child)
+                # pnpm 的元数据由镜像管理，必须随镜像刷新：里面的 store 路径要
+                # 与运行期一致，否则用户安装插件报 ERR_PNPM_UNEXPECTED_STORE。
+                if child == ".modules.yaml":
+                    if os.path.lexists(child_dst):
+                        os.remove(child_dst)
+                    copy_entry(child_src, child_dst)
+                    continue
                 if not os.path.exists(child_dst):
                     copy_entry(child_src, child_dst)
             continue

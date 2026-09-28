@@ -88,6 +88,10 @@ RUN set -eux; \
 	wait "$pid" 2>/dev/null || true; \
 	test -f /opt/dsh-home/profiles/web/package.json
 
+# 构建期与运行期 HOME 必须一致：pnpm 会把 store 路径写进 node_modules/.modules.yaml，
+# 运行时 HOME=/data；构建若用默认 /root，运行时装插件会报 ERR_PNPM_UNEXPECTED_STORE。
+ENV HOME=/data
+
 # ---- 自带插件市场 dsh-market（官方安装方式，固定版本）----
 # https://github.com/dsh-market/dsh-market  →  open Settings → Plugin Market
 ARG DSHMARKET_VERSION=1.66.3
@@ -106,7 +110,28 @@ RUN dsh plugin --profile web add "dsh-my-guardian@${DSHGUARDIAN_VERSION}" --trus
  && test -f /opt/dsh-home/profiles/web/node_modules/dsh-my-guardian/package.json \
  && node -e "const fs=require('fs');const f='/opt/dsh-home/profiles/web/package.json';const d=JSON.parse(fs.readFileSync(f));const rest=d.dsh.profile.bundles.filter((x)=>x!=='dsh-my-guardian');d.dsh.profile.bundles=['dsh-my-guardian',...rest];fs.writeFileSync(f,JSON.stringify(d,null,2)+'\n')" \
  && node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)" \
- && python3 /tmp/patch-guardian-host-peers.py
+  && python3 /tmp/patch-guardian-host-peers.py
+
+# ---- 自带费用统计 dsh-cost-meter（会话/模型成本、预算、余额与套餐额度）----
+# https://github.com/Han-1413141/dsh-cost-meter
+ARG DSHCOSTMETER_VERSION=1.7.40
+RUN dsh plugin --profile web add "dsh-cost-meter@${DSHCOSTMETER_VERSION}" \
+	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-cost-meter/package.json \
+	&& grep -q '"dsh-cost-meter"' /opt/dsh-home/profiles/web/package.json
+
+# ---- 自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin（无需 API key）----
+# https://github.com/FishBottle7/opencode2dsh
+# 依赖链 pi-ai 里的 @google/genai / protobufjs 构建脚本运行期不需要：先在
+# workspace 里显式拒绝，pnpm 11 才会放行（否则 ERR_PNPM_IGNORED_BUILDS）。
+ARG OPENCODE2DSH_VERSION=0.3.3
+RUN if ! grep -q '^allowBuilds:' /opt/dsh-home/profiles/web/pnpm-workspace.yaml; then \
+		printf '\nallowBuilds:\n  "@google/genai": false\n  protobufjs: false\n' \
+			>> /opt/dsh-home/profiles/web/pnpm-workspace.yaml; \
+	fi \
+	&& dsh plugin --profile web add "@opencode2dsh/dsh-plugin@${OPENCODE2DSH_VERSION}" \
+	&& test -f /opt/dsh-home/profiles/web/node_modules/@opencode2dsh/dsh-plugin/package.json \
+	&& grep -q '"@opencode2dsh/dsh-plugin"' /opt/dsh-home/profiles/web/package.json \
+	&& node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)"
 
 # 容器化下市场的一键重启会替换容器主进程：用 --patch 覆盖层统一禁用（所有宿主版本都有效）
 RUN printf '%s\n' \
@@ -120,8 +145,8 @@ RUN printf '%s\n' \
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=2
-RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
+ARG PROFILE_REV=3
+RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_VERSION}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
 COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh

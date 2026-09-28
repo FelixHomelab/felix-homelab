@@ -356,9 +356,10 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
 - **删除与回收**：后台「删除」立即停容器、撤子域路由；**数据与域名保留
   `AGENT_GRACE_DAYS` 天（默认 30）**，期间续期原样复活；超期由宿主回收
   （容器/数据卷/工作区/路由/状态条目）并在后台清理订阅行，域名随后可再分配。
-- **容器**：`felix-agent-<内部slug>`，加入现有 Pod（端口只在 Pod 内回环）；
-  资源上限由 `.env` 的 `AGENT_MEMORY` / `AGENT_CPUS` / `AGENT_PIDS_LIMIT`
-  控制；带健康检查与 `autoheal` 标签。
+- **容器**：`felix-agent-<内部slug>`，独立 bridge 网络（与主 Pod、其他 Agent
+  互不可见），端口只发布到宿主回环；资源上限由 `.env` 的
+  `AGENT_MEMORY` / `AGENT_CPUS` / `AGENT_PIDS_LIMIT` 控制；带健康检查与
+  `autoheal` 标签。
 - **数据与账户统一**：订阅在站点 SQLite（`agent_subscriptions`，`UNIQUE(user_id, slot)`）；
   运行数据在 `felix-agent-<slug>-data` 卷，工作区在
   `~/.local/share/felix-homelab/agents/<slug>/workspace`。
@@ -376,6 +377,19 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   进程，因此启动参数带 `--patch /opt/dsh-home/agent-patch.yml` 统一禁用
   （`allowRestart: false`，重启由平台/管理员操作）；`GET /dsh-market/status`
   应显示 `restart: false`。
+- **自带插件守护 dsh-my-guardian**（`DSHGUARDIAN_VERSION`，默认 0.4.4）：
+  候选区 + 失败隔离，防止用户装坏插件把容器卡死。守护是看门狗，必须最先
+  加载——构建期把它的 bundle 调到名册第一位（每次加新插件后都会校验）。
+- **自带费用统计 dsh-cost-meter**（`DSHCOSTMETER_VERSION`，默认 1.7.40）：
+  会话/模型成本、预算、官方余额与 Coding Plan 额度查询，中英双语。
+- **自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin**
+  （`OPENCODE2DSH_VERSION`，默认 0.3.3）：匿名免费通道，无需 API key，
+  在模型选择器里以 `opencode2dsh` 分组出现；需要出站 HTTPS 访问
+  `opencode.ai` 与 `models.dev`（Agent 独立网络默认允许出站）。
+- **pnpm store 一致性（运行时装插件的前提）**：pnpm 把 store 路径写进
+  `node_modules/.modules.yaml`，构建期与运行期 HOME 必须一致（`/data`）；
+  镜像升级时 `dsh-merge-profile.py` 会随镜像刷新该文件，否则用户从插件
+  市场安装会报 `ERR_PNPM_UNEXPECTED_STORE`。
 - **镜像升级保数据**：版本戳涵盖 DSH 与市场版本；升级镜像时入口脚本用
   `dsh-merge-profile.py` **非破坏合并**刷新 profile——官方文件更新，用户
   自己装的插件、收藏/分组/备注（`state.json`）与手工改过的
@@ -383,8 +397,9 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   工作区 bind mount 必须带 `:Z`（SELinux 重打标签），否则容器内读不到工作区。
 - **DeepSeek Harness 登录**：DSH 自带令牌登录（每次启动在日志里打印带 token 的
   URL，约 30 天 Cookie）。宿主脚本从容器日志提取当前令牌写入 `status.json`，
-  首页卡片与后台都显示**带令牌的入口链接**，点开即完成登录。DSH 拒绝绑定
-  `0.0.0.0`，同 Pod 回环反代正好满足。
+  首页卡片与后台都显示**带令牌的入口链接**，点开即完成登录。DSH 默认拒绝
+  绑定 `0.0.0.0`；镜像用 `DSH_ALLOW_NON_LOOPBACK` 环境变量门控放行（仅本
+  平台容器设置），绑 `0.0.0.0` 但端口只发布到宿主回环、外面还有网关鉴权。
 - **信任栅栏必须用实例子域**：启动参数 `--trusted-host` 要传浏览器实际访问的
   域名（`<随机>.<用户名>.<agent名>.agent.<域名>`）。若错传内部 slug，
   DSH 自己的 `/api`（设置、模型、插件清单等）会全部 403，表现为“模型提供商
