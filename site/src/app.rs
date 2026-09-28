@@ -5,8 +5,8 @@
 
 use crate::auth::{current_user, UserState};
 use crate::pages::admin::{
-    AdminBackupPage, AdminCommentsPage, AdminCommunityPage, AdminDashboardPage, AdminPodPage,
-    AdminReviewsPage, AdminUsersPage,
+    AdminAgentPage, AdminBackupPage, AdminCommentsPage, AdminCommunityPage,
+    AdminDashboardPage, AdminPodPage, AdminReviewsPage, AdminUsersPage,
 };
 use crate::pages::community::{CommunityDetailPage, CommunityIndex, CommunitySubmitPage};
 use crate::pages::{
@@ -130,6 +130,7 @@ pub fn App() -> impl IntoView {
                     />
                     <Route path=path!("/admin/users") view=AdminUsersPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/pod") view=AdminPodPage ssr=SsrMode::Async />
+                    <Route path=path!("/admin/agents") view=AdminAgentPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/backup") view=AdminBackupPage ssr=SsrMode::Async />
 
                     // 兼容尾斜杠：leptos_router 0.8 不做尾斜杠归一，`/admin/` 会落到
@@ -194,6 +195,7 @@ pub fn App() -> impl IntoView {
                     />
                     <Route path=path!("/admin/users/") view=AdminUsersPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/pod/") view=AdminPodPage ssr=SsrMode::Async />
+                    <Route path=path!("/admin/agents/") view=AdminAgentPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/backup/") view=AdminBackupPage ssr=SsrMode::Async />
                 </Routes>
             </Layout>

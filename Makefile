@@ -23,7 +23,9 @@ SERVICES := felix-homelab-db.service felix-homelab-forgejo.service \
 	felix-homelab-backup.service felix-homelab-autoheal.service
 
 .PHONY: install register build-images build-site status logs restart stop start \
-	backup backup-list sync-backup restore deploy uninstall purge migrate help
+	backup backup-list sync-backup restore deploy uninstall purge migrate help \
+	agent-build agent-build-dsh agent-list agent-apply agent-stop agent-remove \
+	agent-setkey
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -40,6 +42,27 @@ build-images: ## 构建修复版 Runner 作业镜像（make register 会自动�
 
 build-site: ## 构建主站（Felix Homelab 社区站）镜像
 	$(REPO_DIR)/scripts/build-site.sh
+
+agent-build: ## 构建多租户 Agent 模板镜像（OpenCode）
+	$(REPO_DIR)/scripts/build-agent-image.sh opencode
+
+agent-build-dsh: ## 构建多租户 Agent 模板镜像（DeepSeek Harness）
+	$(REPO_DIR)/scripts/build-agent-image.sh dsh
+
+agent-list: ## 列出多租户 Agent（用户/端口/状态）
+	$(REPO_DIR)/scripts/agent-ctl.sh list
+
+agent-apply: ## 立即处理 Agent 请求并保活（一般由 systemd 自动触发）
+	$(REPO_DIR)/scripts/agent-ctl.sh tick
+
+agent-stop: ## 停止某用户的 Agent：ARGS=<用户名>
+	$(REPO_DIR)/scripts/agent-ctl.sh stop $(ARGS)
+
+agent-remove: ## 删除某用户的 Agent 容器与子域路由（数据卷保留）：ARGS="<用户名> [slot]"
+	$(REPO_DIR)/scripts/agent-ctl.sh remove $(ARGS)
+
+agent-setkey: ## 设置 DSH 实例的 API Key（写入实例卷，不回显）：ARGS="<用户名> [slot] KEY=VALUE"
+	$(REPO_DIR)/scripts/agent-ctl.sh setkey $(ARGS)
 
 backup: ## 立即执行一次备份
 	$(REPO_DIR)/scripts/backup-now.sh

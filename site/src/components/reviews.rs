@@ -49,8 +49,13 @@ pub fn ReviewSection() -> impl IntoView {
         });
     };
 
-    // 同评论区：读一次即可，登录/登出都会整页重载
-    let logged_in = matches!(user_state.get(), Some(Ok(Some(_))));
+    // 会话依赖区块在“水合完成后”再渲染：SSR 与客户端首帧都为空，
+    // 避免资源两端就绪时机不同造成 hydration 失配。登录/登出会整页重载。
+    let ready = crate::components::ready_after_hydration();
+    let logged_in = move || matches!(user_state.get(), Some(Ok(Some(_))));
+    // 两个视图各用一份克隆（闭包非 Copy，不能同时 move 进两处）
+    let logged_in_form = logged_in.clone();
+    let logged_in_hint = logged_in.clone();
 
     view! {
         <section class="reviews">
@@ -129,7 +134,9 @@ pub fn ReviewSection() -> impl IntoView {
             }}
             </Suspense>
 
-            {logged_in.then(|| view! {
+            {move || {
+                let on_submit = on_submit.clone();
+                (ready.get() && logged_in_form()).then(|| view! {
                 <form class="comment-form" on:submit=on_submit>
                         <label class="field">
                             <span>"评分"</span>
@@ -172,15 +179,18 @@ pub fn ReviewSection() -> impl IntoView {
                             {move || if busy.get() { "提交中…" } else { "提交评价" }}
                         </button>
                 </form>
-            })}
-            {(!logged_in)
-                .then(|| {
-                    view! {
-                        <p class="muted">
-                            "登录后可以提交评价。" <a href="/login">"去登录"</a>
-                        </p>
-                    }
-                })}
+                })
+            }}
+            {move || {
+                (ready.get() && !logged_in_hint())
+                    .then(|| {
+                        view! {
+                            <p class="muted">
+                                "登录后可以提交评价。" <a href="/login">"去登录"</a>
+                            </p>
+                        }
+                    })
+            }}
         </section>
     }
 }

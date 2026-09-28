@@ -11,6 +11,7 @@ PURGE=0
 [ "${1:-}" = "--purge" ] && PURGE=1
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/felix-homelab"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/felix-homelab"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
 SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 REGISTRY_DROPIN="${XDG_CONFIG_HOME:-$HOME/.config}/containers/registries.conf.d/100-felix-homelab.conf"
@@ -59,6 +60,13 @@ rm -f "$SYSTEMD_USER_DIR/felix-homelab-backup.timer" \
 	"$SYSTEMD_USER_DIR/felix-homelab-backup-request.path" \
 	"$SYSTEMD_USER_DIR/felix-homelab-backup-sync-request.path"
 
+log "移除 Agent 定时器与请求触发单元"
+systemctl --user disable --now felix-homelab-agent.timer \
+	felix-homelab-agent-request.path 2>/dev/null || true
+rm -f "$SYSTEMD_USER_DIR/felix-homelab-agent.timer" \
+	"$SYSTEMD_USER_DIR/felix-homelab-agent-request.path" \
+	"$SYSTEMD_USER_DIR/felix-homelab-agent-run.service"
+
 log "移除 Quadlet 软链接"
 for f in "$UNIT_DIR"/felix-homelab*; do
 	[ -L "$f" ] && rm -f "$f"
@@ -76,6 +84,13 @@ fi
 		for v in "${VOLUMES[@]}"; do
 			podman volume rm -f "$v" >/dev/null 2>&1 || true
 		done
+
+		log "删除多租户 Agent 数据卷、工作区与镜像"
+		while IFS= read -r v; do
+			[ -n "$v" ] && podman volume rm -f "$v" >/dev/null 2>&1 || true
+		done < <(podman volume ls --format '{{.Name}}' 2>/dev/null | grep '^felix-agent-' || true)
+		rm -rf "$DATA_DIR/agents"
+		podman image rm -f localhost/felix-agent-opencode:latest >/dev/null 2>&1 || true
 
 		log "删除配置目录 $CONFIG_DIR"
 		rm -rf "$CONFIG_DIR"

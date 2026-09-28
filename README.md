@@ -10,6 +10,8 @@
   挂在入口根路径；
 - **Forgejo 系列**：Forgejo + PostgreSQL + Forgejo Actions Runner；
 - **Homepage 控制台**：容器状态看板（`dash.localhost`）；
+- **AI Agent（多租户 P1 试点）**：每个授权账号一个独立 Agent 容器
+  （模板镜像 + 独立数据卷 + `<用户名>.agent.<域名>` 子域，后台开通/计费授权）；
 - **公网入口（可选）**：云服务器 frp 中转 + 云侧 Caddy HTTPS（示例域名 `grantfelix.top`）；
 - **运维**：Caddy 统一入口、定时备份/异地同步/一键恢复、autoheal 自愈。
 
@@ -63,6 +65,7 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 | 5733     | 主站 (8090) | 站点直连 |
 | 5734     | Nextcloud (80) | 云盘直连 |
 | 3000     | Forgejo (3000) | 仅供 host 网络的作业容器经 `127.0.0.1:3000` 访问 |
+| 20001+   | AI Agent（动态分配） | 仅 Pod 内回环；经 `<用户名>.agent.<域名>` 由 Caddy 鉴权后访问 |
 
 > **Host 网络的代价**：Runner 派发的作业容器使用 `container.network: host`，
 > 因此作业内的进程能访问宿主机上仅监听回环的本地服务，并能绑定宿主端口。
@@ -149,17 +152,24 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 │   ├── runner-labels.txt        # Runner 标签与作业镜像定义
 │   ├── nextcloud.env.example    # Nextcloud 环境变量模板
 │   ├── frpc.toml.example        # 公网中转 frpc 配置模板（可选）
+│   ├── cloud/Caddyfile.example  # 云侧 Caddy 模板（frp 中转 + Agent 子域按需 TLS）
 │   ├── backup/backup.sh         # 备份脚本（容器内执行 Forgejo/主站）
 │   ├── backup/backup-nextcloud.sh  # Nextcloud 备份（宿主机执行）
 │   ├── backup/backup.conf.example  # 备份源与渠道配置模板
 │   └── homepage/                # Homepage 控制台配置（首次安装植入）
 ├── site/                        # 主站源码（Felix Homelab 社区站）
 ├── containers/
+│   ├── agent-opencode/Containerfile # 多租户 Agent 模板镜像（OpenCode + 工具链）
+│   ├── agent-dsh/                   # 多租户 Agent 模板镜像（DeepSeek Harness）
+│   │   ├── Containerfile
+│   │   └── dsh-entry.sh
 │   ├── runner-image/Containerfile   # 修复 Podman 回归的派生镜像
 │   └── site/Containerfile           # 主站构建镜像
 └── scripts/
     ├── deploy.sh                # 交互式菜单入口（安装/备份/恢复/卸载）
     ├── install.sh               # 安装并启动
+    ├── agent-ctl.sh             # 多租户 Agent 编排（建容器/路由/保活）
+    ├── build-agent-image.sh     # 构建 Agent 模板镜像
     ├── migrate-rename.sh        # 从旧命名 Felix-Workstation 迁移到 Felix-Homelab
     ├── register-runner.sh       # 注册/启动 Actions Runner（幂等）
     ├── build-runner-images.sh   # 构建修复版作业镜像
@@ -272,10 +282,169 @@ Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729
 登录主站后点顶栏「后台」，包含：
 
 - **概览**：待审评论/评价、用户数、容器运行与健康汇总、快捷入口
-- **评论 / 评价 / 用户**：审核与管理
-- **Pod**：容器状态与一键重启
-- **备份**：备份源开关与保留天数、备份渠道（rclone / rsync，可多个、可全关）、
-  最近同步结果、备份归档列表、**立即备份 / 立即同步**，全部在页面上完成
+- **评论 / 社区**：社区管理员（communitymaster）负责
+- **评价**：光遇管理员（skymaster）负责
+- **Agent**：Agent 管理员（agentmaster）或超级管理员负责
+- **用户 / Pod / 备份**：仅超级管理员（`users.role = admin`，即站长）
+
+**管理员角色细分**（`后台 → 用户` 里授予/撤销，可叠加）：
+
+| 角色            | 权限 scope | 可见后台          |
+| --------------- | ---------- | ----------------- |
+| （站长）admin   | super      | 全部              |
+| agentmaster     | agent      | 概览 + Agent      |
+| communitymaster | community  | 概览 + 评论 + 社区 |
+| skymaster       | sky        | 概览 + 评价       |
+
+导航会按权限自动过滤，越权访问页面与接口都会被拒（服务端逐个校验）。
+
+## AI Agent（多租户，P1 试点）
+
+每个授权账号可以拥有**多个独立 Agent 实例**（slot）：同一模板镜像 + 独立数据卷 +
+独立工作区 + 随机化子域。站点负责开通与鉴权，宿主脚本负责容器生命周期（含
+**空闲睡眠**与**撤销宽限期回收**）；**用户登录后在首页「我的 Agent」看到自己的
+入口**，后台只负责指定用户、指定类型（OpenCode / DeepSeek Harness）、数量与备注。
+
+```
+用户首屏「我的 Agent」 ──▶ <随机>.<用户名>.<agent名>.agent.grantfelix.top ─▶ 云 Caddy
+      ─▶ frp 20080 ─▶ 本机 Caddy :5729
+            ├─ forward_auth ─▶ 主站 /api/agent/auth?user=…&slot=…
+            │                   （会话 + 订阅校验；睡眠实例在这里被唤醒并等待就绪）
+            └─ reverse_proxy ─▶ 127.0.0.1:20001..（Pod 内该实例的容器）
+```
+
+- **域名样式**：`r4nd0m.<用户名>.<opencode|deepseekharness>.agent.<域名>`。
+  随机段由站点生成并入库（同用户多实例不重复），续期/宽限期内复活时**原样复用**。
+- **后台开通（只新建）**：`后台 → Agent` 顶部的「开通新实例」：填用户名、模板、
+  数量（1–9）、天数（0 = 长期）、备注——每次都会占用新的 slot 与新的随机域名，
+  不影响已有实例。页面写订阅表并落请求文件，宿主
+  `felix-homelab-agent-run.service`（`.path` 即时触发、`.timer` 每 2 分钟巡检）
+  建容器、写路由、回写状态。
+- **逐实例操作**：列表每行都有「续费 + 启停 + 删除」，已撤销行额外有「永久删除」：
+  - **续费**：按填写的天数延长有效期（有效期内叠加）；**已撤销的实例点「续费恢复」
+    会在 30 天宽限期内连同原域名与数据一起复活**；
+  - **启动/暂停**：暂停后网关拒绝访问且不自动唤醒；
+  - **删除**（可恢复）：立即停容器、撤子域路由；数据/域名保留 30 天；
+  - **永久删除**（不可恢复）：用于版本测试、注销用户数据清理等特殊情况，
+    会立即回收容器/数据卷/工作区/子域路由并留下「彻底删除记录」。
+    防误触：必须原样手抄 `我确认永久删除<随机码>`（随机码 = 域名的第一段），
+    服务端逐字校验。
+- **删除记录的留存与显示**：已删除（待宽限）与彻底删除记录都保留 30 天，
+  **后台默认隐藏**；勾选「显示已删除 / 彻底删除记录」即可查看与操作
+  （彻底删除记录只读展示，30 天后自动清理）。
+- **空闲睡眠**：实例无请求超过 `AGENT_IDLE_SECONDS`（默认 300 秒）自动停容器
+  （`desired=sleeping`，数据/域名/登录态保留）；用户再次打开时由网关**自动
+  唤醒并等端口就绪**再放行——首开多等几秒，之后与常驻无异。
+- **删除与回收**：后台「删除」立即停容器、撤子域路由；**数据与域名保留
+  `AGENT_GRACE_DAYS` 天（默认 30）**，期间续期原样复活；超期由宿主回收
+  （容器/数据卷/工作区/路由/状态条目）并在后台清理订阅行，域名随后可再分配。
+- **容器**：`felix-agent-<内部slug>`，加入现有 Pod（端口只在 Pod 内回环）；
+  资源上限由 `.env` 的 `AGENT_MEMORY` / `AGENT_CPUS` / `AGENT_PIDS_LIMIT`
+  控制；带健康检查与 `autoheal` 标签。
+- **数据与账户统一**：订阅在站点 SQLite（`agent_subscriptions`，`UNIQUE(user_id, slot)`）；
+  运行数据在 `felix-agent-<slug>-data` 卷，工作区在
+  `~/.local/share/felix-homelab/agents/<slug>/workspace`。
+- **凭据自备**：平台只收资源费，模型 API Key 由用户在 Agent 内自行配置，
+  存在各自数据卷里，互不可见。
+- **DeepSeek Harness 镜像（官方方式）**：fnm 管理 Node（官方要求
+  `^22.19 || >=24`，固定 24），corepack 开启 yarn/pnpm（pnpm 对齐官方仓库
+  11.7.0），`npm i -g @deepseek-ai/dsh@<固定版本>`。注意 npm 11 默认不执行
+  依赖安装脚本，构建时显式 `--allow-scripts`（否则 spawn helper / koffi /
+  node-pty 缺失，表现为“功能不完整”）。
+- **自带插件市场 dsh-market**：镜像构建期按官方方式
+  `dsh plugin --profile web add dshmarket@<固定版本>`（默认 1.66.3，
+  `.env` 的 `DSHMARKET_VERSION` 可调），用户打开 **设置 → 插件市场** 即可
+  浏览/搜索/一键安装社区插件与主题。容器化下市场的一键重启会替换容器主
+  进程，因此启动参数带 `--patch /opt/dsh-home/agent-patch.yml` 统一禁用
+  （`allowRestart: false`，重启由平台/管理员操作）；`GET /dsh-market/status`
+  应显示 `restart: false`。
+- **镜像升级保数据**：版本戳涵盖 DSH 与市场版本；升级镜像时入口脚本用
+  `dsh-merge-profile.py` **非破坏合并**刷新 profile——官方文件更新，用户
+  自己装的插件、收藏/分组/备注（`state.json`）与手工改过的
+  `cordis.patch.yml` 全部保留；凭据/会话/设置也在数据卷里不受影响。
+  工作区 bind mount 必须带 `:Z`（SELinux 重打标签），否则容器内读不到工作区。
+- **DeepSeek Harness 登录**：DSH 自带令牌登录（每次启动在日志里打印带 token 的
+  URL，约 30 天 Cookie）。宿主脚本从容器日志提取当前令牌写入 `status.json`，
+  首页卡片与后台都显示**带令牌的入口链接**，点开即完成登录。DSH 拒绝绑定
+  `0.0.0.0`，同 Pod 回环反代正好满足。
+- **信任栅栏必须用实例子域**：启动参数 `--trusted-host` 要传浏览器实际访问的
+  域名（`<随机>.<用户名>.<agent名>.agent.<域名>`）。若错传内部 slug，
+  DSH 自己的 `/api`（设置、模型、插件清单等）会全部 403，表现为“模型提供商
+  不可用 / 设置页打不开”。
+
+### 首次启用
+
+```bash
+make agent-build        # 构建 OpenCode 模板镜像（版本固定 OPENCODE_VERSION）
+make agent-build-dsh    # 构建 DeepSeek Harness 模板镜像（版本固定 DSH_VERSION）
+make install            # 装 agents 目录、systemd 触发单元与 Caddy 路由挂载
+# 后台 → Agent 开通；用户登录后首页出现入口（本地域名 <用户名>.agent.localhost）
+```
+
+生产公网访问需两步：
+
+1. **会话 cookie 跨子域**：`COOKIE_DOMAIN=grantfelix.top` 已默认写入 `.env`，
+   主站按请求 Host 自适应——`localhost` 不加 Domain（本地登录照常），
+   `*.grantfelix.top` 才加，非回环 Host 自动带 `Secure`。无需额外配置。
+2. **云侧 Caddy（一次性，之后全自动）**：套用
+   [`config/cloud/Caddyfile.example`](config/cloud/Caddyfile.example)：
+
+   ```caddyfile
+   {
+       on_demand_tls {
+           ask http://127.0.0.1:20080/api/agent/tls-ask
+       }
+   }
+   # 多级 Agent 子域：通配只匹配一级，改用 catch-all + on-demand TLS
+   :443 {
+       tls { on_demand }
+       reverse_proxy 127.0.0.1:20080
+   }
+   ```
+
+   ```bash
+   scp config/cloud/Caddyfile.example root@<云机>:/etc/caddy/Caddyfile
+   ssh root@<云机> 'caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy'
+   ```
+
+   之后新增用户/实例**不必再改云配置**：子域首次访问时云侧 Caddy 先问主站
+   `/api/agent/tls-ask`（经 20080 隧道，只接受回环 Host），仅对有效订阅按需
+   签发证书（TLS-ALPN-01，不需要 DNS API，也不需要通配证书）。
+
+### DeepSeek Harness：远程与本地体验一致（服务商、模型自选）
+
+上游把「设置 / 提供商编辑」限定为 loopback：浏览器地址不是 `localhost`/`127.x`
+时，模型页报 `settings are unavailable in this browser`。该限制**只在客户端一个
+布尔值**（`dsh-client-connection` 的 `isLoopback`），服务端没有特权校验。
+
+本平台每个用户都是**独立容器**、且网关（Caddy forward_auth + 主站会话）已完成
+账户级鉴权，因此模板镜像在构建期精确放开该门控：
+`containers/agent-dsh/unlock-remote-settings.py`（精确字符串替换，找不到目标会
+构建失败，强制升级 DSH 时人工复核）。实测（无头 Chromium 真实点击）远程访问
+「设置 → 模型」与本地完全一致：可自选服务商（DeepSeek 官方 / 自定义 OpenAI
+兼容端点）、填 API Key、选模型，无需管理员介入。
+
+管理员仍有应急/批量的命令行通道（直接写官方凭据文件，DSH 热加载即时生效）：
+
+```bash
+make agent-setkey ARGS="Felix 2 DEEPSEEK_API_KEY=sk-..."   # 写入（值不回显）
+make agent-setkey ARGS="Felix 2"                            # 只看已设置的名称
+```
+
+### 运维
+
+```bash
+make agent-list                    # 状态总览（用户/slot/类型/端口/运行态/健康/子域）
+make agent-stop ARGS="alice 2"     # 暂停 alice 的 2 号实例
+make agent-remove ARGS="alice 2"   # 删除容器与子域路由（数据卷/工作区保留）
+make agent-setkey ARGS="alice 2 DEEPSEEK_API_KEY=sk-..."  # 设置 DSH 密钥
+make agent-apply                   # 手动触发一次请求处理 + 保活
+systemctl --user status felix-homelab-agent-run.service   # 处理日志
+```
+
+> P1 隔离边界：受信用户场景的容器级隔离（rootless、独立卷、独立工作区）。
+> 所有 Agent 与主 Pod 共享网络命名空间（已知取舍）；面向不受信用户应迁移到独立
+> `Felix-Agents` Pod 或每用户 microVM。Agent 容器不挂载 `podman.sock`。
 
 ## 常用命令
 
@@ -293,6 +462,13 @@ make restore    # 从最新备份恢复（ARGS="<归档|latest> --yes" 非交互
 make register   # 重新注册并启动 Runner（幂等，含构建修复镜像）
 make build-images # 仅重建修复版作业镜像
 make build-site # 重建主站镜像
+make agent-build # 构建多租户 Agent 模板镜像（OpenCode）
+make agent-build-dsh # 构建多租户 Agent 模板镜像（DeepSeek Harness）
+make agent-list  # 列出 Agent（用户/slot/类型/端口/运行态）
+make agent-apply # 立即处理 Agent 请求并保活（一般由 systemd 自动触发）
+make agent-stop ARGS="<用户名> [slot]"   # 暂停某用户的 Agent 实例
+make agent-remove ARGS="<用户名> [slot]" # 删除实例容器与子域路由（数据卷保留）
+make agent-setkey ARGS="<用户名> [slot] KEY=VALUE"  # 设置 DSH 密钥（写入实例卷）
 make migrate    # 从旧命名 Felix-Workstation 迁移到 Felix-Homelab
 make uninstall  # 停止并移除单元，保留数据
 make purge      # 连数据卷、配置一起删除（危险）
@@ -314,6 +490,10 @@ make purge      # 连数据卷、配置一起删除（危险）
   首次安装植入后即归你所有，后续 `make install` 不会覆盖）。
 - **Runner**：由 `scripts/register-runner.sh` 依据当前 Runner 镜像自动生成
   `runner-config.yml`，并注入 Forgejo 地址、uuid、token 与标签。
+- **多租户 Agent**：`.env` 的 `AGENT_*`（镜像、资源上限、子域）；
+  `~/.config/felix-homelab/agents/` 下 `state.json`（宿主状态）、`requests/`（后台请求）、
+  `caddy/`（每用户路由）、`status.json`（回写后台）。这些文件含每用户网关口令，
+  权限已收紧，不要提交到 Git。
 - **公网中转**：`~/.config/felix-homelab/frp/frpc.toml`（模板
   `config/frpc.toml.example`；云侧 frps/Caddy 配置见「公网访问（云服务器中转）」）。
 
@@ -416,6 +596,7 @@ hostname 作为监听地址。
 | `felix-homelab-nextcloud-data` | Nextcloud 程序、配置与文件 |
 | `felix-homelab-runner-data`  | Runner 注册与缓存    |
 | `felix-homelab-caddy-*`      | Caddy 证书与配置     |
+| `felix-agent-<用户名>-data`  | 各用户 Agent 运行数据（凭据/会话，每个授权账号一个） |
 
 配置目录（含 `.env`、`Caddyfile`、`homepage/`、`runner-config.yml`、`runner.secret`）
 位于 `~/.config/felix-homelab/`，其中机密文件不入库；备份源与渠道配置在

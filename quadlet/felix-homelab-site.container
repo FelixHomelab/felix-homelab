@@ -30,6 +30,8 @@ Volume=%t/podman/podman.sock:/run/podman/podman.sock
 Volume=%h/.local/share/felix-homelab/backups:/backups:ro
 Volume=%h/.config/felix-homelab/sync:/sync
 Volume=%h/.config/felix-homelab/backup:/status:ro
+# 多租户 Agent：网页后台写请求文件、读宿主回写的运行状态（agent-ctl.sh 执行）
+Volume=%h/.config/felix-homelab/agents:/agents
 # 读取 podman.sock 需要放宽 SELinux 标签（站点仅管理员可访问 Pod 管理页）
 SecurityLabelDisable=true
 HealthCmd=curl -fsS http://127.0.0.1:8090/healthz

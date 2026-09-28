@@ -8,13 +8,19 @@ use leptos_meta::Title;
 use leptos_router::hooks::use_location;
 
 use crate::admin::{
-    am_i_admin, admin_backup_config, admin_backup_list, admin_backup_now, admin_backup_save_config,
+    admin_backup_config, admin_backup_list, admin_backup_now, admin_backup_save_config,
     admin_backup_trigger_sync, admin_delete_comment, admin_delete_community, admin_delete_review,
-    admin_list_comments, admin_list_community, admin_list_pod, admin_list_reviews, admin_list_users,
-    admin_load_overview, admin_reply_review, admin_restart_container, admin_set_comment_status,
-    admin_set_community_status, admin_set_review_status, admin_set_user_role, admin_set_user_status,
-    AdminComment, AdminCommunityPost, AdminReview, AdminUser, BackupChannel, PodContainer,
+    admin_list_comments, admin_list_community, admin_list_pod, admin_list_reviews,
+    admin_list_users, admin_load_overview, admin_reply_review, admin_restart_container,
+    admin_set_comment_status, admin_set_community_status, admin_set_review_status,
+    admin_set_user_role, admin_set_user_scope, admin_set_user_status, AdminComment,
+    AdminCommunityPost, AdminReview, AdminUser, BackupChannel, PodContainer,
 };
+use crate::agents::{
+    admin_agent_action, admin_grant_agent, admin_list_agents, admin_purge_agent,
+    admin_renew_agent, agent_kind_label, AgentRow,
+};
+use crate::roles::{admin_permissions, role_label, SCOPED_ROLES};
 use crate::community::kind_label as community_kind_label;
 use crate::components::PageHeader;
 
@@ -51,24 +57,73 @@ fn forbidden() -> impl IntoView {
     }
 }
 
-/// 后台各页共用的导航（当前页高亮）。
+/// 后台各页共用的导航（当前页高亮；按权限过滤）。
 #[component]
-fn AdminNav() -> impl IntoView {
+fn AdminNav(perms: Vec<String>) -> impl IntoView {
     // 归一化尾斜杠：/admin/ 与 /admin 视为同一页
     let path = use_location().pathname;
     let active = move |href: &str| path.get().trim_end_matches('/') == href;
+    let perms = StoredValue::new(perms);
+    let has = move |need: &str| {
+        perms.with_value(|list| {
+            list.iter().any(|p| p == "super")
+                || (need == "staff" && !list.is_empty())
+                || list.iter().any(|p| p == need)
+        })
+    };
 
     view! {
         <nav class="admin-nav">
-            <a href="/admin" class:active=move || active("/admin")>"概览"</a>
-            <a href="/admin/comments" class:active=move || active("/admin/comments")>"评论"</a>
-            <a href="/admin/community" class:active=move || active("/admin/community")>"社区"</a>
-            <a href="/admin/sky-reviews" class:active=move || active("/admin/sky-reviews")>
-                "评价"
-            </a>
-            <a href="/admin/users" class:active=move || active("/admin/users")>"用户"</a>
-            <a href="/admin/pod" class:active=move || active("/admin/pod")>"Pod"</a>
-            <a href="/admin/backup" class:active=move || active("/admin/backup")>"备份"</a>
+            {has("staff")
+                .then(|| view! { <a href="/admin" class:active=move || active("/admin")>"概览"</a> })}
+            {has("community")
+                .then(|| {
+                    view! {
+                        <a href="/admin/comments" class:active=move || active("/admin/comments")>
+                            "评论"
+                        </a>
+                    }
+                })}
+            {has("community")
+                .then(|| {
+                    view! {
+                        <a
+                            href="/admin/community"
+                            class:active=move || active("/admin/community")
+                        >
+                            "社区"
+                        </a>
+                    }
+                })}
+            {has("sky")
+                .then(|| {
+                    view! {
+                        <a
+                            href="/admin/sky-reviews"
+                            class:active=move || active("/admin/sky-reviews")
+                        >
+                            "评价"
+                        </a>
+                    }
+                })}
+            {has("super")
+                .then(|| {
+                    view! { <a href="/admin/users" class:active=move || active("/admin/users")>"用户"</a> }
+                })}
+            {has("super")
+                .then(|| {
+                    view! { <a href="/admin/pod" class:active=move || active("/admin/pod")>"Pod"</a> }
+                })}
+            {has("agent")
+                .then(|| {
+                    view! {
+                        <a href="/admin/agents" class:active=move || active("/admin/agents")>"Agent"</a>
+                    }
+                })}
+            {has("super")
+                .then(|| {
+                    view! { <a href="/admin/backup" class:active=move || active("/admin/backup")>"备份"</a> }
+                })}
         </nav>
     }
 }
@@ -85,19 +140,28 @@ fn AdminNav() -> impl IntoView {
 fn AdminPage(
     #[prop(into)] title: String,
     #[prop(into)] lede: String,
+    /// 需要的权限 scope：staff（任意管理）/ community / sky / agent / super
+    #[prop(into)]
+    perm: &'static str,
     children: ChildrenFn,
 ) -> impl IntoView {
-    let is_admin = Resource::new_blocking(|| (), |_| am_i_admin());
+    let perms = Resource::new_blocking(|| (), |_| admin_permissions());
 
     view! {
         <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
-            {move || match is_admin.get() {
-                Some(Ok(true)) => {
+            {move || match perms.get() {
+                Some(Ok(list)) => {
+                    let allowed = list.iter().any(|p| p == "super")
+                        || (perm == "staff" && !list.is_empty())
+                        || list.iter().any(|p| p == perm);
+                    if !allowed {
+                        return forbidden().into_any();
+                    }
                     let children = children.clone();
                     view! {
                         <section class="wrap">
                             <PageHeader title=title.clone() lede=lede.clone() />
-                            <AdminNav />
+                            <AdminNav perms=list />
                             {children()}
                         </section>
                     }
@@ -141,7 +205,7 @@ pub fn AdminDashboardPage() -> impl IntoView {
 
     view! {
         <Title text="后台 — Felix Homelab" />
-        <AdminPage title="后台" lede="审核评论、管理用户、回复评价、看护容器。".to_string()>
+        <AdminPage title="后台" lede="审核评论、管理用户、回复评价、看护容器。".to_string() perm="staff">
             <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
                 {move || match overview.get() {
                     None => view! { <p class="muted">"载入中…"</p> }.into_any(),
@@ -260,7 +324,7 @@ pub fn AdminCommentsPage() -> impl IntoView {
 
     view! {
         <Title text="评论审核 — Felix Homelab" />
-        <AdminPage title="评论审核" lede="通过后才会显示在页面上。".to_string()>
+        <AdminPage title="评论审核" lede="通过后才会显示在页面上。".to_string() perm="community">
             <StatusFilter only_pending=only_pending />
             <p class="notice" role="status">{move || message.get()}</p>
 
@@ -378,7 +442,7 @@ pub fn AdminCommunityPage() -> impl IntoView {
 
     view! {
         <Title text="社区管理 — Felix Homelab" />
-        <AdminPage title="社区管理" lede="发布即公开；这里负责下架、恢复与删除。".to_string()>
+        <AdminPage title="社区管理" lede="发布即公开；这里负责下架、恢复与删除。".to_string() perm="community">
             <div class="field-row">
                 {filter_tab("已发布", "published")}
                 {filter_tab("已下架", "hidden")}
@@ -486,7 +550,7 @@ pub fn AdminReviewsPage() -> impl IntoView {
 
     view! {
         <Title text="评价审核 — Felix Homelab" />
-        <AdminPage title="评价审核" lede="通过后才会显示在代跑页上。".to_string()>
+        <AdminPage title="评价审核" lede="通过后才会显示在代跑页上。".to_string() perm="sky">
             <StatusFilter only_pending=only_pending />
             <p class="notice" role="status">{move || message.get()}</p>
 
@@ -604,7 +668,8 @@ pub fn AdminUsersPage() -> impl IntoView {
         <Title text="用户管理 — Felix Homelab" />
         <AdminPage
             title="用户管理"
-            lede="封禁后该账号立刻无法登录，已登录的会话也会立即失效。".to_string()
+            lede="封禁后该账号立刻无法登录，已登录的会话也会立即失效；可授予细分管理角色。".to_string()
+            perm="super"
         >
             <p class="notice" role="status">{move || message.get()}</p>
 
@@ -648,17 +713,46 @@ fn AdminUserRow(
     let id = user.id;
     let banned = user.status == "banned";
     let is_admin = user.role == "admin";
+    let scopes = user.scopes.clone();
 
     // 「这个动作做完会变成什么」直接写在按钮上，不必让操作者心算
     let status_label = if banned { "解封" } else { "封禁" };
     let next_status = if banned { "active" } else { "banned" };
-    let role_label = if is_admin { "取消管理员" } else { "设为管理员" };
+    let super_label = if is_admin { "取消超级管理员" } else { "设为超级管理员" };
     let next_role = if is_admin { "user" } else { "admin" };
+
+    let scope_role = RwSignal::new(SCOPED_ROLES[0].to_string());
 
     view! {
         <article class="admin-row">
             <p class="admin-meta">
-                <span class=format!("status status-role-{}", user.role)>{user.role.clone()}</span>
+                <span class="status">
+                    {if is_admin { role_label("admin") } else { role_label("user") }}
+                </span>
+                {scopes
+                    .into_iter()
+                    .map(|scope| {
+                        let value = scope.clone();
+                        view! {
+                            <span class="status">
+                                {role_label(&scope)}
+                                <button
+                                    class="link-button"
+                                    title="撤销该角色"
+                                    on:click=move |_| {
+                                        run_action(
+                                            revision,
+                                            message,
+                                            admin_set_user_scope(id, value.clone(), false),
+                                        );
+                                    }
+                                >
+                                    "×"
+                                </button>
+                            </span>
+                        }
+                    })
+                    .collect_view()}
                 <span class=format!("status status-{}", user.status)>{user.status.clone()}</span>
                 <strong>{user.display_name.clone()}</strong>
                 <span class="comment-time">"@"{user.username.clone()}</span>
@@ -669,6 +763,27 @@ fn AdminUserRow(
                     .map(|time| view! { <span class="comment-time">"上次登录 "{time}</span> })}
             </p>
             <div class="admin-actions">
+                <select
+                    prop:value=move || scope_role.get()
+                    on:change=move |ev| scope_role.set(event_target_value(&ev))
+                >
+                    {SCOPED_ROLES
+                        .iter()
+                        .map(|role| view! { <option value=*role>{role_label(role)}</option> })
+                        .collect_view()}
+                </select>
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        run_action(
+                            revision,
+                            message,
+                            admin_set_user_scope(id, scope_role.get(), true),
+                        );
+                    }
+                >
+                    "授予角色"
+                </button>
                 <button
                     class="btn btn-small"
                     on:click=move |_| {
@@ -683,7 +798,7 @@ fn AdminUserRow(
                         run_action(revision, message, admin_set_user_role(id, next_role.into()))
                     }
                 >
-                    {role_label}
+                    {super_label}
                 </button>
             </div>
         </article>
@@ -704,6 +819,7 @@ pub fn AdminPodPage() -> impl IntoView {
         <AdminPage
             title="Pod 管理"
             lede="Felix-Homelab 内的容器状态；重启会短暂中断对应服务。".to_string()
+            perm="super"
         >
             <p class="notice" role="status">{move || message.get()}</p>
 
@@ -808,6 +924,439 @@ fn PodRow(
                     "重启"
                 </button>
             </div>
+        </article>
+    }
+}
+
+/// Agent 管理（多租户试点）：授权/续费、启停、删除与运行状态。
+///
+/// 站点只改订阅与请求文件，真正建容器/路由由宿主 `scripts/agent-ctl.sh`
+/// 在 systemd 触发后完成，状态通过 `/agents/status.json` 回显。
+#[component]
+pub fn AdminAgentPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let show_deleted = RwSignal::new(false);
+    let agents = Resource::new_blocking(
+        move || (revision.get(), show_deleted.get()),
+        |(_, include_deleted)| admin_list_agents(include_deleted),
+    );
+
+    let name = RwSignal::new(String::new());
+    let kind = RwSignal::new("opencode".to_string());
+    let count = RwSignal::new(1i64);
+    let days = RwSignal::new(30i64);
+    let note = RwSignal::new(String::new());
+
+    let submit_grant = move |_| {
+        if name.get().trim().is_empty() {
+            message.set("请填写要开通的用户名。".to_string());
+            return;
+        }
+        run_action(
+            revision,
+            message,
+            admin_grant_agent(name.get(), kind.get(), count.get(), days.get(), note.get()),
+        );
+    };
+
+    view! {
+        <Title text="Agent 管理 — Felix Homelab" />
+        <AdminPage
+            title="Agent 管理"
+            lede="每个授权账号一个独立容器（模板镜像 + 独立数据卷 + 独立子域）。授权/停用后由宿主脚本自动执行。".to_string()
+            perm="agent"
+        >
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <article class="channel-card">
+                <div class="channel-head">
+                    <strong>"开通新实例"</strong>
+                </div>
+                <div class="field-row">
+                    <label class="field field-grow">
+                        <span>"用户名"</span>
+                        <input
+                            type="text"
+                            placeholder="站点账号（大小写不敏感）"
+                            prop:value=move || name.get()
+                            on:input=move |ev| name.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class="field">
+                        <span>"模板"</span>
+                        <select
+                            prop:value=move || kind.get()
+                            on:change=move |ev| kind.set(event_target_value(&ev))
+                        >
+                            <option value="opencode">"OpenCode"</option>
+                            <option value="dsh">"DeepSeek Harness"</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>"数量"</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="9"
+                            prop:value=move || count.get().to_string()
+                            on:input=move |ev| {
+                                count.set(event_target_value(&ev).parse::<i64>().unwrap_or(1));
+                            }
+                        />
+                    </label>
+                    <label class="field">
+                        <span>"有效天数"</span>
+                        <input
+                            type="number"
+                            min="0"
+                            max="3650"
+                            prop:value=move || days.get().to_string()
+                            on:input=move |ev| {
+                                days.set(event_target_value(&ev).parse::<i64>().unwrap_or(30));
+                            }
+                        />
+                    </label>
+                    <label class="field field-grow">
+                        <span>"备注"</span>
+                        <input
+                            type="text"
+                            placeholder="付款记录等（可选）"
+                            prop:value=move || note.get()
+                            on:input=move |ev| note.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <button class="btn" on:click=submit_grant>"开通"</button>
+                </div>
+                <p class="muted">
+                    "为指定用户新建该类型的 N 个实例（新的随机域名，与现有实例互不影响）。"
+                    "0 天 = 长期有效。续费 / 复活已撤销的实例请在下方每一行操作。"
+                    "用户登录后在首页能看到自己的入口；DeepSeek Harness 首次进入用卡片上的带令牌链接。"
+                </p>
+            </article>
+
+            <div class="field-row">
+                <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
+                    "刷新状态"
+                </button>
+                <label class="toggle-row">
+                    <input
+                        type="checkbox"
+                        prop:checked=move || show_deleted.get()
+                        on:change=move |ev| show_deleted.set(event_target_checked(&ev))
+                    />
+                    <span class="toggle-text">"显示已删除 / 彻底删除记录（留存 30 天，默认隐藏）"</span>
+                </label>
+            </div>
+
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match agents.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"读取 Agent 列表失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) if list.is_empty() => view! {
+                        <p class="muted">"还没有开通任何 Agent。"</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) => view! {
+                        <div class="admin-list">
+                            {list
+                                .into_iter()
+                                .map(|agent| {
+                                    view! {
+                                        <AgentRowView
+                                            agent=agent
+                                            revision=revision
+                                            message=message
+                                        />
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
+        </AdminPage>
+    }
+}
+
+/// Agent 管理里的一行。
+#[component]
+fn AgentRowView(
+    agent: AgentRow,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let purged = agent.purged_at.is_some();
+    let status_label = if purged {
+        "已彻底删除"
+    } else {
+        match agent.status.as_str() {
+            "active" => "已授权",
+            "stopped" => "已暂停",
+            "revoked" => "已撤销（30 天内可续期）",
+            other => other,
+        }
+    };
+    let status_class = if purged {
+        "status"
+    } else {
+        match agent.status.as_str() {
+            "active" => "status status-running",
+            "stopped" => "status status-exited",
+            _ => "status",
+        }
+    };
+    let runtime_label = match &agent.runtime {
+        Some(runtime) if runtime.desired == "sleeping" => "睡眠中".to_string(),
+        Some(runtime) => match runtime.state.as_str() {
+            "running" => "运行中",
+            "exited" => "已停止",
+            "created" => "已创建",
+            other => other,
+        }
+        .to_string(),
+        None => "未创建（等待宿主执行）".to_string(),
+    };
+    let runtime_class = match agent.runtime.as_ref().map(|r| r.state.as_str()) {
+        Some("running") => "status status-running",
+        Some(_) => "status status-exited",
+        None => "status",
+    };
+    let health = agent.runtime.as_ref().and_then(|r| r.health.clone());
+    let health_class = match health.as_deref() {
+        Some("healthy") => "status status-healthy",
+        Some("unhealthy") => "status status-unhealthy",
+        _ => "status",
+    };
+    let port = agent.runtime.as_ref().map(|r| r.port).unwrap_or(0);
+
+    let slot = agent.slot;
+    let revoked = agent.status == "revoked" && !purged;
+    let renew_days = RwSignal::new(30i64);
+    let confirming = RwSignal::new(false);
+    let confirm_text = RwSignal::new(String::new());
+    let confirm_expected = format!(
+        "我确认永久删除{}",
+        agent.subdomain.split('.').next().unwrap_or("")
+    );
+    let confirm_expected_check = confirm_expected.clone();
+    let username_start = agent.username.clone();
+    let username_stop = agent.username.clone();
+    let username_remove = agent.username.clone();
+    let username_renew = agent.username.clone();
+    let username_purge = agent.username.clone();
+
+    view! {
+        <article class="admin-row">
+            <p class="admin-meta">
+                <span class=status_class>{status_label.to_string()}</span>
+                {(!purged)
+                    .then(|| {
+                        view! { <span class=runtime_class>{runtime_label.clone()}</span> }
+                    })}
+                {(!purged)
+                    .then(|| health.map(|health| view! { <span class=health_class>{health}</span> }))}
+                <strong>{agent.username.clone()}</strong>
+                <span class="comment-time">"实例 #" {slot}</span>
+                <span class="admin-image">{agent_kind_label(&agent.kind)}</span>
+                {agent
+                    .expires_at
+                    .clone()
+                    .map(|expires| {
+                        view! { <span class="comment-time">"到期 " {expires}</span> }
+                    })}
+                {(!purged && port > 0)
+                    .then(|| view! { <span class="comment-time">"回环 " {port}</span> })}
+                {agent
+                    .purged_at
+                    .clone()
+                    .map(|time| {
+                        view! { <span class="comment-time">"彻底删除于 " {time}</span> }
+                    })}
+            </p>
+            <p class="admin-body">
+                {if purged {
+                    view! { <span>{agent.url.clone()}</span> }.into_any()
+                } else {
+                    let href = agent
+                        .login_url
+                        .clone()
+                        .unwrap_or_else(|| agent.url.clone());
+                    view! { <a href=href target="_blank" rel="noreferrer">{agent.url.clone()}</a> }
+                        .into_any()
+                }}
+                {(agent.kind == "dsh")
+                    .then(|| view! { <span class="comment-time">"（带令牌登录链接）"</span> })}
+                {(!agent.note.trim().is_empty())
+                    .then(|| {
+                        view! {
+                            <span class="comment-time">"　" {agent.note.clone()}</span>
+                        }
+                    })}
+            </p>
+            {purged
+                .then(|| {
+                    view! {
+                        <div class="admin-actions">
+                            <span class="muted">"记录留存中（30 天后自动清理）"</span>
+                        </div>
+                    }
+                })}
+            {(!purged)
+                .then(|| {
+                    view! {
+                        <div class="admin-actions">
+                            <input
+                                class="text-input renew-days"
+                                type="number"
+                                min="1"
+                                max="3650"
+                                title="续费天数"
+                                prop:value=move || renew_days.get().to_string()
+                                on:input=move |ev| {
+                                    renew_days.set(event_target_value(&ev).parse::<i64>().unwrap_or(30));
+                                }
+                            />
+                            <button
+                                class="btn btn-small"
+                                on:click=move |_| {
+                                    let username = username_renew.clone();
+                                    let days = renew_days.get();
+                                    run_action(
+                                        revision,
+                                        message,
+                                        admin_renew_agent(username, slot, days, String::new()),
+                                    );
+                                }
+                            >
+                                {if revoked { "续费恢复" } else { "续费" }}
+                            </button>
+                            {(!revoked)
+                                .then(|| {
+                                    view! {
+                                        <button
+                                            class="btn btn-small"
+                                            on:click=move |_| {
+                                                run_action(
+                                                    revision,
+                                                    message,
+                                                    admin_agent_action(
+                                                        username_start.clone(),
+                                                        slot,
+                                                        "start".to_string(),
+                                                    ),
+                                                );
+                                            }
+                                        >
+                                            "启动"
+                                        </button>
+                                        <button
+                                            class="btn btn-small"
+                                            on:click=move |_| {
+                                                run_action(
+                                                    revision,
+                                                    message,
+                                                    admin_agent_action(
+                                                        username_stop.clone(),
+                                                        slot,
+                                                        "stop".to_string(),
+                                                    ),
+                                                );
+                                            }
+                                        >
+                                            "暂停"
+                                        </button>
+                                        <button
+                                            class="btn btn-small btn-danger"
+                                            on:click=move |_| {
+                                                run_action(
+                                                    revision,
+                                                    message,
+                                                    admin_agent_action(
+                                                        username_remove.clone(),
+                                                        slot,
+                                                        "remove".to_string(),
+                                                    ),
+                                                );
+                                            }
+                                        >
+                                            "删除"
+                                        </button>
+                                    }
+                                })}
+                            {revoked
+                                .then(|| {
+                                    view! {
+                                        <button
+                                            class="btn btn-small btn-danger"
+                                            on:click=move |_| confirming.set(true)
+                                        >
+                                            "永久删除"
+                                        </button>
+                                    }
+                                })}
+                        </div>
+                    }
+                })}
+            {move || {
+                // 外层是响应式闭包（会多次执行）：每次克隆内层要 move 的捕获
+                let username = username_purge.clone();
+                let expected_display = confirm_expected.clone();
+                let expected_check = confirm_expected_check.clone();
+                (confirming.get() && revoked)
+                    .then(|| {
+                        view! {
+                            <div class="agent-key">
+                                <p class="muted">
+                                    "永久删除会立即销毁容器、数据卷、工作区与子域路由，不可恢复。"
+                                    "请原样输入："
+                                    <code>{expected_display.clone()}</code>
+                                </p>
+                                <div class="field-row">
+                                    <input
+                                        class="text-input"
+                                        type="text"
+                                        placeholder=expected_display.clone()
+                                        prop:value=move || confirm_text.get()
+                                        on:input=move |ev| confirm_text.set(event_target_value(&ev))
+                                    />
+                                    <button
+                                        class="btn btn-small btn-danger"
+                                        disabled=move || {
+                                            confirm_text.get().trim() != expected_check
+                                        }
+                                        on:click=move |_| {
+                                            let username = username.clone();
+                                            let text = confirm_text.get();
+                                            confirming.set(false);
+                                            confirm_text.set(String::new());
+                                            run_action(
+                                                revision,
+                                                message,
+                                                admin_purge_agent(username, slot, text),
+                                            );
+                                        }
+                                    >
+                                        "确认永久删除"
+                                    </button>
+                                    <button
+                                        class="btn btn-small"
+                                        on:click=move |_| {
+                                            confirming.set(false);
+                                            confirm_text.set(String::new());
+                                        }
+                                    >
+                                        "取消"
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    })
+            }}
         </article>
     }
 }
@@ -1043,6 +1592,7 @@ pub fn AdminBackupPage() -> impl IntoView {
         <AdminPage
             title="备份"
             lede="选择要备份的内容；每个备份源、每个异地渠道都能单独开关。".to_string()
+            perm="super"
         >
             <p class="notice" role="status">{move || message.get()}</p>
 

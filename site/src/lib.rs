@@ -13,6 +13,7 @@
 
 
 pub mod admin;
+pub mod agents;
 pub mod app;
 pub mod auth;
 pub mod comments;
@@ -21,6 +22,7 @@ pub mod components;
 pub mod content;
 pub mod pages;
 pub mod reviews;
+pub mod roles;
 pub mod theme;
 
 // 只在服务端存在：客户端 wasm 包里既没有数据库也没有 Axum
@@ -63,6 +65,8 @@ pub fn register_server_fns() {
     server_fn::axum::register_explicit::<admin::AdminListUsers>();
     server_fn::axum::register_explicit::<admin::AdminSetUserStatus>();
     server_fn::axum::register_explicit::<admin::AdminSetUserRole>();
+    server_fn::axum::register_explicit::<admin::AdminSetUserScope>();
+    server_fn::axum::register_explicit::<roles::AdminPermissions>();
     server_fn::axum::register_explicit::<admin::AdminListPod>();
     server_fn::axum::register_explicit::<admin::AdminRestartContainer>();
     // admin：社区投稿（直接发布 + 事后管理）
@@ -75,6 +79,13 @@ pub fn register_server_fns() {
     server_fn::axum::register_explicit::<admin::AdminBackupTriggerSync>();
     server_fn::axum::register_explicit::<admin::AdminBackupNow>();
     server_fn::axum::register_explicit::<admin::AdminBackupList>();
+
+    // agents：多租户 AI Agent 后台
+    server_fn::axum::register_explicit::<agents::AdminListAgents>();
+    server_fn::axum::register_explicit::<agents::AdminGrantAgent>();
+    server_fn::axum::register_explicit::<agents::AdminAgentAction>();
+    server_fn::axum::register_explicit::<agents::AdminRenewAgent>();
+    server_fn::axum::register_explicit::<agents::AdminPurgeAgent>();
 
     // auth
     server_fn::axum::register_explicit::<auth::CurrentUser>();

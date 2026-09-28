@@ -4,6 +4,7 @@ pub mod admin;
 pub mod community;
 
 use crate::auth::UserState;
+use crate::agents::{agent_kind_label, my_agents, AgentRow};
 use crate::community::list_community;
 use crate::components::comments::CommentSection;
 use crate::components::community::{CommunityCard, ContentTabs};
@@ -114,6 +115,8 @@ pub fn HomePage() -> impl IntoView {
             </div>
         </section>
 
+        <MyAgentsSection />
+
         <section class="wrap section">
             <div class="section-head">
                 <h2>"官方文章"</h2>
@@ -159,8 +162,104 @@ pub fn HomePage() -> impl IntoView {
 }
 
 // ---------------------------------------------------------------------------
-// 博客
+// 我的 Agent（登录用户首屏入口）
 // ---------------------------------------------------------------------------
+
+/// 登录用户首页的 Agent 入口：管理员开通后自动出现，未开通/未登录不渲染。
+///
+/// 数据依赖会话 Cookie，SSR 与客户端水合的资源就绪时机不一致会让 DOM 错位
+/// （tachys hydration 失配 → 整站 wasm 水合崩溃，站内跳转失灵、内容不显示）。
+/// 因此这里**服务端输出空，水合完成后才在客户端渲染**：
+/// SSR 与客户端首帧都是空，天然一致；随后 effect 触发正常更新。
+#[component]
+fn MyAgentsSection() -> impl IntoView {
+    let agents = Resource::new(|| (), |_| my_agents());
+    let mounted = RwSignal::new(false);
+    // effect 只在客户端运行，且在水合完成后执行
+    Effect::new(move |_| mounted.set(true));
+
+    move || {
+        if !mounted.get() {
+            return None;
+        }
+        let list = agents
+            .get()
+            .and_then(|result| result.ok())
+            .filter(|list| !list.is_empty())?;
+        Some(view! {
+            <section class="wrap section">
+                <div class="section-head">
+                    <h2>"我的 Agent"</h2>
+                    <span class="muted">"管理员开通后自动显示在这里"</span>
+                </div>
+                <div class="agent-grid">
+                    {list
+                        .into_iter()
+                        .map(|agent| view! { <MyAgentCard agent=agent /> })
+                        .collect_view()}
+                </div>
+            </section>
+        })
+    }
+}
+
+/// 首屏上的一个 Agent 入口卡片。
+#[component]
+fn MyAgentCard(agent: AgentRow) -> impl IntoView {
+    let status_label = match agent.status.as_str() {
+        "active" => "已开通",
+        "stopped" => "已暂停",
+        other => other,
+    };
+    let status_class = match agent.status.as_str() {
+        "active" => "status status-running",
+        "stopped" => "status status-exited",
+        _ => "status",
+    };
+    let runtime_hint = match agent
+        .runtime
+        .as_ref()
+        .map(|r| (r.state.as_str(), r.desired.as_str()))
+    {
+        Some(("running", _)) => "运行中",
+        Some((_, "sleeping")) => "睡眠中（打开即唤醒）",
+        Some(("exited", _)) => "已停止",
+        Some(_) => "准备中",
+        None => "部署中",
+    };
+    let expires = agent
+        .expires_at
+        .clone()
+        .map(|value| format!("有效期至 {value}"))
+        .unwrap_or_else(|| "长期有效".to_string());
+    let note = agent.note.trim().to_string();
+    let is_dsh = agent.kind == "dsh";
+    // DSH 首次进入需要带令牌链接；OpenCode 直接打开即可
+    let href = agent.login_url.clone().unwrap_or_else(|| agent.url.clone());
+
+    view! {
+        <a class="agent-card" href=href target="_blank" rel="noreferrer">
+            <div class="agent-card-head">
+                <strong>{agent_kind_label(&agent.kind)}</strong>
+                <span class=status_class>{status_label.to_string()}</span>
+            </div>
+            <p class="agent-card-url">{agent.url.clone()}</p>
+            <p class="muted">
+                "实例 #" {agent.slot} " · " {runtime_hint} " · " {expires}
+            </p>
+            {is_dsh
+                .then(|| {
+                    view! {
+                        <p class="muted">
+                            "首次进入请点此卡片（自动完成登录）；模型/服务商在站内「设置」里配置。"
+                        </p>
+                    }
+                })}
+            {(!note.is_empty())
+                .then(|| view! { <p class="muted">{note.clone()}</p> })}
+        </a>
+    }
+}
 
 /// 博客列表。
 #[component]

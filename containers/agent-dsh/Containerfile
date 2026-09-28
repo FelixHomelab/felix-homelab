@@ -1,0 +1,135 @@
+# Felix-Homelab 多租户 Agent 模板镜像（DeepSeek Harness 版）
+#
+#  构建：scripts/build-agent-image.sh dsh（或 make agent-build-dsh）
+#
+# 按官方方式部署（README：`npx @deepseek-ai/dsh web`）：
+#   · fnm 管理 Node（官方 engines：^22.19.0 || >=24.0.0，这里固定 24）；
+#   · corepack 开启 yarn / pnpm，并按官方仓库把 pnpm 对齐到 11.7.0；
+#   · npm 全局安装 `@deepseek-ai/dsh`，版本用 DSH_VERSION 固定（勿用 latest）。
+# 另：
+#   · 构建期初始化 web profile（node_modules 是指向全局 dsh 依赖的符号链接）；
+#   · 写入版本戳，入口脚本在镜像升级时刷新 profile（保留凭据/会话/设置）；
+#   · DSH web 拒绝 0.0.0.0 且自带令牌登录，同 Pod 内由 Caddy 回环反代 + 网关鉴权。
+ARG FEDORA_VERSION=44
+FROM registry.fedoraproject.org/fedora:${FEDORA_VERSION}
+
+USER root
+RUN dnf install -y --setopt=install_weak_deps=False \
+	bash \
+	git \
+	curl \
+	jq \
+	unzip \
+	openssh-clients \
+	python3 \
+	make \
+	tzdata \
+	ca-certificates \
+ && dnf clean all
+
+# ---- fnm + Node 24（国内走 npmmirror 的 Node 发行镜像）----
+# fnm 官网安装脚本域名（fnm.vercel.app）在国内不可达，改从 GitHub Release 安装。
+ARG FNM_VERSION=v1.39.0
+ENV FNM_DIR=/opt/fnm
+RUN curl -fsSL -o /tmp/fnm.zip \
+	"https://github.com/Schniz/fnm/releases/download/${FNM_VERSION}/fnm-linux.zip" \
+ && unzip -o /tmp/fnm.zip -d /usr/local/bin \
+ && chmod 0755 /usr/local/bin/fnm \
+ && rm -f /tmp/fnm.zip \
+ && fnm --version \
+ && fnm install 24 --node-dist-mirror https://npmmirror.com/mirrors/node \
+ && fnm default 24
+ENV PATH="/opt/fnm/aliases/default/bin:${PATH}"
+
+# ---- corepack：开启 yarn / pnpm，并把准备好的版本烤进镜像 ----
+# COREPACK_HOME 必须在构建期与运行期一致，否则运行时会重新下载
+# “known good”版本（pnpm 12 / yarn 4），既慢又依赖外网。
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack enable \
+ && corepack prepare pnpm@11.7.0 --activate \
+ && corepack prepare yarn@1.22.22 --activate \
+ && pnpm -v && yarn -v
+
+# ---- 官方方式安装 dsh（固定版本）----
+# 注意：npm 11 起默认不执行依赖的安装脚本（allow-scripts 安全策略），
+# 而 dsh 依赖的 spawn helper / koffi / node-pty 需要跑 install 脚本；
+# 不放开会得到“装上了但功能缺失”的 DSH。
+ARG DSH_VERSION=0.1.7-rc.2
+RUN npm install -g \
+	--allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs \
+	"@deepseek-ai/dsh@${DSH_VERSION}" \
+ && dsh --version
+
+# ---- 远程与本地部署体验一致：解锁客户端“设置/提供商”特权面 ----
+# 上游只在浏览器 host 为 localhost/127.x 时开放设置文档编辑；本平台用户各自
+# 独立容器 + 网关鉴权，因此放开该客户端门控（服务端无校验）。补丁找不到目标
+# 会构建失败，强制升级 DSH 时人工复核。
+COPY unlock-remote-settings.py /tmp/unlock-remote-settings.py
+RUN python3 /tmp/unlock-remote-settings.py && rm -f /tmp/unlock-remote-settings.py
+
+# ---- 构建期初始化 web profile 并验证真能服务（模板完整性的硬校验）----
+ENV DSH_HOME=/opt/dsh-home
+RUN set -eux; \
+	dsh --profile web --dump-config >/dev/null; \
+	dsh web --port 38642 --no-open > /tmp/dsh-init.log 2>&1 & \
+	pid=$!; \
+	for i in $(seq 1 90); do grep -q 'dsh web:' /tmp/dsh-init.log && break; sleep 1; done; \
+	cat /tmp/dsh-init.log; \
+	grep -q 'dsh web:' /tmp/dsh-init.log; \
+	token=$(sed -n 's/.*token=//p' /tmp/dsh-init.log | head -1); \
+	code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:38642/?token=$token"); \
+	test "$code" = "303"; \
+	kill "$pid" 2>/dev/null || true; \
+	wait "$pid" 2>/dev/null || true; \
+	test -f /opt/dsh-home/profiles/web/package.json
+
+# ---- 自带插件市场 dsh-market（官方安装方式，固定版本）----
+# https://github.com/dsh-market/dsh-market  →  open Settings → Plugin Market
+ARG DSHMARKET_VERSION=1.66.3
+RUN dsh plugin --profile web add "dshmarket@${DSHMARKET_VERSION}" \
+ && test -f /opt/dsh-home/profiles/web/node_modules/dshmarket/package.json \
+ && grep -q 'dshmarket' /opt/dsh-home/profiles/web/package.json
+
+# ---- 自带插件守护 dsh-my-guardian（候选区 + 失败隔离，防止装插件搞崩容器）----
+# https://github.com/baosfeng/my-dsh-plugins/tree/main/plugins/dsh-my-guardian
+# 官方要求：守护自己是看门狗，必须在名册里最先加载 → 装好后把它的 bundle 调到第一位
+# 守护 0.4.4 会把宿主提供的 react peer 误报为缺失（上游 main 已修未发版），
+# 构建期打精确补丁（幂等、带守卫）。
+COPY patch-guardian-host-peers.py /tmp/patch-guardian-host-peers.py
+ARG DSHGUARDIAN_VERSION=0.4.4
+RUN dsh plugin --profile web add "dsh-my-guardian@${DSHGUARDIAN_VERSION}" --trust-lockfile \
+ && test -f /opt/dsh-home/profiles/web/node_modules/dsh-my-guardian/package.json \
+ && node -e "const fs=require('fs');const f='/opt/dsh-home/profiles/web/package.json';const d=JSON.parse(fs.readFileSync(f));const rest=d.dsh.profile.bundles.filter((x)=>x!=='dsh-my-guardian');d.dsh.profile.bundles=['dsh-my-guardian',...rest];fs.writeFileSync(f,JSON.stringify(d,null,2)+'\n')" \
+ && node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)" \
+ && python3 /tmp/patch-guardian-host-peers.py
+
+# 容器化下市场的一键重启会替换容器主进程：用 --patch 覆盖层统一禁用（所有宿主版本都有效）
+RUN printf '%s\n' \
+	'# 容器内禁用市场的一键重启（重启由平台/管理员操作）' \
+	'- id: dsh-market' \
+	'  name: dshmarket' \
+	'  config:' \
+	'    allowRestart: false' \
+	> /opt/dsh-home/agent-patch.yml
+
+# 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
+# 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
+# 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
+ARG PROFILE_REV=2
+RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
+
+
+COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh
+COPY dsh-merge-profile.py /usr/local/bin/dsh-merge-profile.py
+RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py
+
+# 运行态统一挂到 /data（命名卷），工作目录统一 /workspace（宿主 bind mount）。
+# 注意：必须与 scripts/agent-ctl.sh 注入的环境变量保持一致。
+ENV HOME=/data \
+    DSH_HOME=/data/dsh \
+    XDG_DATA_HOME=/data/.local/share \
+    XDG_CONFIG_HOME=/data/.config \
+    XDG_CACHE_HOME=/data/.cache
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/dsh-entry.sh"]
+CMD ["web", "--host", "127.0.0.1", "--port", "3123", "--no-open"]

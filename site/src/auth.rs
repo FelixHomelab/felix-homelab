@@ -184,10 +184,27 @@ mod cookies {
     use axum::http::header::{HeaderValue, SET_COOKIE};
     use leptos::prelude::*;
 
-    /// 从本次请求的 `Cookie` 头里取会话令牌。
+    /// 从本次请求的 `Cookie` 头里取会话令牌（可能多个同名）。
+    pub fn session_tokens() -> Vec<String> {
+        let Some(parts) = use_context::<axum::http::request::Parts>() else {
+            return Vec::new();
+        };
+        super::session_tokens_from_headers(&parts.headers)
+    }
+
+    /// 从本次请求的 `Cookie` 头里取会话令牌（第一个）。
     pub fn session_token() -> Option<String> {
-        let parts = use_context::<axum::http::request::Parts>()?;
-        super::session_token_from_headers(&parts.headers)
+        session_tokens().into_iter().next()
+    }
+
+    /// 无 Domain 的主机内 cookie（本地开发使用；清理旧值时也用它）。
+    fn host_cookie(value: &str, max_age: i64) -> String {
+        format!("{COOKIE_SESSION}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax")
+    }
+
+    /// 当前请求 Host 是否属于配置的共享父域（决定要不要刷新父域 cookie）。
+    pub fn has_shared_domain() -> bool {
+        !domain_flag().is_empty()
     }
 
     /// 给响应追加 `Set-Cookie`。
@@ -204,30 +221,98 @@ mod cookies {
         }
     }
 
-    /// 上线后设为 HTTPS 时，把 `COOKIE_SECURE=1` 打开，让浏览器只在加密连接上回传令牌。
-    fn secure_flag() -> &'static str {
-        if std::env::var("COOKIE_SECURE").is_ok() {
-            "; Secure"
+    /// 本次请求的 Host（去掉端口、小写）。
+    fn request_host() -> Option<String> {
+        let parts = use_context::<axum::http::request::Parts>()?;
+        let host = parts
+            .headers
+            .get(axum::http::header::HOST)?
+            .to_str()
+            .ok()?
+            .split(':')
+            .next()?
+            .trim()
+            .to_ascii_lowercase();
+        (!host.is_empty()).then_some(host)
+    }
+
+    /// 请求是否来自本机回环（本地开发/直连）。
+    fn is_loopback_host() -> bool {
+        matches!(
+            request_host().as_deref(),
+            Some("localhost") | Some("127.0.0.1") | Some("::1") | Some("[::1]")
+        )
+    }
+
+    /// 会话 cookie 的共享父域。
+    ///
+    /// 只有请求 Host 属于 `COOKIE_DOMAIN`（本身或其子域）时才加 `Domain=`：
+    /// - `https://grantfelix.top` / `*.grantfelix.top` → `Domain=grantfelix.top`，
+    ///   多租户 Agent 子域才能带上会话；
+    /// - `http://localhost:5729` → 不加 Domain，本地开发照常登录
+    ///   （否则浏览器会直接拒绝该 cookie）。
+    fn domain_flag() -> String {
+        let Some(domain) = std::env::var("COOKIE_DOMAIN")
+            .ok()
+            .map(|value| value.trim().trim_start_matches('.').to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+        else {
+            return String::new();
+        };
+        let Some(host) = request_host() else {
+            return String::new();
+        };
+        if host == domain || host.ends_with(&format!(".{domain}")) {
+            format!("; Domain={domain}")
         } else {
+            String::new()
+        }
+    }
+
+    /// HTTPS 下带 `Secure`。
+    ///
+    /// 非回环 Host 只可能是云侧 HTTPS 入口（本机端口只绑 127.0.0.1）；
+    /// 回环始终不加，保证 `http://localhost:5729` 本地登录不被浏览器丢弃。
+    /// `COOKIE_SECURE` 保留为兼容开关（设置与否结果一致）。
+    fn secure_flag() -> &'static str {
+        if is_loopback_host() {
             ""
+        } else {
+            "; Secure"
         }
     }
 
     /// 下发会话 cookie。
+    ///
+    /// 请求 Host 属于 `COOKIE_DOMAIN` 时下发父域 cookie（Agent 子域 SSO 用），
+    /// 并顺手让「主机内旧 cookie」过期：浏览器同名 cookie 会同时发送，旧值排
+    /// 前面时会把鉴权带偏（`session_tokens_from_headers` 也会逐个尝试兜底）。
     pub fn set_session(token: &str) {
-        append_cookie(format!(
-            "{COOKIE_SESSION}={token}; Path=/; Max-Age={}; HttpOnly; SameSite=Lax{}",
-            SESSION_DAYS * 24 * 60 * 60,
-            secure_flag()
-        ));
+        let domain = domain_flag();
+        if domain.is_empty() {
+            append_cookie(host_cookie(token, SESSION_DAYS * 24 * 60 * 60));
+        } else {
+            append_cookie(format!(
+                "{COOKIE_SESSION}={token}; Path=/; Max-Age={}; HttpOnly; SameSite=Lax{}{}",
+                SESSION_DAYS * 24 * 60 * 60,
+                domain,
+                secure_flag()
+            ));
+            append_cookie(host_cookie("", 0));
+        }
     }
 
-    /// 清除会话 cookie。
+    /// 清除会话 cookie（主机内与父域两种变体都清）。
     pub fn clear_session() {
-        append_cookie(format!(
-            "{COOKIE_SESSION}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{}",
-            secure_flag()
-        ));
+        append_cookie(host_cookie("", 0));
+        let domain = domain_flag();
+        if !domain.is_empty() {
+            append_cookie(format!(
+                "{COOKIE_SESSION}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{}{}",
+                domain,
+                secure_flag()
+            ));
+        }
     }
 }
 
@@ -345,12 +430,30 @@ async fn fetch_user_view(
 /// 抽成不依赖 Leptos context 的纯函数：普通 Axum 处理器（如背景图上传）也要用。
 #[cfg(feature = "ssr")]
 pub fn session_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
-    let header = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
+    session_tokens_from_headers(headers).into_iter().next()
+}
 
-    header.split(';').find_map(|pair| {
-        let (name, value) = pair.split_once('=')?;
-        (name.trim() == COOKIE_SESSION).then(|| value.trim().to_string())
-    })
+/// 从 `Cookie` 头里取**所有**同名会话令牌，按出现顺序。
+///
+/// 浏览器可能同时带着旧的主机内 cookie 与新的父域 cookie（同名两个）：
+/// 只取第一个会在「第一个是旧值/已失效」时误判未登录，因此鉴权要逐个尝试。
+#[cfg(feature = "ssr")]
+pub fn session_tokens_from_headers(headers: &axum::http::HeaderMap) -> Vec<String> {
+    let Some(header) = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return Vec::new();
+    };
+
+    header
+        .split(';')
+        .filter_map(|pair| {
+            let (name, value) = pair.split_once('=')?;
+            (name.trim() == COOKIE_SESSION).then(|| value.trim().to_string())
+        })
+        .filter(|value| !value.is_empty())
+        .collect()
 }
 
 /// 解析当前登录用户 id 的**无上下文**版本。
@@ -359,20 +462,65 @@ pub async fn user_id_from_headers(
     pool: &sqlx::SqlitePool,
     headers: &axum::http::HeaderMap,
 ) -> Option<i64> {
-    let token = session_token_from_headers(headers)?;
-    let token_hash = crypto::hash_token(&token);
+    for token in session_tokens_from_headers(headers) {
+        let token_hash = crypto::hash_token(&token);
+        let id: Option<i64> = sqlx::query_scalar(
+            "SELECT u.id FROM sessions s JOIN users u ON u.id = s.user_id \
+             WHERE s.token_hash = ?1 \
+               AND s.expires_at > datetime('now') \
+               AND u.status = 'active'",
+        )
+        .bind(&token_hash)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        if id.is_some() {
+            return id;
+        }
+    }
+    None
+}
 
-    sqlx::query_scalar(
-        "SELECT u.id FROM sessions s JOIN users u ON u.id = s.user_id \
-         WHERE s.token_hash = ?1 \
-           AND s.expires_at > datetime('now') \
-           AND u.status = 'active'",
-    )
-    .bind(&token_hash)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
+/// 解析当前登录用户 `(id, 用户名, 角色)` 的**无上下文**版本。
+///
+/// 多租户 Agent 的网关鉴权（`/api/agent/auth`）是普通 Axum 处理器，拿不到
+/// Leptos context，所以这里返回用户名本身用于与子域对应。
+#[cfg(feature = "ssr")]
+pub async fn user_from_headers(
+    pool: &sqlx::SqlitePool,
+    headers: &axum::http::HeaderMap,
+) -> Option<(i64, String, String)> {
+    use sqlx::Row;
+
+    for token in session_tokens_from_headers(headers) {
+        let token_hash = crypto::hash_token(&token);
+        let row = sqlx::query(
+            "SELECT u.id, u.username, u.role FROM sessions s JOIN users u ON u.id = s.user_id \
+             WHERE s.token_hash = ?1 \
+               AND s.expires_at > datetime('now') \
+               AND u.status = 'active'",
+        )
+        .bind(&token_hash)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        if let Some(row) = row {
+            return Some((row.get("id"), row.get("username"), row.get("role")));
+        }
+    }
+    None
+}
+
+/// 自愈：请求 Host 属于共享父域时，把会话 cookie 刷新为父域版
+/// （并清掉旧的主机内 cookie）。老用户访问一次主站即可把会话带进
+/// Agent 子域，无需手动重登或清缓存。
+#[cfg(feature = "ssr")]
+fn refresh_session_cookie_if_shared(token: &str) {
+    if cookies::has_shared_domain() && use_context::<leptos_axum::ResponseOptions>().is_some() {
+        cookies::set_session(token);
+    }
 }
 
 /// 登录身份（仅服务端内部用）。
@@ -402,24 +550,29 @@ pub async fn current_identity() -> Option<Identity> {
 
     let app = use_context::<AppState>()?;
     let parts = use_context::<axum::http::request::Parts>()?;
-    let token = session_token_from_headers(&parts.headers)?;
-    let token_hash = crypto::hash_token(&token);
 
-    let row = sqlx::query(
-        "SELECT u.id, u.role FROM sessions s JOIN users u ON u.id = s.user_id \
-         WHERE s.token_hash = ?1 \
-           AND s.expires_at > datetime('now') \
-           AND u.status = 'active'",
-    )
-    .bind(&token_hash)
-    .fetch_optional(&app.pool)
-    .await
-    .ok()??;
-
-    Some(Identity {
-        id: row.get("id"),
-        role: row.get("role"),
-    })
+    for token in session_tokens_from_headers(&parts.headers) {
+        let token_hash = crypto::hash_token(&token);
+        let row = sqlx::query(
+            "SELECT u.id, u.role FROM sessions s JOIN users u ON u.id = s.user_id \
+             WHERE s.token_hash = ?1 \
+               AND s.expires_at > datetime('now') \
+               AND u.status = 'active'",
+        )
+        .bind(&token_hash)
+        .fetch_optional(&app.pool)
+        .await
+        .ok()
+        .flatten();
+        if let Some(row) = row {
+            refresh_session_cookie_if_shared(&token);
+            return Some(Identity {
+                id: row.get("id"),
+                role: row.get("role"),
+            });
+        }
+    }
+    None
 }
 
 /// 当前请求的登录用户 id。未登录、会话过期或账号被停用都返回 `None`。
@@ -502,30 +655,34 @@ pub async fn current_user() -> Result<Option<UserView>, ServerFnError> {
     use sqlx::Row;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    let Some(token) = cookies::session_token() else {
-        return Ok(None);
-    };
-    let token_hash = crypto::hash_token(&token);
 
-    let row = sqlx::query(
-        "SELECT u.id, u.username, u.display_name, u.bio, u.role \
-         FROM sessions s JOIN users u ON u.id = s.user_id \
-         WHERE s.token_hash = ?1 \
-           AND s.expires_at > datetime('now') \
-           AND u.status = 'active'",
-    )
-    .bind(&token_hash)
-    .fetch_optional(&app.pool)
-    .await
-    .map_err(|e| ServerFnError::new(format!("查询会话失败: {e}")))?;
+    for token in cookies::session_tokens() {
+        let token_hash = crypto::hash_token(&token);
+        let row = sqlx::query(
+            "SELECT u.id, u.username, u.display_name, u.bio, u.role \
+             FROM sessions s JOIN users u ON u.id = s.user_id \
+             WHERE s.token_hash = ?1 \
+               AND s.expires_at > datetime('now') \
+               AND u.status = 'active'",
+        )
+        .bind(&token_hash)
+        .fetch_optional(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("查询会话失败: {e}")))?;
 
-    Ok(row.map(|row| UserView {
-        id: row.get("id"),
-        username: row.get("username"),
-        display_name: row.get("display_name"),
-        bio: row.get("bio"),
-        role: row.get("role"),
-    }))
+        if let Some(row) = row {
+            refresh_session_cookie_if_shared(&token);
+            return Ok(Some(UserView {
+                id: row.get("id"),
+                username: row.get("username"),
+                display_name: row.get("display_name"),
+                bio: row.get("bio"),
+                role: row.get("role"),
+            }));
+        }
+    }
+
+    Ok(None)
 }
 
 /// 注册。成功后直接登录，省掉一次输入。
@@ -604,7 +761,9 @@ pub async fn logout() -> ActionResult {
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
 
-    if let Some(token) = cookies::session_token() {
+    // 浏览器可能同时带着旧的主机内 cookie 与父域 cookie：逐个注销，
+    // 否则「登出」后另一个 cookie 仍然有效，用户会以为没登出成功。
+    for token in cookies::session_tokens() {
         let token_hash = crypto::hash_token(&token);
         if let Err(e) = sqlx::query("DELETE FROM sessions WHERE token_hash = ?1")
             .bind(&token_hash)

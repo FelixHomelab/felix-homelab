@@ -66,9 +66,13 @@ pub fn CommentSection(
         });
     };
 
-    // 读一次就够，不必做成响应式：登录、登出都会整页重载。
-    // 阻塞型资源保证这里拿到的一定是最终值，不会出现「先当成未登录、再跳变」。
-    let logged_in = matches!(user_state.get(), Some(Ok(Some(_))));
+    // 会话依赖区块在“水合完成后”再渲染：SSR 与客户端首帧都为空，
+    // 避免资源两端就绪时机不同造成 hydration 失配。登录/登出会整页重载。
+    let ready = crate::components::ready_after_hydration();
+    let logged_in = move || matches!(user_state.get(), Some(Ok(Some(_))));
+    // 两个视图各用一份克隆（闭包非 Copy，不能同时 move 进两处）
+    let logged_in_form = logged_in.clone();
+    let logged_in_hint = logged_in.clone();
 
     view! {
         <section class="comments">
@@ -149,8 +153,10 @@ pub fn CommentSection(
             }}
             </Suspense>
 
-            // 发言区：登录了才出现
-            {logged_in.then(|| view! {
+            // 发言区：登录了才出现（水合完成后判定）
+            {move || {
+                let on_submit = on_submit.clone();
+                (ready.get() && logged_in_form()).then(|| view! {
                 <form class="comment-form" on:submit=on_submit>
                         {move || {
                             reply_to
@@ -186,11 +192,14 @@ pub fn CommentSection(
                             {move || if busy.get() { "提交中…" } else { "提交评论" }}
                         </button>
                 </form>
-            })}
-            {(!logged_in)
-                .then(|| {
-                    view! { <p class="muted">"登录后可以评论。" <a href="/login">"去登录"</a></p> }
-                })}
+                })
+            }}
+            {move || {
+                (ready.get() && !logged_in_hint())
+                    .then(|| {
+                        view! { <p class="muted">"登录后可以评论。" <a href="/login">"去登录"</a></p> }
+                    })
+            }}
         </section>
     }
 }

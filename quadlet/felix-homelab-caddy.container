@@ -11,6 +11,8 @@ Pod=felix-homelab.pod
 Label=autoheal=true
 Timezone=local
 Volume=%h/.config/felix-homelab/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+# 多租户 Agent 的每用户路由（agent-ctl.sh 生成；00-empty.caddy 为占位）
+Volume=%h/.config/felix-homelab/agents/caddy:/etc/caddy/agents:ro,Z
 Volume=felix-homelab-caddy-data.volume:/data
 Volume=felix-homelab-caddy-config.volume:/config
 

@@ -20,7 +20,9 @@ async fn main() -> anyhow::Result<()> {
     use axum::{Json, Router};
     use felix_homelab_site::app::{shell, App};
     use felix_homelab_site::state::AppState;
-    use felix_homelab_site::{auth, content, db, register_server_fns, seo, uploads};
+    use felix_homelab_site::{
+        agents, auth, content, db, register_server_fns, seo, uploads,
+    };
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
 
@@ -44,6 +46,9 @@ async fn main() -> anyhow::Result<()> {
 
     // 站长账号由环境变量初始化，不走开放注册（见 auth::ensure_admin）
     auth::ensure_admin(&pool).await?;
+
+    // Agent 子域回填：老数据生成新样式域名，并让宿主刷新路由
+    agents::ensure_subdomains(&pool).await?;
 
     // --- 内容 ---
     let content_dir = std::env::var("CONTENT_DIR").unwrap_or_else(|_| "content".to_string());
@@ -97,6 +102,11 @@ async fn main() -> anyhow::Result<()> {
         )
         // 已上传图片的对外出口
         .route("/uploads/{*path}", get(uploads::serve_upload))
+        // 多租户 Agent 网关鉴权：Caddy forward_auth 调用（GET），
+        // 必须在下面的 server function 兜底路由之前注册。
+        .route("/api/agent/auth", get(agents::agent_auth))
+        // 云侧 Caddy on-demand TLS 的授权回调（见 README「AI Agent」）
+        .route("/api/agent/tls-ask", get(agents::agent_tls_ask))
         // server function 兜底挂载：本环境 leptos_routes 的自动挂载不生效，
         // 改为「显式注册（register_server_fns）+ 这里统一切到 handle_server_fns」。
         .route("/api/{*fn_name}", post(leptos_axum::handle_server_fns))

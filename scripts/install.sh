@@ -103,6 +103,28 @@ fi
 grep -q '^FORGEJO__security__INSTALL_LOCK=' "$CONFIG_DIR/.env" \
 	|| echo 'FORGEJO__security__INSTALL_LOCK=true' >> "$CONFIG_DIR/.env"
 
+# 多租户 Agent 配置（老安装补默认值；已存在则保留用户修改）
+ensure_env_default() {
+	grep -q "^$1=" "$CONFIG_DIR/.env" || echo "$1=$2" >> "$CONFIG_DIR/.env"
+}
+ensure_env_default AGENT_IMAGE localhost/felix-agent-opencode:latest
+ensure_env_default AGENT_DSH_IMAGE localhost/felix-agent-dsh:latest
+ensure_env_default AGENT_BASE_DOMAIN agent.grantfelix.top
+ensure_env_default AGENT_LOCAL_DOMAIN agent.localhost
+ensure_env_default AGENT_PORT_BASE 20001
+ensure_env_default AGENT_PORT_MAX 20099
+ensure_env_default AGENT_MEMORY 2g
+ensure_env_default AGENT_CPUS 1.5
+ensure_env_default AGENT_PIDS_LIMIT 512
+ensure_env_default AGENT_IDLE_SECONDS 300
+ensure_env_default AGENT_GRACE_DAYS 30
+ensure_env_default OPENCODE_VERSION 2.0.18
+ensure_env_default DSH_VERSION 0.1.7-rc.2
+ensure_env_default DSHMARKET_VERSION 1.66.3
+ensure_env_default DSHGUARDIAN_VERSION 0.4.4
+# 会话 cookie 的共享父域（Agent 子域 SSO；站点按请求 Host 自适应）
+ensure_env_default COOKIE_DOMAIN grantfelix.top
+
 # Nextcloud 环境变量（首次生成随机密码）
 if [ ! -f "$CONFIG_DIR/nextcloud.env" ]; then
 	log "生成 $CONFIG_DIR/nextcloud.env"
@@ -162,6 +184,20 @@ install -m 0755 "$REPO_DIR/scripts/sync-backup.sh" "$CONFIG_DIR/backup/sync-back
 if [ ! -f "$CONFIG_DIR/sync/backup.conf" ]; then
 	install -m 0644 "$REPO_DIR/config/backup/backup.conf.example" "$CONFIG_DIR/sync/backup.conf"
 fi
+
+# —— 多租户 AI Agent（P1 试点）——
+# 配置目录：state.json（宿主）、status.json（回写后台）、requests/（后台请求）、caddy/（每用户路由）
+mkdir -p "$CONFIG_DIR/agents/caddy" "$CONFIG_DIR/agents/requests"
+if [ ! -f "$CONFIG_DIR/agents/state.json" ]; then
+	printf '{"agents":{}}\n' >"$CONFIG_DIR/agents/state.json"
+fi
+chmod 600 "$CONFIG_DIR/agents/state.json"
+if [ ! -f "$CONFIG_DIR/agents/caddy/00-empty.caddy" ]; then
+	printf '# 占位文件：各用户路由由 agent-ctl.sh 生成；保留它是为了让 Caddy 的 glob import 永远有匹配。\n' \
+		>"$CONFIG_DIR/agents/caddy/00-empty.caddy"
+fi
+# 执行面脚本复制到配置目录（systemd 单元引用它，不依赖仓库路径）
+install -m 0755 "$REPO_DIR/scripts/agent-ctl.sh" "$CONFIG_DIR/agents/agent-ctl.sh"
 
 # 后台触发用的请求文件（Path 单元监视；必须先存在，否则会被建成目录）
 : >"$CONFIG_DIR/sync/backup-request"
@@ -242,11 +278,55 @@ Unit=felix-homelab-backup-sync.service
 WantedBy=paths.target
 EOF
 
+# --- 多租户 Agent：请求触发 + 定时保活 ---
+cat >"$SYSTEMD_USER_DIR/felix-homelab-agent-run.service" <<'EOF'
+[Unit]
+Description=Felix-Homelab: 处理 Agent 请求并保活
+After=felix-homelab-pod.service
+Wants=felix-homelab-pod.service
+
+[Service]
+Type=oneshot
+# 本服务会 `podman run/start` 用户 Agent 容器；默认 KillMode=control-group 会在
+# 服务退出时把同一 cgroup 里新建的容器一并杀掉（表现为容器 exit 130）。必须关闭。
+KillMode=none
+ExecStart=%h/.config/felix-homelab/agents/agent-ctl.sh tick
+EOF
+
+cat >"$SYSTEMD_USER_DIR/felix-homelab-agent-request.path" <<'EOF'
+[Unit]
+Description=Felix-Homelab: 监视 Agent 请求目录
+
+[Path]
+PathChanged=%h/.config/felix-homelab/agents/requests
+Unit=felix-homelab-agent-run.service
+
+[Install]
+WantedBy=paths.target
+EOF
+
+cat >"$SYSTEMD_USER_DIR/felix-homelab-agent.timer" <<'EOF'
+[Unit]
+Description=Felix-Homelab: 定时保活 Agent 容器
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/2
+Persistent=false
+RandomizedDelaySec=30s
+Unit=felix-homelab-agent-run.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl --user daemon-reload
 systemctl --user enable --now felix-homelab-backup.timer >/dev/null
 systemctl --user enable --now felix-homelab-backup-sync.timer >/dev/null
 systemctl --user enable --now felix-homelab-backup-request.path >/dev/null
 systemctl --user enable --now felix-homelab-backup-sync-request.path >/dev/null
+systemctl --user enable --now felix-homelab-agent-request.path >/dev/null
+systemctl --user enable --now felix-homelab-agent.timer >/dev/null
 
 # runner 配置在注册前先放一个空文件，保证挂载目标存在
 [ -f "$CONFIG_DIR/runner-config.yml" ] || : > "$CONFIG_DIR/runner-config.yml"
@@ -325,6 +405,9 @@ log "等待 Forgejo 就绪..."
 
 # Homepage 挂载了 podman.sock；升级安装时重启它以刷新 socket inode
 systemctl --user try-restart felix-homelab-homepage.service 2>/dev/null || true
+# Caddyfile 是单文件 bind mount，install 替换后 inode 会变；同时 agents 路由目录
+# 的挂载点也可能随单元更新，重启用新配置（时间极短）
+systemctl --user try-restart felix-homelab-caddy.service 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # 8. 注册 Actions Runner

@@ -22,8 +22,10 @@ const USER_STATUSES: [&str; 2] = ["active", "banned"];
 const ROLES: [&str; 2] = ["admin", "user"];
 
 /// 管理员身份校验。返回当前管理员的 id，或一句可直接展示的错误。
+///
+/// `pub(crate)`：Agent 管理（`crate::agents`）复用同一套校验。
 #[cfg(feature = "ssr")]
-async fn require_admin() -> Result<i64, String> {
+pub(crate) async fn require_admin() -> Result<i64, String> {
     let Some(identity) = crate::auth::current_identity().await else {
         return Err("请先登录。".to_string());
     };
@@ -93,6 +95,8 @@ pub struct AdminUser {
     pub created_at: String,
     pub last_login_at: Option<String>,
     pub comment_count: i64,
+    /// 细分管理角色（user_roles）：agentmaster / communitymaster / skymaster
+    pub scopes: Vec<String>,
 }
 
 /// 后台统计。
@@ -101,7 +105,7 @@ pub async fn admin_load_overview() -> Result<AdminOverview, ServerFnError> {
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    require_admin()
+    crate::roles::require_staff()
         .await
         .map_err(|message| ServerFnError::new(message))?;
 
@@ -139,7 +143,7 @@ pub async fn admin_list_comments(status: String) -> Result<Vec<AdminComment>, Se
     use sqlx::Row;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    require_admin()
+    crate::roles::require_permission("community")
         .await
         .map_err(|message| ServerFnError::new(message))?;
 
@@ -187,7 +191,7 @@ pub async fn admin_set_comment_status(id: i64, status: String) -> ActionResult {
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    let admin_id = match require_admin().await {
+    let admin_id = match crate::roles::require_permission("community").await {
         Ok(id) => id,
         Err(message) => return Ok(Err(message)),
     };
@@ -220,7 +224,7 @@ pub async fn admin_delete_comment(id: i64) -> ActionResult {
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    if let Err(message) = require_admin().await {
+    if let Err(message) = crate::roles::require_permission("community").await {
         return Ok(Err(message));
     }
 
@@ -244,7 +248,7 @@ pub async fn admin_list_reviews(status: String) -> Result<Vec<AdminReview>, Serv
     use sqlx::Row;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    require_admin()
+    crate::roles::require_permission("sky")
         .await
         .map_err(|message| ServerFnError::new(message))?;
 
@@ -285,7 +289,7 @@ pub async fn admin_set_review_status(id: i64, status: String) -> ActionResult {
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    if let Err(message) = require_admin().await {
+    if let Err(message) = crate::roles::require_permission("sky").await {
         return Ok(Err(message));
     }
     if !COMMENT_STATUSES.contains(&status.as_str()) {
@@ -312,7 +316,7 @@ pub async fn admin_reply_review(id: i64, reply: String) -> ActionResult {
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    if let Err(message) = require_admin().await {
+    if let Err(message) = crate::roles::require_permission("sky").await {
         return Ok(Err(message));
     }
 
@@ -343,7 +347,7 @@ pub async fn admin_delete_review(id: i64) -> ActionResult {
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    if let Err(message) = require_admin().await {
+    if let Err(message) = crate::roles::require_permission("sky").await {
         return Ok(Err(message));
     }
 
@@ -374,7 +378,9 @@ pub async fn admin_list_users() -> Result<Vec<AdminUser>, ServerFnError> {
     let rows = sqlx::query(
         "SELECT u.id, u.username, u.display_name, u.role, u.status, u.created_at, \
                 u.last_login_at, \
-                (SELECT COUNT(*) FROM comments c WHERE c.user_id = u.id) AS comment_count \
+                (SELECT COUNT(*) FROM comments c WHERE c.user_id = u.id) AS comment_count, \
+                COALESCE((SELECT group_concat(r.role, ',') FROM user_roles r WHERE r.user_id = u.id), '') \
+                    AS scopes \
          FROM users u ORDER BY u.id ASC LIMIT 500",
     )
     .fetch_all(&app.pool)
@@ -392,6 +398,12 @@ pub async fn admin_list_users() -> Result<Vec<AdminUser>, ServerFnError> {
             created_at: row.get("created_at"),
             last_login_at: row.get("last_login_at"),
             comment_count: row.get("comment_count"),
+            scopes: row
+                .get::<String, _>("scopes")
+                .split(',')
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect(),
         })
         .collect())
 }
@@ -462,6 +474,44 @@ pub async fn admin_set_user_role(id: i64, role: String) -> ActionResult {
     Ok(Ok(()))
 }
 
+/// 授予 / 撤销细分管理角色（仅超级管理员）。
+#[server]
+pub async fn admin_set_user_scope(
+    id: i64,
+    role: String,
+    grant: bool,
+) -> ActionResult {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    let admin_id = match require_admin().await {
+        Ok(id) => id,
+        Err(message) => return Ok(Err(message)),
+    };
+    if id == admin_id {
+        return Ok(Err("不能修改自己的角色。".to_string()));
+    }
+    if !crate::roles::SCOPED_ROLES.contains(&role.as_str()) {
+        return Ok(Err("角色取值不合法。".to_string()));
+    }
+
+    let result = if grant {
+        sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role) VALUES (?1, ?2)")
+            .bind(id)
+            .bind(&role)
+            .execute(&app.pool)
+            .await
+    } else {
+        sqlx::query("DELETE FROM user_roles WHERE user_id = ?1 AND role = ?2")
+            .bind(id)
+            .bind(&role)
+            .execute(&app.pool)
+            .await
+    };
+    result.map_err(|e| ServerFnError::new(format!("更新管理角色失败: {e}")))?;
+    Ok(Ok(()))
+}
+
 // ---------------------------------------------------------------------------
 // 社区投稿：直接发布 + 事后管理
 //
@@ -492,7 +542,7 @@ pub async fn admin_list_community(status: String) -> Result<Vec<AdminCommunityPo
     use sqlx::Row;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    require_admin()
+    crate::roles::require_permission("community")
         .await
         .map_err(|message| ServerFnError::new(message))?;
 
@@ -539,7 +589,7 @@ pub async fn admin_set_community_status(id: i64, status: String) -> ActionResult
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    if let Err(message) = require_admin().await {
+    if let Err(message) = crate::roles::require_permission("community").await {
         return Ok(Err(message));
     }
 
@@ -568,7 +618,7 @@ pub async fn admin_delete_community(id: i64) -> ActionResult {
     use sqlx::Row;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    if let Err(message) = require_admin().await {
+    if let Err(message) = crate::roles::require_permission("community").await {
         return Ok(Err(message));
     }
 

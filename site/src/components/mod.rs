@@ -12,6 +12,18 @@ use crate::auth::UserState;
 use crate::theme::{ThemeMode, ThemeState};
 use leptos::prelude::*;
 
+/// 水合完成后变为 `true` 的信号。
+///
+/// 用于「依赖会话 Cookie / 客户端状态」的区块：SSR 与客户端首帧都渲染空，
+/// 水合结束后再出现，避免两端资源就绪时机不同造成的 hydration 失配
+/// （失配会让整站 wasm 水合崩溃：站内跳转失灵、内容不显示）。
+pub fn ready_after_hydration() -> Signal<bool> {
+    let ready = RwSignal::new(false);
+    // Effect 只在客户端运行，且在水合完成后执行
+    Effect::new(move |_| ready.set(true));
+    ready.into()
+}
+
 /// 顶部导航栏。
 #[component]
 pub fn SiteHeader() -> impl IntoView {

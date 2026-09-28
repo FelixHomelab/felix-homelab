@@ -1,0 +1,38 @@
+# Felix-Homelab 多租户 Agent 模板镜像（OpenCode 版）
+#
+#  构建：scripts/build-agent-image.sh（或 make agent-build）
+#
+# 说明：
+#   · 官方 OpenCode 镜像基于 Alpine，只有 opencode 本体（无 bash/git/curl/node）；
+#     作为编码 Agent 的容器底需要补齐常用工具链。
+#   · 版本固定：OPENCODE_VERSION 必须显式传参并写死在仓库/文档里，
+#     避免 `latest` 漂移造成“今天能用、明天起不来”的 Agent 稳定性问题。
+#   · 该镜像是只读模板：每用户运行态（凭据、会话）在与用户绑定的数据卷里。
+ARG OPENCODE_VERSION=2.0.18
+FROM ghcr.io/anomalyco/opencode:${OPENCODE_VERSION}
+
+USER root
+# bash/git/ssh：仓库操作与 Git over SSH；curl/wget/healthcheck：健康检查；
+# nodejs/npm/python3/pip/make：Agent 常用工具链；jq：脚本与 JSON。
+RUN apk add --no-cache \
+	bash \
+	git \
+	openssh-client \
+	curl \
+	jq \
+	nodejs \
+	npm \
+	python3 \
+	py3-pip \
+	make \
+	tzdata \
+	ca-certificates \
+ && update-ca-certificates
+
+# 运行态统一挂到 /data（命名卷），工作目录统一 /workspace（宿主 bind mount）。
+# 注意：必须与 scripts/agent-ctl.sh 注入的环境变量保持一致。
+ENV HOME=/data \
+    XDG_DATA_HOME=/data/.local/share \
+    XDG_CONFIG_HOME=/data/.config \
+    XDG_CACHE_HOME=/data/.cache
+WORKDIR /workspace

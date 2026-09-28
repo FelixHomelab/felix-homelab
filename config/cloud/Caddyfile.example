@@ -1,0 +1,38 @@
+# Felix-Homelab 云侧 Caddy 配置（模板）
+#
+# 部署位置：云服务器 /etc/caddy/Caddyfile（仓库内仅作模板与备份）。
+# 前提：
+#   · frps 把 20080 隧道反代到本地 Caddy（见仓库 README「公网访问」）；
+#   · 多租户 Agent 的域名形如
+#     <随机>.<用户名>.<agent名>.agent.grantfelix.top（多级子域）。
+#
+# 设计要点：
+#   · 通配符只能匹配一级，多级子域用 catch-all `:443` + on-demand TLS：
+#     首次访问某子域时，Caddy 先问主站 /api/agent/tls-ask（经 20080 隧道），
+#     只有订阅表中存在的域名才签发证书——新增用户/实例无需改云侧配置；
+#   · 证书按子域逐个签发（TLS-ALPN-01），不需要 DNS API/通配证书。
+
+{
+	email admin@grantfelix.top
+
+	on_demand_tls {
+		# 云侧 20080 是 frp 隧道口，转发到本机 Caddy → 主站
+		ask http://127.0.0.1:20080/api/agent/tls-ask
+	}
+}
+
+grantfelix.top, home.grantfelix.top, forgejo.grantfelix.top, cloud.grantfelix.top, dash.grantfelix.top {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:20080
+}
+
+# 多租户 Agent 子域：<随机>.<用户名>.<agent名>.agent.grantfelix.top
+# 通配符只能匹配一级，多级子域用 catch-all + on-demand TLS：
+# ask 只放行订阅表里存在的域名，其余 SNI 一律拒绝签发。
+:443 {
+	encode zstd gzip
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:20080
+}
