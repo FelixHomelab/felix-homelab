@@ -279,14 +279,6 @@ pub fn AdminDashboardPage() -> impl IntoView {
                     <a class="btn btn-small" href="/admin/backup">"备份与同步"</a>
                     <a
                         class="btn btn-small"
-                        href="http://cloud.localhost:5729/"
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        "Nextcloud"
-                    </a>
-                    <a
-                        class="btn btn-small"
                         href="http://dash.localhost:5729/"
                         target="_blank"
                         rel="noreferrer"
@@ -1497,9 +1489,6 @@ fn BackupChannelCard(index: usize, channels: RwSignal<Vec<BackupChannel>>) -> im
 fn backup_source(name: &str) -> &'static str {
     if name.starts_with("felix-homelab-site-") || name.starts_with("felix-ws-site-") {
         "主站"
-    } else if name.starts_with("felix-homelab-nextcloud-") || name.starts_with("felix-ws-nextcloud-")
-    {
-        "Nextcloud"
     } else {
         "Forgejo"
     }
@@ -1515,7 +1504,6 @@ pub fn AdminBackupPage() -> impl IntoView {
 
     let forgejo = RwSignal::new(true);
     let site = RwSignal::new(true);
-    let nextcloud = RwSignal::new(false);
     let keep_days = RwSignal::new("7".to_string());
     let channels = RwSignal::new(Vec::<BackupChannel>::new());
     let sync_status = RwSignal::new(String::new());
@@ -1527,7 +1515,6 @@ pub fn AdminBackupPage() -> impl IntoView {
             if !loaded.get_untracked() {
                 forgejo.set(cfg.forgejo);
                 site.set(cfg.site);
-                nextcloud.set(cfg.nextcloud);
                 keep_days.set(cfg.keep_days.to_string());
                 channels.set(cfg.channels.clone());
                 loaded.set(true);
@@ -1544,14 +1531,13 @@ pub fn AdminBackupPage() -> impl IntoView {
             .unwrap_or(7)
             .clamp(1, 90);
         keep_days.set(days.to_string());
-        let (forgejo, site, nextcloud, list) = (
+        let (forgejo, site, list) = (
             forgejo.get_untracked(),
             site.get_untracked(),
-            nextcloud.get_untracked(),
             channels.get_untracked(),
         );
         leptos::task::spawn_local(async move {
-            match admin_backup_save_config(forgejo, site, nextcloud, days, Some(list)).await {
+            match admin_backup_save_config(forgejo, site, days, Some(list)).await {
                 Ok(Ok(())) => {
                     message.set("设置已保存。".to_string());
                     config.refetch();
@@ -1611,11 +1597,6 @@ pub fn AdminBackupPage() -> impl IntoView {
                         label="主站"
                         hint="主站文章、社区投稿、评论与上传图片"
                         checked=site
-                    />
-                    <SourceToggle
-                        label="Nextcloud"
-                        hint="网盘数据库与文件（归档较大，建议开启）"
-                        checked=nextcloud
                     />
                 </div>
                 <label class="field field-inline">

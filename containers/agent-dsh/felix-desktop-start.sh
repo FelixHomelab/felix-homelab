@@ -32,8 +32,9 @@ DISPLAY=":$DISPLAY_NUM" openbox >/tmp/felix-openbox.log 2>&1 &
 x11vnc -display ":$DISPLAY_NUM" -localhost -rfbport "$VNC_PORT" \
 	-forever -shared -nopw -quiet >/tmp/felix-x11vnc.log 2>&1 &
 
-# websockify 自带 noVNC 静态资源；只监听容器内网卡，由 Agent 网关经回环端口映射转发
-websockify --web /usr/share/novnc "$NOVNC_PORT" "127.0.0.1:$VNC_PORT" \
-	>/tmp/felix-novnc.log 2>&1 &
+# felix-novnc（Go 单二进制，替代 Python websockify）：
+# 静态托管 noVNC + WebSocket→VNC 转发；常驻约 6-10MB（websockify 约 80MB）
+/usr/local/bin/felix-novnc -listen "0.0.0.0:$NOVNC_PORT" -web /usr/share/novnc \
+	-vnc "127.0.0.1:$VNC_PORT" >/tmp/felix-novnc.log 2>&1 &
 
 wait

@@ -58,12 +58,11 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 
 | 宿主端口 | 容器 | 说明 |
 | -------- | ---- | ---- |
-| 5729     | Caddy (8080) | 统一入口：`/` 主站，`forgejo.localhost` Forgejo，`dash.localhost` 控制台，`cloud.localhost` Nextcloud |
+| 5729     | Caddy (8080) | 统一入口：`/` 主站，`forgejo.localhost` Forgejo，`dash.localhost` 控制台 |
 | 5730     | Forgejo (3000) | Git Web / API 直连 |
 | 5731     | Forgejo SSH (2222) | Git over SSH |
 | 5732     | Homepage (3001) | 控制台直连 |
 | 5733     | 主站 (8090) | 站点直连 |
-| 5734     | Nextcloud (80) | 云盘直连 |
 | 3000     | Forgejo (3000) | 仅供 host 网络的作业容器经 `127.0.0.1:3000` 访问 |
 | 5735     | 主站 (8090) | 仅供 Agent 网关 forward_auth 调用 |
 | 5740     | Agent 网关 (Caddy) | 仅宿主回环；<子域>.agent.<域名> 统一入口 |
@@ -123,8 +122,7 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 然后 `make install` —— 未填写前安装脚本不会链接并启动 frpc 单元。
 
 切换真实域名时需同步修改：`config/Caddyfile` 的 host 匹配、`.env` 的
-`FORGEJO__server__{DOMAIN,ROOT_URL,SSH_DOMAIN,SSH_PORT}`、`nextcloud.env` 的
-`NEXTCLOUD_TRUSTED_DOMAINS` / `OVERWRITEHOST` / `OVERWRITEPROTOCOL`，
+`FORGEJO__server__{DOMAIN,ROOT_URL,SSH_DOMAIN,SSH_PORT}`，
 以及 homepage / site 单元中的 `HOMEPAGE_ALLOWED_HOSTS` / `SITE_URL`
 （本仓库已按 `grantfelix.top` 配好）。
 
@@ -140,7 +138,6 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 │   ├── felix-homelab-db.container   # PostgreSQL
 │   ├── felix-homelab-forgejo.container
 │   ├── felix-homelab-site.container # 主站（Felix Homelab 社区站）
-│   ├── felix-homelab-nextcloud.container # Nextcloud 云盘
 │   ├── felix-homelab-runner.container
 │   ├── felix-homelab-frpc.container     # 公网中转客户端（配置 frpc.toml 后启用）
 │   ├── felix-homelab-homepage.container
@@ -152,11 +149,9 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 │   ├── Caddyfile                # 反向代理入口，新增工具在此加路由
 │   ├── registries.conf          # docker.io 镜像加速（国内网络）
 │   ├── runner-labels.txt        # Runner 标签与作业镜像定义
-│   ├── nextcloud.env.example    # Nextcloud 环境变量模板
 │   ├── frpc.toml.example        # 公网中转 frpc 配置模板（可选）
 │   ├── cloud/Caddyfile.example  # 云侧 Caddy 模板（frp 中转 + Agent 子域按需 TLS）
 │   ├── backup/backup.sh         # 备份脚本（容器内执行 Forgejo/主站）
-│   ├── backup/backup-nextcloud.sh  # Nextcloud 备份（宿主机执行）
 │   ├── backup/backup.conf.example  # 备份源与渠道配置模板
 │   └── homepage/                # Homepage 控制台配置（首次安装植入）
 ├── site/                        # 主站源码（Felix Homelab 社区站）
@@ -179,7 +174,6 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
     ├── backup-now.sh            # 立即备份一次
     ├── sync-backup.sh           # 备份异地同步（rclone/rsync）
     ├── restore-backup.sh        # 从备份恢复
-    ├── ensure-nextcloud-db.sh   # 创建/同步 Nextcloud 数据库与角色
     ├── wait-for-forgejo.sh
     ├── create-admin.sh          # 可选：命令行创建管理员
     └── uninstall.sh             # 卸载（--purge 连数据一起删）
@@ -214,12 +208,10 @@ make install        # 生成配置、拉取镜像、构建主站镜像、启动 
 | ------------- | --------------------------------------------- |
 | 主站 | http://localhost:5729/（直连 http://localhost:5733/） |
 | Forgejo Web   | http://localhost:5730/（或 http://forgejo.localhost:5729/） |
-| Nextcloud     | http://cloud.localhost:5729/（直连 http://localhost:5734/） |
 | Homepage 控制台 | http://dash.localhost:5729/（直连 http://localhost:5732/） |
 | Forgejo SSH   | `ssh -p 5731 git@localhost`                   |
 
 - 主站首次访问用 `.env` 里的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录后台 `/admin`
-- Nextcloud 管理员用 `nextcloud.env` 里的 `NEXTCLOUD_ADMIN_USER` / `NEXTCLOUD_ADMIN_PASSWORD`
 - Forgejo 首次打开 http://localhost:5730/ 注册第一个账号即管理员
   （已通过 `INSTALL_LOCK=true` 跳过网页安装向导，自动完成数据库迁移）。
 - 若配置了公网中转：经云域名访问（如 `https://forgejo.example.com` 与
@@ -268,17 +260,6 @@ Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729
 - **更新官方内容**：改 `site/content/*.md` 后 `make build-site && make restart`；
   社区内容不需要重建，站内直接发布。
 
-## Nextcloud（私有云盘）
-
-- 官方 `nextcloud:apache` 镜像，复用同一个 PostgreSQL 容器中的独立库 `nextcloud`
-  （角色/库由 `scripts/ensure-nextcloud-db.sh` 幂等创建，`make install` 会自动执行）
-- 数据卷 `felix-homelab-nextcloud-data` 挂到 `/var/www/html`（含 config、apps、data）
-- 入口：http://cloud.localhost:5729/ 或直连 http://localhost:5734/
-- 管理员账号在 `~/.config/felix-homelab/nextcloud.env`
-  （`NEXTCLOUD_ADMIN_USER` / `NEXTCLOUD_ADMIN_PASSWORD`，安装时随机生成并打印）
-- **备份注意**：备份源可在后台「备份」页按需开关（Forgejo / 主站 / Nextcloud），
-  Nextcloud 归档约 300MB（含数据卷与 `pg_dump`），默认保留 7 天。
-
 ## 后台运维（/admin）
 
 登录主站后点顶栏「后台」，包含：
@@ -314,7 +295,7 @@ Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729
             ├─ forward_auth ─▶ 127.0.0.1:5735（主站 /api/agent/auth：会话 + 订阅校验；
             │                   睡眠实例在这里被唤醒，等宿主探测到 ready 才放行）
             └─ reverse_proxy ─▶ 127.0.0.1:20001..（各 Agent 的独立 bridge 网络）
-主站/Forgejo/Nextcloud 继续走原隧道 20080 → Pod 内 Caddy（与 Agent 完全隔离）
+主站/Forgejo 继续走原隧道 20080 → Pod 内 Caddy（与 Agent 完全隔离）
 ```
 
 **每个 Agent 一个独立 bridge 网络**：彼此不可见，也到不了主 Pod 内的
@@ -671,10 +652,9 @@ hostname 作为监听地址。
 
 | 卷                               | 内容                 |
 | -------------------------------- | -------------------- |
-| `felix-homelab-db-data`      | PostgreSQL 数据（Forgejo + Nextcloud 两个库） |
+| `felix-homelab-db-data`      | PostgreSQL 数据（Forgejo 库） |
 | `felix-homelab-forgejo-data` | 仓库、附件、app.ini  |
 | `felix-homelab-site-data`    | 主站 SQLite 与上传图片 |
-| `felix-homelab-nextcloud-data` | Nextcloud 程序、配置与文件 |
 | `felix-homelab-runner-data`  | Runner 注册与缓存    |
 | `felix-homelab-caddy-*`      | Caddy 证书与配置     |
 | `felix-agent-<用户名>-data`  | 各用户 Agent 运行数据（凭据/会话，每个授权账号一个） |
@@ -690,7 +670,7 @@ hostname 作为监听地址。
 备份分**备份源**与**备份渠道**两层，全部配置集中在
 `~/.config/felix-homelab/sync/backup.conf`（可在后台「备份」页图形化编辑）：
 
-- **备份源**（各自独立开关）：Forgejo、主站、Nextcloud；
+- **备份源**（各自独立开关）：Forgejo、主站；
 - **备份渠道**（异地，各自独立开关）：rclone / rsync 随意添加多个，也可全部关闭；
 - **保留天数**：统一控制本机归档清理。
 
@@ -701,8 +681,7 @@ hostname 作为监听地址。
 ```
 felix-homelab-backup.timer  (OnCalendar=03:00, Persistent=true)
   └─ felix-homelab-backup-run.service
-       ├─ podman exec felix-homelab-backup sh /usr/local/bin/backup.sh once   # Forgejo + 主站
-       └─ ~/.config/felix-homelab/backup/backup-nextcloud.sh                 # Nextcloud
+       └─ podman exec felix-homelab-backup sh /usr/local/bin/backup.sh once   # Forgejo + 主站
 ```
 
 - `Persistent=true`：机器在 03:00 关机/休眠时，**开机后立刻补跑**错过的备份；
@@ -712,11 +691,7 @@ felix-homelab-backup.timer  (OnCalendar=03:00, Persistent=true)
     必须含 `app.ini`、`forgejo-db.sql`、`repos/`；
   - `felix-homelab-site-<时间>.tar.gz`：主站 `site.db`（SQLite `.backup`）与上传图片，
     必须含 `site.db`；
-  - `felix-homelab-nextcloud-<时间>.tar.gz`：`pg_dump`（自定义格式）与数据卷打包，必须含
-    `nextcloud-db.dump`；
   - 任一校验不通过即删除该归档，避免“假绿灯”。
-- Nextcloud 备份放在宿主机侧执行（备份容器里没有 `pg_dump`，也不便直接读数据卷）：
-  先用 db 容器 `pg_dump nextcloud`，再用一次性 alpine 容器打包 Nextcloud 数据卷。
 
 ```bash
 make backup        # 立即备份一次（走上面同一个 systemd 服务，含已启用的源）
@@ -773,34 +748,6 @@ make restore ARGS="<归档路径|latest> --yes"   # 非交互
 
 > 已实测：完整恢复 916 条 INSERT、0 错误，**1 用户 / 10 仓库 / 35 次 Actions**，
 > 主站 `site.db`（含站长账号）与上传图片一并还原。
-
-Nextcloud 归档需要手工恢复（脚本暂未自动化）：
-
-```bash
-# 1) 停服务
-systemctl --user stop felix-homelab-nextcloud.service
-# 2) 恢复数据卷
-podman volume rm felix-homelab-nextcloud-data
-podman volume create felix-homelab-nextcloud-data
-podman run --rm -v felix-homelab-nextcloud-data:/data:Z \
-  -v ~/.local/share/felix-homelab/backups:/backup:ro \
-  docker.io/library/alpine:3.20 \
-  tar -xzf /backup/felix-homelab-nextcloud-<时间>.tar.gz -C /data nextcloud-files.tar.gz
-podman run --rm -v felix-homelab-nextcloud-data:/data:Z \
-  docker.io/library/alpine:3.20 \
-  tar -xzf /data/nextcloud-files.tar.gz -C /data && rm -f /data/nextcloud-files.tar.gz
-# 3) 恢复数据库
-systemctl --user start felix-homelab-db.service
-podman exec felix-homelab-db psql -U forgejo -d postgres \
-  -c 'DROP DATABASE IF EXISTS nextcloud;' -c 'CREATE DATABASE nextcloud OWNER forgejo;'
-podman run --rm -v ~/.local/share/felix-homelab/backups:/backup:ro \
-  docker.io/library/alpine:3.20 \
-  tar -xzf /backup/felix-homelab-nextcloud-<时间>.tar.gz -C /tmp nextcloud-db.dump
-podman cp /tmp/nextcloud-db.dump felix-homelab-db:/tmp/  # 视宿主机路径调整
-podman exec felix-homelab-db pg_restore -U forgejo -d nextcloud --no-owner /tmp/nextcloud-db.dump
-# 4) 启动
-systemctl --user start felix-homelab-nextcloud.service
-```
 
 ### 迁移到别的机器
 

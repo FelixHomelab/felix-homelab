@@ -5,7 +5,6 @@
 # 备份源：1 开启 / 0 关闭（可多个同时开启）
 BACKUP_FORGEJO=1
 BACKUP_SITE=1
-BACKUP_NEXTCLOUD=0
 
 # 保留天数（1-90）
 KEEP_DAYS=7

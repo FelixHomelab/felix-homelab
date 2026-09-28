@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 立即执行一次备份（复用宿主机 systemd 服务：Forgejo/主站 + Nextcloud）
+# 立即执行一次备份（复用宿主机 systemd 服务：Forgejo/主站）
 #
 set -euo pipefail
 

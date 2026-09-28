@@ -8,6 +8,10 @@
 #   · 关掉首启对话框，避免挡住 DevTools 就绪。
 set -eu
 
+# 容器里没有无障碍辅助技术，关掉 GTK 的 a11y 桥，避免拉起 at-spi 总线（~10MB）
+export NO_AT_BRIDGE=1
+export GTK_A11Y=none
+
 exec dbus-run-session -- /usr/bin/chromium-browser \
 	--no-sandbox \
 	--no-first-run \

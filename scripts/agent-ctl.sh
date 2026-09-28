@@ -495,7 +495,13 @@ container_create() {
 		;;
 	esac
 
-	podman run "${args[@]}" >/dev/null
+	# 换镜像重建时，旧容器的端口/网络释放有毫秒级竞态（实测偶发 create 失败）；
+	# 失败时短暂等待重试一次，仍失败才向上报错。
+	if ! podman run "${args[@]}" >/dev/null; then
+		warn "容器创建失败，2 秒后重试一次：$(container_of "$key")"
+		sleep 2
+		podman run "${args[@]}" >/dev/null
+	fi
 	state_set_recreated "$key"
 }
 

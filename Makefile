@@ -17,7 +17,7 @@ REPO_DIR := $(shell pwd)
 
 # 容器服务；runner（注册后）与 frpc（配置中转后）可能不存在，故启动时忽略其错误
 SERVICES := felix-homelab-db.service felix-homelab-forgejo.service \
-	felix-homelab-site.service felix-homelab-nextcloud.service \
+	felix-homelab-site.service \
 	felix-homelab-caddy.service felix-homelab-agent-gateway.service \
 	felix-homelab-homepage.service \
 	felix-homelab-runner.service felix-homelab-frpc.service \

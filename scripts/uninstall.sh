@@ -26,7 +26,6 @@ SERVICES=(
 	felix-homelab-agent-gateway.service
 	felix-homelab-homepage.service
 	felix-homelab-site.service
-	felix-homelab-nextcloud.service
 	felix-homelab-caddy.service
 	felix-homelab-forgejo.service
 	felix-homelab-db.service
@@ -37,7 +36,6 @@ VOLUMES=(
 	felix-homelab-db-data
 	felix-homelab-forgejo-data
 	felix-homelab-site-data
-	felix-homelab-nextcloud-data
 	felix-homelab-runner-data
 	felix-homelab-caddy-data
 	felix-homelab-caddy-config

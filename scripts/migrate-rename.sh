@@ -57,7 +57,6 @@ OLD_SERVICES=(
 	felix-workstation-frpc.service
 	felix-workstation-homepage.service
 	felix-workstation-site.service
-	felix-workstation-nextcloud.service
 	felix-workstation-caddy.service
 	felix-workstation-forgejo.service
 	felix-workstation-db.service
@@ -68,7 +67,6 @@ OLD_VOLUMES=(
 	felix-workstation-db-data
 	felix-workstation-forgejo-data
 	felix-workstation-site-data
-	felix-workstation-nextcloud-data
 	felix-workstation-runner-data
 	felix-workstation-caddy-data
 	felix-workstation-caddy-config

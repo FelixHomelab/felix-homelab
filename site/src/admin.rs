@@ -786,7 +786,6 @@ pub struct BackupChannel {
 pub struct BackupConfig {
     pub forgejo: bool,
     pub site: bool,
-    pub nextcloud: bool,
     pub keep_days: u32,
     pub channels: Vec<BackupChannel>,
     /// 最近一次同步的结果（读 /status/sync.status）
@@ -798,7 +797,6 @@ impl Default for BackupConfig {
         Self {
             forgejo: true,
             site: true,
-            nextcloud: false,
             keep_days: 7,
             channels: Vec::new(),
             sync_status: String::new(),
@@ -834,7 +832,6 @@ fn read_backup_config() -> BackupConfig {
         match key {
             "BACKUP_FORGEJO" => config.forgejo = value != "0",
             "BACKUP_SITE" => config.site = value != "0",
-            "BACKUP_NEXTCLOUD" => config.nextcloud = value != "0",
             "KEEP_DAYS" => config.keep_days = value.parse().unwrap_or(7),
             _ => {
                 // 渠道字段按实际行读取，不用 CHANNEL_COUNT 索引
@@ -885,10 +882,9 @@ fn write_backup_config(config: &BackupConfig) -> Result<(), String> {
          # 备份源：1 开启 / 0 关闭\n",
     );
     text.push_str(&format!(
-        "BACKUP_FORGEJO={}\nBACKUP_SITE={}\nBACKUP_NEXTCLOUD={}\nKEEP_DAYS={days}\n\n",
+        "BACKUP_FORGEJO={}\nBACKUP_SITE={}\nKEEP_DAYS={days}\n\n",
         u8::from(config.forgejo),
         u8::from(config.site),
-        u8::from(config.nextcloud),
     ));
 
     let mut channels = 0usize;
@@ -928,7 +924,6 @@ pub async fn admin_backup_config() -> Result<BackupConfig, ServerFnError> {
 pub async fn admin_backup_save_config(
     forgejo: bool,
     site: bool,
-    nextcloud: bool,
     keep_days: u32,
     channels: Option<Vec<BackupChannel>>,
 ) -> Result<Result<(), String>, ServerFnError> {
@@ -938,7 +933,6 @@ pub async fn admin_backup_save_config(
     let config = BackupConfig {
         forgejo,
         site,
-        nextcloud,
         keep_days,
         channels: channels.unwrap_or_default(),
         sync_status: String::new(),
@@ -959,7 +953,7 @@ pub async fn admin_backup_trigger_sync() -> Result<Result<(), String>, ServerFnE
     }
 }
 
-/// 请求一次备份（写触发文件，运行宿主机备份服务，含 Nextcloud）。
+/// 请求一次备份（写触发文件，运行宿主机备份服务）。
 #[server]
 pub async fn admin_backup_now() -> Result<Result<String, String>, ServerFnError> {
     if require_admin().await.is_err() {

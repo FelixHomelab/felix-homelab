@@ -4,8 +4,6 @@
 # 备份源与保留天数来自 /config/backup.conf（后台可编辑）：
 #   BACKUP_FORGEJO=1 / BACKUP_SITE=1 / KEEP_DAYS=7
 #
-# Nextcloud 的数据库与文件由宿主机脚本 backup-nextcloud.sh 负责
-# （备份容器里没有 pg_dump，也不便直接读 Nextcloud 卷）。
 #
 # rootless 说明：容器以 root 运行（映射宿主用户）负责落盘与属主修正；
 # `forgejo dump` 用 s6-setuidgid 降权到 git 执行。

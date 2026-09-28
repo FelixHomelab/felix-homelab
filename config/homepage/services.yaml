@@ -11,13 +11,6 @@
         server: podman
         container: felix-homelab-site
 
-    - Nextcloud（私有云盘）:
-        icon: /icons/nextcloud.png
-        href: http://cloud.localhost:5729/
-        description: 文件同步/分享 · 直连 :5734 · 容器 felix-homelab-nextcloud
-        server: podman
-        container: felix-homelab-nextcloud
-
     - Forgejo（Git 平台）:
         icon: /icons/forgejo.png
         href: http://localhost:5730/

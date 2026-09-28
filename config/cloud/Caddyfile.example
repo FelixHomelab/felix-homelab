@@ -21,7 +21,7 @@
 	}
 }
 
-grantfelix.top, home.grantfelix.top, forgejo.grantfelix.top, cloud.grantfelix.top, dash.grantfelix.top {
+grantfelix.top, home.grantfelix.top, forgejo.grantfelix.top, dash.grantfelix.top {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:20080
 }

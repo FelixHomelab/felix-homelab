@@ -23,7 +23,6 @@ CORE_SERVICES=(
 	felix-homelab-db.service
 	felix-homelab-forgejo.service
 	felix-homelab-site.service
-	felix-homelab-nextcloud.service
 	felix-homelab-caddy.service
 	felix-homelab-agent-gateway.service
 	felix-homelab-homepage.service
@@ -134,16 +133,6 @@ ensure_env_default DSHDEV_RULES_REF 83c5ff329a1ecb9e8dc37da02eee17998f904dee
 # 会话 cookie 的共享父域（Agent 子域 SSO；站点按请求 Host 自适应）
 ensure_env_default COOKIE_DOMAIN grantfelix.top
 
-# Nextcloud 环境变量（首次生成随机密码）
-if [ ! -f "$CONFIG_DIR/nextcloud.env" ]; then
-	log "生成 $CONFIG_DIR/nextcloud.env"
-	install -m 0600 "$REPO_DIR/config/nextcloud.env.example" "$CONFIG_DIR/nextcloud.env"
-	NPW="$(gen_secret)"
-	sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$NPW/" "$CONFIG_DIR/nextcloud.env"
-	sed -i "s/^NEXTCLOUD_ADMIN_PASSWORD=.*/NEXTCLOUD_ADMIN_PASSWORD=$NPW/" "$CONFIG_DIR/nextcloud.env"
-	log "Nextcloud 管理员密码（NEXTCLOUD_ADMIN_PASSWORD）: $NPW"
-fi
-
 # frpc 配置（可选：经云服务器中转）。仅在首次安装时植入模板；
 # 未填写 serverAddr/token 前不会链接并启动 frpc 单元（见第 5 节）。
 mkdir -p "$CONFIG_DIR/frp"
@@ -199,7 +188,7 @@ fi
 
 # 备份脚本随仓库同步（项目托管，非用户自定义）
 mkdir -p "$CONFIG_DIR/backup" "$CONFIG_DIR/rclone" "$CONFIG_DIR/sync"
-for script in backup.sh backup-nextcloud.sh; do
+for script in backup.sh; do
 	install -m 0755 "$REPO_DIR/config/backup/$script" "$CONFIG_DIR/backup/$script"
 done
 install -m 0755 "$REPO_DIR/scripts/sync-backup.sh" "$CONFIG_DIR/backup/sync-backup.sh"
@@ -237,14 +226,13 @@ install -m 0755 "$REPO_DIR/containers/agent-dsh/patch-opencode2dsh-configforms.p
 # 手动：后台写 backup-request / sync-request，由 .path 单元触发
 cat >"$SYSTEMD_USER_DIR/felix-homelab-backup-run.service" <<'EOF'
 [Unit]
-Description=Felix-Homelab: 执行一次备份（Forgejo/主站 + Nextcloud）
+Description=Felix-Homelab: 执行一次备份（Forgejo/主站）
 After=felix-homelab-backup.service felix-homelab-forgejo.service felix-homelab-db.service
 Requires=felix-homelab-backup.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/podman exec felix-homelab-backup sh /usr/local/bin/backup.sh once
-ExecStart=%h/.config/felix-homelab/backup/backup-nextcloud.sh
 EOF
 
 cat >"$SYSTEMD_USER_DIR/felix-homelab-backup.timer" <<'EOF'
@@ -403,7 +391,6 @@ podman pull docker.io/library/caddy:2
 podman pull data.forgejo.org/forgejo/runner:13
 podman pull ghcr.io/gethomepage/homepage:v2.4.0
 podman pull docker.io/willfarrell/autoheal:latest
-podman pull docker.io/library/nextcloud:apache
 
 # frpc 镜像仅在启用公网中转（已链接 frpc 单元）时拉取
 if [ -L "$UNIT_DIR/felix-homelab-frpc.container" ]; then
@@ -422,10 +409,9 @@ fi
 log "reload systemd --user"
 systemctl --user daemon-reload
 
-log "启动数据库并准备 Nextcloud 库"
+log "启动数据库"
 systemctl --user start felix-homelab-db.service
 /usr/bin/podman wait --condition=healthy felix-homelab-db
-"$REPO_DIR/scripts/ensure-nextcloud-db.sh"
 
 log "启动核心服务"
 # Quadlet 会把带 [Install] 的单元自动挂到 default.target.wants，
@@ -453,7 +439,6 @@ cat <<EOF
   主站(社区站)  : http://localhost:5729/   (直连 http://localhost:5733/)
   Forgejo Web   : http://localhost:5730/   (Caddy: http://forgejo.localhost:5729/)
   Forgejo SSH   : ssh -p 5731 git@localhost
-  Nextcloud     : http://cloud.localhost:5729/   (直连 http://localhost:5734/)
   公网访问      : 配置 frpc 后经云域名访问（见 README「公网访问（云服务器中转）」）
   数据目录      : $CONFIG_DIR
   单元目录      : $UNIT_DIR

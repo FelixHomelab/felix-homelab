@@ -11,6 +11,14 @@
 #   · 写入版本戳，入口脚本在镜像升级时刷新 profile（保留凭据/会话/设置）；
 #   · DSH web 拒绝 0.0.0.0 且自带令牌登录，同 Pod 内由 Caddy 回环反代 + 网关鉴权。
 ARG FEDORA_VERSION=44
+
+# ---- 构建 felix-novnc（Go 单二进制替代 Python websockify）----
+# 无第三方模块（纯标准库），不需要 GOPROXY；产物约 6MB，常驻内存比 websockify 低一个量级。
+FROM registry.fedoraproject.org/fedora:${FEDORA_VERSION} AS novnc-build
+RUN dnf install -y golang && dnf clean all
+COPY novnc-server/ /src
+RUN cd /src && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /felix-novnc .
+
 FROM registry.fedoraproject.org/fedora:${FEDORA_VERSION}
 
 USER root
@@ -31,7 +39,6 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 	openbox \
 	x11vnc \
 	novnc \
-	python3-websockify \
 	dbus-daemon \
 	dbus-tools \
 	mesa-libGLES \
@@ -212,11 +219,12 @@ COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh
 COPY dsh-merge-profile.py /usr/local/bin/dsh-merge-profile.py
 COPY seed-dev-rules.py /usr/local/bin/seed-dev-rules.py
 # 容器内虚拟桌面（有头 Chromium 的显示）与 ego 浏览器启动包装（私有 D-Bus + no-sandbox）
+COPY --from=novnc-build /felix-novnc /usr/local/bin/felix-novnc
 COPY felix-desktop-start.sh /usr/local/bin/felix-desktop-start.sh
 COPY felix-ego-chrome.sh /usr/local/bin/felix-ego-chrome.sh
 RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py \
 	/usr/local/bin/seed-dev-rules.py /usr/local/bin/felix-desktop-start.sh \
-	/usr/local/bin/felix-ego-chrome.sh
+	/usr/local/bin/felix-ego-chrome.sh /usr/local/bin/felix-novnc
 
 # 运行态统一挂到 /data（命名卷），工作目录统一 /workspace（宿主 bind mount）。
 # 注意：必须与 scripts/agent-ctl.sh 注入的环境变量保持一致。

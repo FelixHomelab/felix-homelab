@@ -17,7 +17,6 @@ HostName=felix-homelab
 #   5731 -> Forgejo SSH
 #   5732 -> Homepage 控制台直连
 #   5733 -> 主站直连
-#   5734 -> Nextcloud 直连
 #   3000 -> Forgejo Web（仅供 host 网络的作业容器经 127.0.0.1:3000 访问）
 #   5735 -> 站点容器（仅供 host 网络的 Agent 网关 forward_auth 调用）
 PublishPort=127.0.0.1:5729:8080
@@ -25,7 +24,6 @@ PublishPort=127.0.0.1:5730:3000
 PublishPort=127.0.0.1:5731:2222
 PublishPort=127.0.0.1:5732:3001
 PublishPort=127.0.0.1:5733:8090
-PublishPort=127.0.0.1:5734:80
 PublishPort=127.0.0.1:3000:3000
 PublishPort=127.0.0.1:5735:8090
 
