@@ -16,6 +16,9 @@
 #   agent-ctl.sh apply                      处理请求目录 + reconcile + 刷新状态
 #   agent-ctl.sh tick                       同上（供 timer 调用）
 #   agent-ctl.sh list                       列出 Agent
+#   agent-ctl.sh versions                   列出版本标签（回滚用）与在用实例
+#   agent-ctl.sh pin <kind> <版本|latest>    固定模板镜像版本（写回 .env）
+#   agent-ctl.sh recreate-all <kind|all>     按当前固定版本重建实例（换镜像）
 #   agent-ctl.sh sync-routes                按 state 重写全部 Caddy 路由
 #
 set -euo pipefail
@@ -809,6 +812,9 @@ reconcile() {
 			if [ "$age" -gt $((AGENT_RECREATE_DAYS * 86400)) ]; then
 				log "定期重建：$username #$slot（可写层已用 $((age / 86400)) 天）"
 				podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
+				# 时间戳记成“本刻”：睡眠实例的容器已删，避免每轮 tick 重复删与刷日志；
+				# started 的紧接着会重建并再次更新时间戳。
+				state_set_recreated "$key"
 				state="missing"
 			fi
 		fi
@@ -1070,6 +1076,81 @@ list_agents() {
 	done < <(state_entries)
 }
 
+list_versions() {
+	local created image size used current
+	printf '%-46s %-17s %-9s %-24s %s\n' "镜像" "创建时间" "大小" "在用实例" "当前指向"
+	while IFS='|' read -r created image size; do
+		used="$(podman ps -a --filter "ancestor=$image" --format '{{.Names}}' 2>/dev/null | paste -sd, -)"
+		current=""
+		[ "$image" = "$AGENT_IMAGE" ] && current="opencode"
+		[ "$image" = "$AGENT_DSH_IMAGE" ] && current="${current:+$current,}dsh"
+		printf '%-46s %-17s %-9s %-24s %s\n' \
+			"$image" "$(printf '%s' "$created" | cut -d' ' -f1-2)" "$size" "${used:-—}" "${current:-—}"
+	done < <(podman images \
+		--format '{{.CreatedAt}}|{{.Repository}}:{{.Tag}}|{{.Size}}' 2>/dev/null \
+		| grep -E '(^|/)felix-agent-(opencode|dsh):' | sort -r)
+}
+
+# 固定模板镜像版本：把 AGENT_IMAGE / AGENT_DSH_IMAGE 写回 .env（版本标签由
+# build-agent-image.sh 留存，默认最近 3 个）。改完用 recreate-all 让实例生效。
+pin_image() {
+	local kind="${1:-}" ref="${2:-}" var repo target
+	case "$kind" in
+	opencode) var=AGENT_IMAGE ;;
+	dsh) var=AGENT_DSH_IMAGE ;;
+	*) die "用法：agent-ctl.sh pin <opencode|dsh> <版本|latest>" ;;
+	esac
+	[ -n "$ref" ] || die "用法：agent-ctl.sh pin <opencode|dsh> <版本|latest>"
+	repo="${!var%:*}"
+	if [ "$ref" = "latest" ]; then
+		target="$repo:latest"
+	else
+		target="$repo:$ref"
+		podman image exists "$target" \
+			|| die "版本镜像不存在：$target（agent-ctl.sh versions 查看本机留存版本）"
+	fi
+	python3 - "$CONFIG_DIR/.env" "$var" "$target" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+key, value = sys.argv[2], sys.argv[3]
+lines = path.read_text().splitlines() if path.exists() else []
+out = []
+found = False
+for line in lines:
+    if line.startswith(key + "="):
+        out.append(f"{key}={value}")
+        found = True
+    else:
+        out.append(line)
+if not found:
+    out.append(f"{key}={value}")
+path.write_text("\n".join(out) + "\n")
+PY
+	log "已固定 $var=$target（写回 $CONFIG_DIR/.env）"
+	log "执行 agent-ctl.sh recreate-all $kind 让实例生效"
+}
+
+# 按当前固定版本重建实例：started 的立即用新镜像重建，sleeping/stopped 的
+# 只删容器（下次唤醒/启动自然换镜像）。数据卷/工作区/域名/登录态均保留。
+recreate_all() {
+	local kind="${1:-all}" key k
+	ensure_layout
+	while IFS=$'\t' read -r key _username _slot; do
+		[ -n "$key" ] || continue
+		k="$(state_field "$key" kind)"
+		[ "$kind" = "all" ] || [ "$k" = "$kind" ] || continue
+		[ "$(state_field "$key" desired)" = "removed" ] && continue
+		if [ "$(container_state "$key")" != "missing" ]; then
+			log "换镜像重建：$(state_field "$key" username) #$(state_field "$key" slot)"
+			podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
+		fi
+	done < <(state_entries)
+	reconcile
+	sync_status
+}
+
 sync_routes() {
 	ensure_layout
 	local key
@@ -1137,6 +1218,17 @@ apply | tick)
 	;;
 list)
 	list_agents
+	;;
+versions)
+	list_versions
+	;;
+pin)
+	shift
+	pin_image "${1:-}" "${2:-}"
+	;;
+recreate-all)
+	shift
+	recreate_all "${1:-all}"
 	;;
 sync-routes)
 	sync_routes

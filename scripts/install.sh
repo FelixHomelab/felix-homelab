@@ -120,6 +120,7 @@ ensure_env_default AGENT_PIDS_LIMIT 512
 ensure_env_default AGENT_IDLE_SECONDS 300
 ensure_env_default AGENT_GRACE_DAYS 30
 ensure_env_default AGENT_RECREATE_DAYS 7
+ensure_env_default AGENT_IMAGE_KEEP 3
 ensure_env_default OPENCODE_VERSION 2.0.18
 ensure_env_default DSH_VERSION 0.1.7-rc.2
 ensure_env_default DSHMARKET_VERSION 1.66.3

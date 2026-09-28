@@ -7,7 +7,8 @@ profile 的 `cordis.patch.yml`。直接覆盖会把它们抹掉，因此这里�
 
 - `package.json`：结构以镜像为准，`dependencies` 取并集（卷里的用户插件保留）；
 - `cordis.patch.yml` / `cordis.yml` / `state.json` 等用户层文件：卷里已有则保留；
-- `node_modules`：镜像里有而卷里没有的条目才复制（已有的一律保留）。
+- `node_modules`：镜像里的条目一律以镜像为准刷新（含 pnpm 元数据与插件兼容
+  补丁）；用户自己装的插件不在镜像里，继续保留。
 
 用法：dsh-merge-profile.py <镜像 profile 目录> <卷 profile 目录>
 """
@@ -25,6 +26,13 @@ def copy_entry(src: str, dst: str) -> None:
         shutil.copytree(src, dst, symlinks=True)
     else:
         shutil.copy2(src, dst)
+
+
+def remove_entry(path: str) -> None:
+    if os.path.islink(path) or os.path.isfile(path):
+        os.remove(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
 
 
 def merge_package_json(src: str, dst: str) -> None:
@@ -69,15 +77,13 @@ def merge_dir(image_dir: str, volume_dir: str) -> None:
             for child in os.listdir(src):
                 child_src = os.path.join(src, child)
                 child_dst = os.path.join(dst, child)
-                # pnpm 的元数据由镜像管理，必须随镜像刷新：里面的 store 路径要
-                # 与运行期一致，否则用户安装插件报 ERR_PNPM_UNEXPECTED_STORE。
-                if child == ".modules.yaml":
-                    if os.path.lexists(child_dst):
-                        os.remove(child_dst)
-                    copy_entry(child_src, child_dst)
-                    continue
-                if not os.path.exists(child_dst):
-                    copy_entry(child_src, child_dst)
+                # 镜像里的条目（官方插件与各依赖，含 pnpm 的 .modules.yaml）
+                # 以镜像为准刷新：store 路径要跟运行期一致，插件的兼容补丁
+                # 也要随镜像更新。用户自己装的插件不在镜像 node_modules 里，
+                # 因此不受影响、照常保留。
+                if os.path.lexists(child_dst):
+                    remove_entry(child_dst)
+                copy_entry(child_src, child_dst)
             continue
 
         # 两边都是目录 → 递归合并（例如 profiles/web 下的 package.json 与 node_modules）

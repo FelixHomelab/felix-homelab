@@ -133,6 +133,14 @@ RUN if ! grep -q '^allowBuilds:' /opt/dsh-home/profiles/web/pnpm-workspace.yaml;
 	&& grep -q '"@opencode2dsh/dsh-plugin"' /opt/dsh-home/profiles/web/package.json \
 	&& node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)"
 
+# DSH 0.1.7 移除了客户端 settingsScope 服务（改由 configForms 承担），而 0.3.3
+# 仍把它列为硬性注入：web boot 会卡在 pending、整个界面起不来（上游 issue #20/#24，
+# 修复 PR #23 未发版）。构建期把客户端迁到 configForms 的旧 scope 适配上；
+# 上游发版后脚本自动跳过（见 patch-opencode2dsh-configforms.py）。
+COPY patch-opencode2dsh-configforms.py /tmp/patch-opencode2dsh-configforms.py
+RUN python3 /tmp/patch-opencode2dsh-configforms.py /opt/dsh-home/profiles/web \
+	&& rm -f /tmp/patch-opencode2dsh-configforms.py
+
 # 容器化下市场的一键重启会替换容器主进程：用 --patch 覆盖层统一禁用（所有宿主版本都有效）
 RUN printf '%s\n' \
 	'# 容器内禁用市场的一键重启（重启由平台/管理员操作）' \
@@ -145,8 +153,8 @@ RUN printf '%s\n' \
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=3
-RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_VERSION}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
+ARG PROFILE_REV=4
+RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_VERSION}+cfpatch1+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
 COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh

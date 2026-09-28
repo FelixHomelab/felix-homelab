@@ -44,6 +44,33 @@ dsh)
 	;;
 esac
 
+# 版本固化：除 :latest 外再打一个不可变版本标签（回滚用），并只保留最近
+# AGENT_IMAGE_KEEP 个版本标签（默认 3）。正在被实例使用的镜像不会被删。
+prune_old_versions() {
+	local repo="$1" current="$2" keep="$3" tag full kept=0
+	[[ "$keep" =~ ^[0-9]+$ ]] || keep=3
+	while IFS= read -r full; do
+		tag="${full#"$repo":}"
+		[ "$tag" = "latest" ] && continue
+		[[ "$tag" =~ ^v?[0-9] ]] || continue
+		[ "$tag" = "$current" ] && continue
+		if [ "$kept" -lt "$keep" ]; then
+			kept=$((kept + 1))
+			continue
+		fi
+		if podman image rm "$full" >/dev/null 2>&1; then
+			log "清理旧版本标签：$full"
+		else
+			warn "旧版本仍被容器使用，保留：$full"
+		fi
+	done < <(podman images --format '{{.CreatedAt}}|{{.Repository}}:{{.Tag}}' \
+		| sort -r \
+		| awk -F'|' -v r="$repo" 'index($2, r ":") == 1 { print $2 }')
+}
+
 log "构建模板镜像 $IMAGE（$KIND $VERSION${MARKET_VERSION:+ / market $MARKET_VERSION}${GUARDIAN_VERSION:+ / guardian $GUARDIAN_VERSION}${COSTMETER_VERSION:+ / cost-meter $COSTMETER_VERSION}${OC2DSH_VERSION:+ / opencode2dsh $OC2DSH_VERSION}）"
 podman build "${BUILD_ARGS[@]}" -t "$IMAGE" -f "$DIR/Containerfile" "$DIR"
-log "完成：$IMAGE"
+REPO="${IMAGE%:*}"
+podman tag "$IMAGE" "$REPO:$VERSION"
+prune_old_versions "$REPO" "$VERSION" "${AGENT_IMAGE_KEEP:-3}"
+log "完成：$IMAGE（版本标签 $REPO:$VERSION；agent-ctl.sh versions 查看留存）"

@@ -347,6 +347,14 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   端口只发布宿主回环 + 不挂载 `podman.sock`；数据卷挂载带 `:Z`（SELinux 类别）。
 - **定期重建**：容器可写层非持久——超过 `AGENT_RECREATE_DAYS`（默认 7 天）
   由 reconcile 重建容器（数据卷/工作区/域名/登录态保留），清掉潜在的持久化改动。
+- **版本固化与回滚**：构建模板镜像时除 `:latest` 外再打一个**不可变版本标签**
+  （如 `localhost/felix-agent-dsh:0.1.7-rc.2`），默认保留最近
+  `AGENT_IMAGE_KEEP`（3）个版本；`agent-ctl.sh versions` 查看本机留存与在用
+  实例，`agent-ctl.sh pin <opencode|dsh> <版本>` 固定版本（写回 `.env`），
+  `agent-ctl.sh recreate-all <kind>` 让全部实例换镜像（数据全保留）。
+  新版本不稳定或插件不兼容时：`pin dsh <旧版本>` → `recreate-all dsh` 即回滚；
+  恢复最新：`pin dsh latest` → `recreate-all dsh`。切换只发生在重建时，
+  睡眠实例下次唤醒自然使用固定版本，不会打断用户当前会话。
 - **安全边界说明（重要）**：rootless 容器仍是**共享内核**，对“不受信的人”不算
   安全边界（逃逸即宿主用户）。当前方案适合“可信任的朋友/试用”档；正式面向
   陌生人应上 microVM（Kata/gVisor）或独立主机（本仓库暂不包含）。
@@ -386,6 +394,12 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   （`OPENCODE2DSH_VERSION`，默认 0.3.3）：匿名免费通道，无需 API key，
   在模型选择器里以 `opencode2dsh` 分组出现；需要出站 HTTPS 访问
   `opencode.ai` 与 `models.dev`（Agent 独立网络默认允许出站）。
+  **DSH 0.1.7 兼容补丁**：0.1.7 移除了客户端 `settingsScope` 服务
+  （上游 issue #20/#24，修复 PR #23 尚未发版），而插件 0.3.3 仍硬性依赖它，
+  网页会卡在 `pending (waiting for service: settingsScope)` 起不来。镜像构建期
+  由 `patch-opencode2dsh-configforms.py` 把它迁到 `configForms`（幂等，上游
+  发版后自动跳过）；启动与模型路由正常，IP 池设置卡在 0.1.7 上可能不显示
+  （该卡片槽位也改版了，随上游 0.3.4 一起恢复）。
 - **pnpm store 一致性（运行时装插件的前提）**：pnpm 把 store 路径写进
   `node_modules/.modules.yaml`，构建期与运行期 HOME 必须一致（`/data`）；
   镜像升级时 `dsh-merge-profile.py` 会随镜像刷新该文件，否则用户从插件
