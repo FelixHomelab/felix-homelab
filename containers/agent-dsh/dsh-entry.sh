@@ -42,6 +42,13 @@ if [ "${FELIX_DESKTOP:-1}" = "1" ] && [ -x /usr/local/bin/felix-desktop-start.sh
 	export DISPLAY=":${FELIX_DISPLAY_NUM:-99}"
 fi
 
+# OpenAI 兼容的模型中转（Go 原生，固化协议边界）：DSH 侧以「自定义 OpenAI
+# 提供商」接入 http://127.0.0.1:3160/v1；上游真实 API Key 只在本容器配置里。
+if [ -x /usr/local/bin/felix-llm-relay ]; then
+	FELIX_RELAY_CONFIG="${FELIX_RELAY_CONFIG:-/data/llm-relay.json}" \
+		setsid /usr/local/bin/felix-llm-relay >>/tmp/felix-llm-relay.log 2>&1 &
+fi
+
 # 平台默认开发规则：网络搜索走无头浏览器 + Bing。仅在装了 dsh-dev-rules 且
 # 规则文件为空/不存在时播种，不覆盖用户已有规则。
 if [ -d "$DSH_HOME/profiles/web/node_modules/dsh-dev-rules" ] \

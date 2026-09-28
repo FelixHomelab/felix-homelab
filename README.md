@@ -384,6 +384,13 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   无头浏览器（ego_* 工具）+ Bing**（国内 Google/DuckDuckGo 不可用；不要用
   curl/wget 抓搜索结果页；遇登录/验证码提示用户接管）。只填空文档、不覆盖
   用户内容；用户在面板里删掉该规则（保留其它规则）后不会再被加回。
+- **模型协议边界原生（Go）化：felix-llm-relay**：容器自带纯标准库的 OpenAI
+  兼容中转（`127.0.0.1:3160`）。DSH 里用「自定义 OpenAI 提供商」接入
+  `http://127.0.0.1:3160/v1`：多厂商路由、超时、SSE 透传都在这个原生进程里，
+  上游真实 API Key 只存在 `/data/llm-relay.json`（0600，可直接在 DSH 文件树里
+  编辑），不进 DSH 设置与凭据存储。选它的原因：插件/会话/设置这些内部契约仍在
+  高速迭代（本平台本周就适配了 3 处破坏性变更），而「OpenAI HTTP + SSE +
+  Bearer」是已经固化的行业协议，适合原生实现。
 - **自带 ego 浏览器 dsh-ego-browser**（`DSHEGOBROWSER_VERSION`，默认 0.8.5）：
   30+ 个 `ego_*` 浏览器自动化工具 + 实时观察窗（装了 better-sidebar 时注册为
   侧边栏原生 Tab，否则浮动观察球）。浏览器由镜像内置的 Fedora Chromium 提供

@@ -18,6 +18,8 @@ FROM registry.fedoraproject.org/fedora:${FEDORA_VERSION} AS novnc-build
 RUN dnf install -y golang && dnf clean all
 COPY novnc-server/ /src
 RUN cd /src && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /felix-novnc .
+COPY llm-relay/ /relay-src
+RUN cd /relay-src && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /felix-llm-relay .
 
 FROM registry.fedoraproject.org/fedora:${FEDORA_VERSION}
 
@@ -220,11 +222,14 @@ COPY dsh-merge-profile.py /usr/local/bin/dsh-merge-profile.py
 COPY seed-dev-rules.py /usr/local/bin/seed-dev-rules.py
 # 容器内虚拟桌面（有头 Chromium 的显示）与 ego 浏览器启动包装（私有 D-Bus + no-sandbox）
 COPY --from=novnc-build /felix-novnc /usr/local/bin/felix-novnc
+# OpenAI 兼容的模型中转（固化协议边界的原生实现）
+COPY --from=novnc-build /felix-llm-relay /usr/local/bin/felix-llm-relay
 COPY felix-desktop-start.sh /usr/local/bin/felix-desktop-start.sh
 COPY felix-ego-chrome.sh /usr/local/bin/felix-ego-chrome.sh
 RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py \
 	/usr/local/bin/seed-dev-rules.py /usr/local/bin/felix-desktop-start.sh \
-	/usr/local/bin/felix-ego-chrome.sh /usr/local/bin/felix-novnc
+	/usr/local/bin/felix-ego-chrome.sh /usr/local/bin/felix-novnc \
+	/usr/local/bin/felix-llm-relay
 
 # 运行态统一挂到 /data（命名卷），工作目录统一 /workspace（宿主 bind mount）。
 # 注意：必须与 scripts/agent-ctl.sh 注入的环境变量保持一致。
