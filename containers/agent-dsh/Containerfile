@@ -23,9 +23,11 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 	openssh-clients \
 	python3 \
 	make \
+	which \
 	tzdata \
 	ca-certificates \
- && dnf clean all
+	chromium \
+	&& dnf clean all
 
 # ---- fnm + Node 24（国内走 npmmirror 的 Node 发行镜像）----
 # fnm 官网安装脚本域名（fnm.vercel.app）在国内不可达，改从 GitHub Release 安装。
@@ -142,6 +144,32 @@ RUN if ! grep -q '^allowBuilds:' /opt/dsh-home/profiles/web/pnpm-workspace.yaml;
 COPY patch-opencode2dsh-configforms.py /usr/local/bin/patch-opencode2dsh-configforms.py
 RUN python3 /usr/local/bin/patch-opencode2dsh-configforms.py /opt/dsh-home/profiles/web
 
+# ---- 自带侧边栏工作台 dsh-better-sidebar（文件树/编辑器/文件变动/任务/侧边对话）----
+# https://github.com/omdsh-dev/DSH-better-sidebar（要求 DSH 0.1.7-rc.1+，本镜像满足）
+ARG DSHBETTERSIDEBAR_VERSION=0.22.1
+RUN dsh plugin --profile web add "dsh-better-sidebar@${DSHBETTERSIDEBAR_VERSION}" \
+	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-better-sidebar/package.json \
+	&& grep -q '"dsh-better-sidebar"' /opt/dsh-home/profiles/web/package.json
+
+# ---- 自带开发规则 dsh-dev-rules（右侧栏「开发规则」面板 + 系统提示注入）----
+# https://github.com/Grant-Felix/dev-rules；npm 无可用包名，按官方方式用 git
+# 来源分发（国内可用 Gitee 镜像）。固定到 main 的一个提交保证可复现；
+# 升级时把 DSHDEV_RULES_REF 换成新的 SHA（见 .env）。
+ARG DSHDEV_RULES_REF=83c5ff329a1ecb9e8dc37da02eee17998f904dee
+RUN dsh plugin --profile web add "github:Grant-Felix/dev-rules#${DSHDEV_RULES_REF}" \
+	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-dev-rules/package.json \
+	&& grep -q '"dsh-dev-rules"' /opt/dsh-home/profiles/web/package.json
+
+# ---- 自带 ego 浏览器 dsh-ego-browser（ego_* 工具 + 实时观察窗）----
+# https://github.com/Fisfzy/dsh-ego-browser；浏览器由镜像内置的 Fedora chromium
+# 提供（插件自带 --no-sandbox wrapper 适配 root/容器；无内置浏览器插件不可用）。
+ARG DSHEGOBROWSER_VERSION=0.8.5
+RUN dsh plugin --profile web add "dsh-ego-browser@${DSHEGOBROWSER_VERSION}" \
+	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-ego-browser/package.json \
+	&& grep -q '"dsh-ego-browser"' /opt/dsh-home/profiles/web/package.json \
+	&& chmod 0755 /opt/dsh-home/profiles/web/node_modules/dsh-ego-browser/bin/*.sh \
+	&& node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)"
+
 # 容器化下市场的一键重启会替换容器主进程：用 --patch 覆盖层统一禁用（所有宿主版本都有效）
 RUN printf '%s\n' \
 	'# 容器内禁用市场的一键重启（重启由平台/管理员操作）' \
@@ -154,13 +182,14 @@ RUN printf '%s\n' \
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=5
-RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_VERSION}+cfpatch2+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
+ARG PROFILE_REV=7
+RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_VERSION}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_VERSION}+devrules${DSHDEV_RULES_REF}+cfpatch2+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
 COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh
 COPY dsh-merge-profile.py /usr/local/bin/dsh-merge-profile.py
-RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py
+COPY seed-dev-rules.py /usr/local/bin/seed-dev-rules.py
+RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py /usr/local/bin/seed-dev-rules.py
 
 # 运行态统一挂到 /data（命名卷），工作目录统一 /workspace（宿主 bind mount）。
 # 注意：必须与 scripts/agent-ctl.sh 注入的环境变量保持一致。

@@ -26,4 +26,19 @@ if [ -f /usr/local/bin/patch-opencode2dsh-configforms.py ]; then
 		|| echo "[dsh-entry] 警告：opencode2dsh 兼容补丁未应用（见上），界面可能异常" >&2
 fi
 
+# npm/pnpm 不会保留包内脚本的可执行位，而 dsh-ego-browser 依赖自带 wrapper
+# （root/容器下加 --no-sandbox）去拉起 Chromium；缺位会 EACCES 起不了浏览器。
+# 每次启动补齐；插件重装后同样自动恢复。
+if [ -d "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin" ]; then
+	chmod 0755 "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin"/*.sh 2>/dev/null || true
+fi
+
+# 平台默认开发规则：网络搜索走无头浏览器 + Bing。仅在装了 dsh-dev-rules 且
+# 规则文件为空/不存在时播种，不覆盖用户已有规则。
+if [ -d "$DSH_HOME/profiles/web/node_modules/dsh-dev-rules" ] \
+	&& [ -f /usr/local/bin/seed-dev-rules.py ]; then
+	python3 /usr/local/bin/seed-dev-rules.py \
+		|| echo "[dsh-entry] 警告：dev-rules 默认规则未播种（见上）" >&2
+fi
+
 exec dsh "$@"

@@ -390,6 +390,25 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   加载——构建期把它的 bundle 调到名册第一位（每次加新插件后都会校验）。
 - **自带费用统计 dsh-cost-meter**（`DSHCOSTMETER_VERSION`，默认 1.7.40）：
   会话/模型成本、预算、官方余额与 Coding Plan 额度查询，中英双语。
+- **自带侧边栏工作台 dsh-better-sidebar**（`DSHBETTERSIDEBAR_VERSION`，默认
+  0.22.1，要求 DSH 0.1.7+）：文件树与可编辑编辑器、文件变动（Git + 本轮 AI
+  改动）、任务/子代理拓扑、侧边对话、底部工作台；并向所有插件开放
+  `ctx.betterSidebar` 服务（`registerTab` / `registerFileViewer`）。
+- **自带开发规则 dsh-dev-rules**（`DSHDEV_RULES_REF`，git 分发、固定提交
+  SHA，默认 `83c5ff32`；npm 无可用包名，官方推荐 github/gitee 来源）：右侧栏
+  「开发规则」面板可视化维护（全局 + 按项目、追加/覆盖），每个会话自动把生效
+  规则注入系统提示；另带 `dev_rules` 工具，对话里也能直接记规则。
+- **平台默认规则（网络搜索）**：装了 dev-rules 的实例首次启动时，入口脚本会
+  把一条「平台默认」规则播种进 `$DSH_HOME/dev-rules.json`：**联网搜索默认用
+  无头浏览器（ego_* 工具）+ Bing**（国内 Google/DuckDuckGo 不可用；不要用
+  curl/wget 抓搜索结果页；遇登录/验证码提示用户接管）。只填空文档、不覆盖
+  用户内容；用户在面板里删掉该规则（保留其它规则）后不会再被加回。
+- **自带 ego 浏览器 dsh-ego-browser**（`DSHEGOBROWSER_VERSION`，默认 0.8.5）：
+  30+ 个 `ego_*` 浏览器自动化工具 + 实时观察窗（装了 better-sidebar 时注册为
+  侧边栏原生 Tab，否则浮动观察球）。浏览器由镜像内置的 Fedora Chromium 提供
+  （安装约 370MB；插件自带 `--no-sandbox` wrapper 适配容器/root，无显示器
+  自动 headless）。Chromium 吃内存，默认 `AGENT_MEMORY=2g` 下重网页场景可
+  调大；每次启动入口脚本会补齐 wrapper 可执行位（npm 包不保留执行位）。
 - **自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin**
   （`OPENCODE2DSH_VERSION`，默认 0.3.3）：匿名免费通道，无需 API key，
   在模型选择器里以 `opencode2dsh` 分组出现；需要出站 HTTPS 访问
