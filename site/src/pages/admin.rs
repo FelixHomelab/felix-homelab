@@ -308,7 +308,7 @@ pub fn AdminDashboardPage() -> impl IntoView {
                     </a>
                     <a
                         class="quick-tile"
-                        href="http://dash.localhost:5729/"
+                        href="https://dash.grantfelix.top/"
                         target="_blank"
                         rel="noreferrer"
                     >
@@ -317,7 +317,7 @@ pub fn AdminDashboardPage() -> impl IntoView {
                     </a>
                     <a
                         class="quick-tile"
-                        href="http://localhost:5730/-/admin"
+                        href="https://forgejo.grantfelix.top/-/admin"
                         target="_blank"
                         rel="noreferrer"
                     >
@@ -849,7 +849,7 @@ pub fn AdminPodPage() -> impl IntoView {
                 </button>
                 <a
                     class="btn btn-small"
-                    href="http://dash.localhost:5729/"
+                    href="https://dash.grantfelix.top/"
                     target="_blank"
                     rel="noreferrer"
                 >
@@ -857,7 +857,7 @@ pub fn AdminPodPage() -> impl IntoView {
                 </a>
                 <a
                     class="btn btn-small"
-                    href="http://localhost:5730/-/admin"
+                    href="https://forgejo.grantfelix.top/-/admin"
                     target="_blank"
                     rel="noreferrer"
                 >

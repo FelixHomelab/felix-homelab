@@ -6,15 +6,15 @@
 - 容器服务（本 Pod）:
     - 主站（Felix Homelab 社区站）:
         icon: /icons/homepage.png
-        href: http://localhost:5729/
+        href: https://grantfelix.top/
         description: 官方内容与社区投稿 · Leptos 社区站 · 容器 felix-homelab-site
         server: podman
         container: felix-homelab-site
 
     - Forgejo（Git 平台）:
         icon: /icons/forgejo.png
-        href: http://localhost:5730/
-        description: Web :5730 · SSH :5731 · 容器 felix-homelab-forgejo
+        href: https://forgejo.grantfelix.top/
+        description: forgejo.grantfelix.top · SSH :5731 · 容器 felix-homelab-forgejo
         server: podman
         container: felix-homelab-forgejo
 
@@ -44,7 +44,7 @@
 
     - Homepage（本控制台）:
         icon: /icons/homepage.png
-        href: http://localhost:5732/
+        href: https://dash.grantfelix.top/
         description: 当前页面 · 经 Caddy 访问即 :5729
         server: podman
         container: felix-homelab-homepage
@@ -64,20 +64,20 @@
 - 入口与文档:
     - Forgejo 网页:
         icon: /icons/forgejo.png
-        href: http://localhost:5730/
-        description: 直连地址（推荐）
+        href: https://forgejo.grantfelix.top/
+        description: 公网域名（推荐）
         abbr: FJ
 
     - Forgejo 管理后台:
         icon: /icons/forgejo.png
-        href: http://localhost:5730/-/admin
+        href: https://forgejo.grantfelix.top/-/admin
         description: 站点设置 / 用户 / Runner
         abbr: AD
 
     - 统一入口（Caddy）:
         icon: /icons/homepage.png
-        href: http://localhost:5729/
-        description: 首页与 forgejo 域名分流
+        href: https://grantfelix.top/
+        description: 主站入口（grantfelix.top）
         abbr: WEB
 
     - Podman 文档:
