@@ -25,19 +25,25 @@ use crate::community::kind_label as community_kind_label;
 use crate::community::{
     admin_list_tags, admin_merge_tag, admin_save_tag, CommunityTag,
 };
+use crate::sky::{
+    admin_delete_sky_official, admin_feature_sky_post, admin_list_sky_official,
+    admin_list_sky_posts, admin_pin_review, admin_save_sky_boosting, admin_save_sky_official,
+    sky_boosting,
+};
 use crate::components::PageHeader;
 
 use super::set_status;
 
 /// 统一执行一个后台动作：成功就刷新列表并提示，失败把服务端的原话显示出来。
-fn run_action<F>(revision: RwSignal<u32>, message: RwSignal<String>, action: F)
+fn run_action<F, T>(revision: RwSignal<u32>, message: RwSignal<String>, action: F)
 where
-    F: std::future::Future<Output = Result<Result<(), String>, leptos::prelude::ServerFnError>>
+    F: std::future::Future<Output = Result<Result<T, String>, leptos::prelude::ServerFnError>>
         + 'static,
+    T: 'static,
 {
     leptos::task::spawn_local(async move {
         match action.await {
-            Ok(Ok(())) => {
+            Ok(Ok(_)) => {
                 message.set("已处理。".to_string());
                 // 自增触发列表重新拉取
                 revision.update(|n| *n += 1);
@@ -108,6 +114,10 @@ fn AdminNav(perms: Vec<String>) -> impl IntoView {
                             "评价"
                         </a>
                     }
+                })}
+            {has("sky")
+                .then(|| {
+                    view! { <a href="/admin/sky" class:active=move || active("/admin/sky")>"光遇"</a> }
                 })}
             {has("super")
                 .then(|| {
@@ -761,6 +771,7 @@ fn AdminReviewRow(
 ) -> impl IntoView {
     let id = review.id;
     let stars = "★".repeat(review.rating as usize);
+    let featured = RwSignal::new(review.featured);
     // 已有回复必须出现在服务端渲染的 HTML 里：`prop:value` 只设 JS 属性，
     // 那样管理员会以为原本没回复过，一保存就把旧回复覆盖掉。
     let initial_reply = review.reply.clone().unwrap_or_default();
@@ -786,6 +797,16 @@ fn AdminReviewRow(
             </label>
 
             <div class="admin-actions">
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        let next = !featured.get();
+                        featured.set(next);
+                        run_action(revision, message, admin_pin_review(id, next))
+                    }
+                >
+                    {move || if featured.get() { "取消精选" } else { "精选" }}
+                </button>
                 <button
                     class="btn btn-small"
                     on:click=move |_| {
@@ -1953,6 +1974,437 @@ pub fn AdminBackupPage() -> impl IntoView {
                             " 各备份源恢复细节见 README「备份与恢复」。"
                         </p>
                     </div>
+                </div>
+            </section>
+        </AdminPage>
+    }
+}
+
+/// 光遇管理：官方内容（攻略/画廊）、代跑展示、光遇投稿。
+///
+/// 光遇是独立板块：投稿在这里管理（加精/下架/删除），评价精选在「评价」页。
+#[component]
+pub fn AdminSkyPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+
+    let officials = Resource::new_blocking(move || revision.get(), |_| admin_list_sky_official());
+    let show_hidden = RwSignal::new(false);
+    let posts = Resource::new_blocking(
+        move || (revision.get(), show_hidden.get()),
+        |(_, hidden)| {
+            admin_list_sky_posts(if hidden { "hidden".into() } else { "published".into() })
+        },
+    );
+    let boosting = Resource::new_blocking(move || revision.get(), |_| sky_boosting());
+
+    // —— 官方内容表单 ——
+    let edit_id = RwSignal::new(None::<i64>);
+    let f_category = RwSignal::new("gameplay".to_string());
+    let f_slug = RwSignal::new(String::new());
+    let f_title = RwSignal::new(String::new());
+    let f_summary = RwSignal::new(String::new());
+    let f_body = RwSignal::new(String::new());
+    let f_cover = RwSignal::new(String::new());
+    let f_sort = RwSignal::new(0i64);
+    let f_status = RwSignal::new("published".to_string());
+
+    let save_official = move |_| {
+        let id = edit_id.get_untracked();
+        run_action(
+            revision,
+            message,
+            admin_save_sky_official(
+                id,
+                f_category.get_untracked(),
+                f_slug.get_untracked(),
+                f_title.get_untracked(),
+                f_summary.get_untracked(),
+                f_body.get_untracked(),
+                f_cover.get_untracked(),
+                f_sort.get_untracked(),
+                f_status.get_untracked(),
+            ),
+        );
+        edit_id.set(None);
+        f_title.set(String::new());
+        f_slug.set(String::new());
+        f_summary.set(String::new());
+        f_body.set(String::new());
+        f_cover.set(String::new());
+        f_sort.set(0);
+    };
+
+    // —— 公告 ——
+    let announcement = RwSignal::new(String::new());
+    let loaded = RwSignal::new(false);
+    Effect::new(move |_| {
+        if let Some(Ok(b)) = boosting.get() {
+            if !loaded.get_untracked() {
+                announcement.set(b.announcement.clone());
+                loaded.set(true);
+            }
+        }
+    });
+    let save_announcement = move |_| {
+        run_action(
+            revision,
+            message,
+            admin_save_sky_boosting(announcement.get_untracked()),
+        );
+    };
+
+    view! {
+        <Title text="光遇管理 — Felix Homelab" />
+        <AdminPage
+            title="光遇管理"
+            lede="官方内容（攻略/画廊）、代跑展示与光遇投稿；评价精选在「评价」页。".to_string()
+            perm="sky"
+        >
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="step-badge">"1"</span>
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"官方内容"</h2>
+                        <p class="panel-desc">"攻略与画廊的站内内容；发布后即出现在对应分类页。"</p>
+                    </div>
+                    <div class="panel-actions">
+                        <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
+                            "刷新"
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="form-grid">
+                        <label class="field">
+                            <span>"分类"</span>
+                            <select
+                                prop:value=move || f_category.get()
+                                on:change=move |ev| f_category.set(event_target_value(&ev))
+                            >
+                                <option value="gameplay">"攻略"</option>
+                                <option value="gallery">"画廊"</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>"标题"</span>
+                            <input
+                                type="text"
+                                prop:value=move || f_title.get()
+                                on:input=move |ev| f_title.set(event_target_value(&ev))
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"链接名（留空自动生成）"</span>
+                            <input
+                                type="text"
+                                prop:value=move || f_slug.get()
+                                on:input=move |ev| f_slug.set(event_target_value(&ev))
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"摘要（可留空）"</span>
+                            <input
+                                type="text"
+                                prop:value=move || f_summary.get()
+                                on:input=move |ev| f_summary.set(event_target_value(&ev))
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"封面地址（可留空）"</span>
+                            <input
+                                type="text"
+                                prop:value=move || f_cover.get()
+                                on:input=move |ev| f_cover.set(event_target_value(&ev))
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"排序（大的在前）"</span>
+                            <input
+                                type="number"
+                                prop:value=move || f_sort.get().to_string()
+                                on:input=move |ev| {
+                                    f_sort.set(event_target_value(&ev).parse::<i64>().unwrap_or(0));
+                                }
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"状态"</span>
+                            <select
+                                prop:value=move || f_status.get()
+                                on:change=move |ev| f_status.set(event_target_value(&ev))
+                            >
+                                <option value="published">"发布"</option>
+                                <option value="hidden">"隐藏"</option>
+                            </select>
+                        </label>
+                        <div class="field field-action">
+                            <button class="btn btn-primary" on:click=save_official>
+                                {move || if edit_id.get().is_some() { "保存修改" } else { "新建内容" }}
+                            </button>
+                        </div>
+                    </div>
+                    <label class="field">
+                        <span>"正文（Markdown）"</span>
+                        <textarea
+                            class="comment-input"
+                            rows="8"
+                            prop:value=move || f_body.get()
+                            on:input=move |ev| f_body.set(event_target_value(&ev))
+                        ></textarea>
+                    </label>
+
+                    <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                        {move || match officials.get() {
+                            None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                            Some(Err(e)) => view! {
+                                <p class="error">"读取失败："{e.to_string()}</p>
+                            }
+                                .into_any(),
+                            Some(Ok(list)) if list.is_empty() => view! {
+                                <p class="admin-empty">"还没有站内官方内容。"</p>
+                            }
+                                .into_any(),
+                            Some(Ok(list)) => {
+                                view! {
+                                    <div class="admin-list">
+                                        {list
+                                            .into_iter()
+                                            .map(|o| {
+                                                let o_edit = o.clone();
+                                                let category = o.category.clone();
+                                                let status = o.status.clone();
+                                                view! {
+                                                    <article class="admin-row">
+                                                        <p class="admin-meta">
+                                                            <span class=format!("status status-{}", status)>
+                                                                {o.status.clone()}
+                                                            </span>
+                                                            <span class="badge">
+                                                                {if category == "gallery" { "画廊" } else { "攻略" }}
+                                                            </span>
+                                                            <strong>{o.title.clone()}</strong>
+                                                            <span class="comment-time">
+                                                                {format!("#{}", o.slug)}
+                                                            </span>
+                                                            <span class="comment-time">
+                                                                {format!("排序 {}", o.sort)}
+                                                            </span>
+                                                        </p>
+                                                        <div class="admin-actions">
+                                                            <button
+                                                                class="btn btn-small"
+                                                                on:click=move |_| {
+                                                                    let o = o_edit.clone();
+                                                                    edit_id.set(Some(o.id));
+                                                                    f_category.set(o.category.clone());
+                                                                    f_slug.set(o.slug.clone());
+                                                                    f_title.set(o.title.clone());
+                                                                    f_summary.set(o.summary.clone());
+                                                                    f_body.set(o.body_md.clone());
+                                                                    f_cover.set(o.cover.clone());
+                                                                    f_sort.set(o.sort);
+                                                                    f_status.set(o.status.clone());
+                                                                    message.set("已载入表单，可修改后保存。".to_string());
+                                                                }
+                                                            >
+                                                                "编辑"
+                                                            </button>
+                                                            <button
+                                                                class="btn btn-small btn-danger"
+                                                                on:click=move |_| {
+                                                                    run_action(
+                                                                        revision,
+                                                                        message,
+                                                                        admin_delete_sky_official(o.id),
+                                                                    )
+                                                                }
+                                                            >
+                                                                "删除"
+                                                            </button>
+                                                        </div>
+                                                    </article>
+                                                }
+                                            })
+                                            .collect_view()}
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                        }}
+                    </Suspense>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="step-badge">"2"</span>
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"代跑展示"</h2>
+                        <p class="panel-desc">
+                            "公告显示在光遇首页与代跑页；评价“精选”在「评价」页操作（精选置顶）。"
+                        </p>
+                    </div>
+                    <div class="panel-actions">
+                        <button class="btn btn-primary btn-small" on:click=save_announcement>
+                            "保存公告"
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <label class="field">
+                        <span>"公告（留空 = 不显示）"</span>
+                        <textarea
+                            class="comment-input"
+                            rows="4"
+                            prop:value=move || announcement.get()
+                            on:input=move |ev| announcement.set(event_target_value(&ev))
+                        ></textarea>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="step-badge">"3"</span>
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"光遇投稿"</h2>
+                        <p class="panel-desc">"光遇社区的投稿：加精置顶、下架恢复与删除。"</p>
+                    </div>
+                    <div class="panel-actions">
+                        <label class="toggle-row">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || show_hidden.get()
+                                on:change=move |ev| show_hidden.set(event_target_checked(&ev))
+                            />
+                            <span class="toggle-text">"显示已下架"</span>
+                        </label>
+                        <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
+                            "刷新"
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                        {move || match posts.get() {
+                            None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                            Some(Err(e)) => view! {
+                                <p class="error">"读取失败："{e.to_string()}</p>
+                            }
+                                .into_any(),
+                            Some(Ok(list)) if list.is_empty() => view! {
+                                <p class="admin-empty">"这里还没有投稿。"</p>
+                            }
+                                .into_any(),
+                            Some(Ok(list)) => {
+                                let hidden = show_hidden.get();
+                                view! {
+                                    <div class="admin-list">
+                                        {list
+                                            .into_iter()
+                                            .map(|p| {
+                                                let featured = p.featured;
+                                                let id = p.id;
+                                                let title = p.title.clone();
+                                                let author = p.author.clone();
+                                                let href = format!(
+                                                    "/sky/community/{}/{}",
+                                                    p.author_username,
+                                                    p.slug,
+                                                );
+                                                let featured_next = !featured;
+                                                view! {
+                                                    <article class="admin-row">
+                                                        <p class="admin-meta">
+                                                            <span class="status">"光遇"</span>
+                                                            {featured
+                                                                .then(|| {
+                                                                    view! {
+                                                                        <span class="badge badge-featured">"精选"</span>
+                                                                    }
+                                                                })}
+                                                            <strong>{title}</strong>
+                                                            <span class="comment-time">{author}</span>
+                                                            <a href=href>"打开"</a>
+                                                        </p>
+                                                        <div class="admin-actions">
+                                                            {(!hidden)
+                                                                .then(|| {
+                                                                    view! {
+                                                                        <button
+                                                                            class="btn btn-small"
+                                                                            on:click=move |_| {
+                                                                                run_action(
+                                                                                    revision,
+                                                                                    message,
+                                                                                    admin_feature_sky_post(id, featured_next),
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            {if featured { "取消精选" } else { "精选" }}
+                                                                        </button>
+                                                                    }
+                                                                })}
+                                                            {hidden
+                                                                .then(|| {
+                                                                    view! {
+                                                                        <button
+                                                                            class="btn btn-small"
+                                                                            on:click=move |_| {
+                                                                                run_action(
+                                                                                    revision,
+                                                                                    message,
+                                                                                    admin_set_community_status(id, "published".into()),
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            "恢复"
+                                                                        </button>
+                                                                    }
+                                                                })}
+                                                            {(!hidden)
+                                                                .then(|| {
+                                                                    view! {
+                                                                        <button
+                                                                            class="btn btn-small"
+                                                                            on:click=move |_| {
+                                                                                run_action(
+                                                                                    revision,
+                                                                                    message,
+                                                                                    admin_set_community_status(id, "hidden".into()),
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            "下架"
+                                                                        </button>
+                                                                    }
+                                                                })}
+                                                            <button
+                                                                class="btn btn-small btn-danger"
+                                                                on:click=move |_| {
+                                                                    run_action(
+                                                                        revision,
+                                                                        message,
+                                                                        admin_delete_community(id),
+                                                                    )
+                                                                }
+                                                            >
+                                                                "删除"
+                                                            </button>
+                                                        </div>
+                                                    </article>
+                                                }
+                                            })
+                                            .collect_view()}
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                        }}
+                    </Suspense>
                 </div>
             </section>
         </AdminPage>

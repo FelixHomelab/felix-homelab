@@ -16,6 +16,7 @@ use crate::content::{
     get_page, get_post, get_project, list_posts, list_posts_by_tag, list_projects, list_sky,
     list_tags, AuthorAccount, SKY_CATEGORIES,
 };
+use crate::sky::{get_sky_official, list_sky_official, sky_boosting};
 use crate::theme::{validate_accent, validate_background, ThemeState};
 use leptos::prelude::*;
 use leptos_meta::{Meta, Title};
@@ -612,20 +613,34 @@ pub fn AboutPage() -> impl IntoView {
 /// 不放死链。
 #[component]
 pub fn SkyIndex() -> impl IntoView {
+    let boosting = Resource::new(|| (), |_| sky_boosting());
+
     view! {
         <Title text="光遇 — Felix Homelab" />
-        <Meta name="description" content="光遇的攻略、画廊，以及代跑服务的说明与评价。" />
+        <Meta name="description" content="光遇的攻略、画廊、社区与代跑服务。" />
         <section class="wrap">
             <PageHeader
                 title="光遇"
                 lede="Sky: Children of the Light —— 在云端飞翔，与光相遇。".to_string()
             />
             <div class="prose">
-                <p>"这里记录我的光遇之旅：攻略、截图，以及代跑服务的说明与评价。"</p>
+                <p>"攻略、截图、玩家社区，以及代跑服务的说明与评价。"</p>
             </div>
+            <Suspense fallback=|| ()>
+                {move || boosting.get().map(|res| match res {
+                    Ok(b) if !b.announcement.trim().is_empty() => {
+                        view! {
+                            <div class="sky-announce">{b.announcement.clone()}</div>
+                        }
+                            .into_any()
+                    }
+                    _ => ().into_any(),
+                })}
+            </Suspense>
             <div class="hero-actions">
                 <a class="btn btn-primary" href="/sky/gameplay">"攻略"</a>
                 <a class="btn" href="/sky/gallery">"画廊"</a>
+                <a class="btn" href="/sky/community">"光遇社区"</a>
                 <a class="btn" href="/sky/boosting">"代跑与评价"</a>
             </div>
         </section>
@@ -635,20 +650,113 @@ pub fn SkyIndex() -> impl IntoView {
 /// 光遇代跑服务页：说明 + 评价区。
 #[component]
 pub fn SkyBoostingPage() -> impl IntoView {
+    let boosting = Resource::new(|| (), |_| sky_boosting());
+
     view! {
         <Title text="光遇代跑 — Felix Homelab" />
         <Meta name="description" content="光遇代跑服务说明与用户评价。" />
         <section class="wrap">
             <PageHeader title="光遇代跑" lede="跑图、任务与献祭，按你方便的时段来。".to_string() />
+            <Suspense fallback=|| ()>
+                {move || boosting.get().map(|res| match res {
+                    Ok(b) if !b.announcement.trim().is_empty() => {
+                        view! {
+                            <div class="sky-announce">{b.announcement.clone()}</div>
+                        }
+                            .into_any()
+                    }
+                    _ => ().into_any(),
+                })}
+            </Suspense>
             <div class="prose">
                 <p>"服务的具体说明与价格稍后补上。"</p>
                 <p>
-                    "下方是大家的评价。评价提交后需要审核，通过之后才会显示在这里——"
+                    "下方是大家的评价（精选置顶）。评价提交后需要审核，通过之后才会显示在这里——"
                     "开放注册的站点不这么做，很快就会被灌水淹没。"
                 </p>
             </div>
             <ReviewSection />
             <p class="back"><a href="/sky">"← 回光遇"</a></p>
+        </section>
+    }
+}
+
+/// 光遇官方内容详情（站内编辑）：`/sky/:category/:slug`。
+#[component]
+pub fn SkyOfficialPage() -> impl IntoView {
+    #[cfg(feature = "ssr")]
+    let response_options = use_context::<leptos_axum::ResponseOptions>();
+
+    let category = route_param("category");
+    let slug = route_param("slug");
+    let page = Resource::new_blocking(
+        move || (category(), slug()),
+        |(category, slug)| get_sky_official(category, slug),
+    );
+
+    view! {
+        <section class="wrap">
+            <Suspense fallback=loading>
+                {move || page.get().map(|res| match res {
+                    Ok(Some(detail)) => {
+                        let label = if detail.item.category == "gallery" { "画廊" } else { "攻略" };
+                        let back = format!("/sky/{}", detail.item.category);
+                        view! {
+                            <article class="article">
+                                <Title
+                                    text=format!("{} — 光遇 — Felix Homelab", detail.item.title)
+                                />
+                                <Meta
+                                    name="description"
+                                    content=description_or_default(&detail.item.summary)
+                                />
+                                <header class="page-header">
+                                    <h1>{detail.item.title.clone()}</h1>
+                                    <p class="card-meta">
+                                        <span class="badge">{label}</span>
+                                        " · "{detail.item.updated_at.clone()}
+                                    </p>
+                                    {(!detail.item.summary.is_empty())
+                                        .then(|| {
+                                            view! { <p class="lede">{detail.item.summary.clone()}</p> }
+                                        })}
+                                </header>
+                                {(!detail.item.cover.is_empty())
+                                    .then(|| {
+                                        view! {
+                                            <img
+                                                class="sky-cover"
+                                                src=detail.item.cover.clone()
+                                                alt=detail.item.title.clone()
+                                            />
+                                        }
+                                    })}
+                                <div class="prose" inner_html=detail.body_html></div>
+                            </article>
+                            <p class="back">
+                                <a href=back>"← 回" {label}</a>
+                            </p>
+                        }
+                            .into_any()
+                    }
+                    Ok(None) => {
+                        #[cfg(feature = "ssr")]
+                        if let Some(options) = &response_options {
+                            options.set_status(axum::http::StatusCode::NOT_FOUND);
+                        }
+                        view! {
+                            <Title text="找不到内容 — Felix Homelab" />
+                            <PageHeader
+                                title="找不到这篇内容"
+                                lede="它可能被撤下或删掉了。".to_string()
+                            />
+                            <p><a href="/sky">"← 回光遇"</a></p>
+                        }
+                            .into_any()
+                    }
+                    Err(e) => load_error(e.to_string()).into_any(),
+                })}
+            </Suspense>
         </section>
     }
 }
@@ -1259,9 +1367,14 @@ pub fn SkyCategoryPage() -> impl IntoView {
     }
 
     let label = if kind == "gallery" { "画廊" } else { "攻略" };
+    // 站内可编辑的官方内容（DB）优先；仓库 Markdown 作为兼容来源一并展示。
     let items = {
         let kind = kind.clone();
-        Resource::new_blocking(move || kind.clone(), |kind| list_sky(kind))
+        Resource::new_blocking(move || kind.clone(), |kind| async move {
+            let officials = list_sky_official(kind.clone()).await;
+            let markdown = list_sky(kind).await;
+            (officials, markdown)
+        })
     };
 
     view! {
@@ -1273,43 +1386,73 @@ pub fn SkyCategoryPage() -> impl IntoView {
             <Suspense fallback=loading>
                 {move || match items.get() {
                     None => loading().into_any(),
-                    Some(Err(error)) => load_error(error.to_string()).into_any(),
-                    Some(Ok(list)) if list.is_empty() => view! {
-                        <p class="muted">{format!("{label}还在整理，之后会放上来。")}</p>
+                    Some((Err(error), _)) => load_error(error.to_string()).into_any(),
+                    Some((Ok(officials), markdown)) => {
+                        let markdown = markdown.unwrap_or_default();
+                        if officials.is_empty() && markdown.is_empty() {
+                            return view! {
+                                <p class="muted">{format!("{label}还在整理，之后会放上来。")}</p>
+                            }
+                                .into_any();
+                        }
+                        let official_views = officials
+                            .into_iter()
+                            .map(|item| {
+                                let href = format!("/sky/{}/{}", item.category, item.slug);
+                                let title = item.title.clone();
+                                view! {
+                                    <article class="sky-item">
+                                        <h2><a href=href.clone()>{item.title.clone()}</a></h2>
+                                        <p class="card-meta">{item.updated_at.clone()}</p>
+                                        {(!item.summary.is_empty())
+                                            .then(|| {
+                                                view! {
+                                                    <p class="card-summary">{item.summary.clone()}</p>
+                                                }
+                                            })}
+                                        {(!item.cover.is_empty())
+                                            .then(|| {
+                                                view! {
+                                                    <img class="sky-cover" src=item.cover.clone() alt=title.clone() />
+                                                }
+                                            })}
+                                        <a href=href>"阅读全文 →"</a>
+                                    </article>
+                                }
+                            })
+                            .collect_view();
+                        let markdown_views = markdown
+                            .into_iter()
+                            .map(|item| {
+                                let title = item.title.clone();
+                                view! {
+                                    <article class="sky-item">
+                                        <h2>{item.title.clone()}</h2>
+                                        <p class="card-meta">
+                                            {item.date.clone()}
+                                            " · "
+                                            <AuthorLine
+                                                author=item.author.clone()
+                                                account=item.author_account.clone()
+                                            />
+                                        </p>
+                                        {item
+                                            .cover
+                                            .map(|cover| {
+                                                view! {
+                                                    <img class="sky-cover" src=cover alt=title.clone() />
+                                                }
+                                            })}
+                                        <div class="prose" inner_html=item.html></div>
+                                    </article>
+                                }
+                            })
+                            .collect_view();
+                        view! {
+                            <div class="sky-list">{official_views}{markdown_views}</div>
+                        }
+                            .into_any()
                     }
-                    .into_any(),
-                    Some(Ok(list)) => view! {
-                        <div class="sky-list">
-                            {list
-                                .into_iter()
-                                .map(|item| {
-                                    let title = item.title.clone();
-                                    view! {
-                                        <article class="sky-item">
-                                            <h2>{item.title.clone()}</h2>
-                                            <p class="card-meta">
-                                                {item.date.clone()}
-                                                " · "
-                                                <AuthorLine
-                                                    author=item.author.clone()
-                                                    account=item.author_account.clone()
-                                                />
-                                            </p>
-                                            {item
-                                                .cover
-                                                .map(|cover| {
-                                                    view! {
-                                                        <img class="sky-cover" src=cover alt=title.clone() />
-                                                    }
-                                                })}
-                                            <div class="prose" inner_html=item.html></div>
-                                        </article>
-                                    }
-                                })
-                                .collect_view()}
-                        </div>
-                    }
-                    .into_any(),
                 }}
             </Suspense>
         </section>

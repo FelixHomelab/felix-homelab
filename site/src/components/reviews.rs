@@ -106,10 +106,14 @@ pub fn ReviewSection() -> impl IntoView {
                             .map(|review| {
                                 let stars = "★".repeat(review.rating as usize);
                                 let empty = "☆".repeat((RATING_MAX - review.rating).max(0) as usize);
+                                let featured = review.featured;
                                 view! {
                                     <article class="review">
                                         <p class="review-meta">
                                             <span class="stars">{stars}{empty}</span>
+                                            {featured.then(|| view! {
+                                                <span class="badge badge-featured">"精选"</span>
+                                            })}
                                             <strong>{review.author}</strong>
                                             <span class="comment-time">{review.created_at}</span>
                                         </p>

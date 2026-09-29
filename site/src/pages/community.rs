@@ -16,6 +16,7 @@ use crate::community::{
 use crate::components::comments::CommentSection;
 use crate::components::community::CommunityCard;
 use crate::components::PageHeader;
+use crate::sky::list_sky_community;
 
 /// 发布页展示的预置分类（与迁移 `0009_community_tags.sql` 一致）。
 pub const PRESET_TAGS: [&str; 6] = ["公告", "技术", "创作", "闲聊", "资源", "问答"];
@@ -55,25 +56,36 @@ fn KindTabs(active: Signal<Option<String>>) -> impl IntoView {
 
 /// 社区内容列表。
 #[component]
-pub fn CommunityIndex() -> impl IntoView {
+pub fn CommunityIndex(
+    /// 固定类型（光遇板块的 `/sky/community` 固定为 sky，不显示类型筛选）。
+    #[prop(optional, into)]
+    forced_kind: Option<String>,
+) -> impl IntoView {
     let user_state = use_context::<UserState>().expect("UserState 应由 App 提供");
     let path = use_location().pathname;
-    let kind = Signal::derive(move || kind_from_path(&path.get()));
-    let items = Resource::new_blocking(move || kind.get(), |kind| list_community(kind));
+    let forced = forced_kind.clone();
+    let is_forced = forced_kind.is_some();
+    let kind = Signal::derive(move || forced.clone().or_else(|| kind_from_path(&path.get())));
+    let items = Resource::new_blocking(move || kind.get(), |kind| async move {
+        if kind.as_deref() == Some("sky") {
+            list_sky_community().await
+        } else {
+            list_community(kind).await
+        }
+    });
     let tag_list = Resource::new(|| (), |_| list_community_tags());
     let sky_teasers = Resource::new(|| (), |_| random_sky_teasers(3));
+    let (page_title, page_lede) = if is_forced {
+        ("光遇社区", "光遇玩家们的投稿与分享；加精与新内容优先。")
+    } else {
+        ("社区", "注册用户发布的内容；发布即公开，违规会被下架。")
+    };
 
     view! {
-        <Title text="社区 — Felix Homelab" />
-        <Meta
-            name="description"
-            content="社区投稿：注册用户发布的文章与项目。"
-        />
+        <Title text=format!("{page_title} — Felix Homelab") />
+        <Meta name="description" content=page_lede.to_string() />
         <section class="wrap">
-            <PageHeader
-                title="社区"
-                lede="注册用户发布的内容；发布即公开，违规会被下架。".to_string()
-            />
+            <PageHeader title=page_title.to_string() lede=page_lede.to_string() />
             <Suspense fallback=loading>
                 {move || {
                     view! {
@@ -104,10 +116,14 @@ pub fn CommunityIndex() -> impl IntoView {
             <Suspense fallback=loading>
                 {move || {
                     let logged_in = matches!(user_state.get(), Some(Ok(Some(_))));
-                    let new_href = if logged_in { "/community/new" } else { "/login" };
+                    let new_href = if logged_in {
+                        if is_forced { "/sky/community/new" } else { "/community/new" }
+                    } else {
+                        "/login"
+                    };
                     view! {
                         <div class="community-bar">
-                            <KindTabs active=kind />
+                            {(!is_forced).then(|| view! { <KindTabs active=kind /> })}
                             <a class="btn btn-primary btn-small" href=new_href>
                                 {if logged_in { "发布新内容" } else { "登录后发布" }}
                             </a>
@@ -130,7 +146,8 @@ pub fn CommunityIndex() -> impl IntoView {
                 })}
             </Suspense>
 
-            // 娱乐缓冲：随机几则光遇内容（光遇的社区主体仍在光遇板块）
+            // 娱乐缓冲：随机几则光遇内容（光遇板块自身不显示）
+            {(!is_forced).then(|| view! {
             <Suspense fallback=loading>
                 {move || {
                     view! {
@@ -156,6 +173,7 @@ pub fn CommunityIndex() -> impl IntoView {
                     }
                 }}
             </Suspense>
+            })}
         </section>
     }
 }
@@ -237,6 +255,7 @@ pub fn CommunityDetailPage() -> impl IntoView {
 /// 详情正文。单独拆一个函数，避免 Suspense 闭包里堆太多逻辑。
 fn community_detail_view(detail: CommunityDetail) -> impl IntoView {
     let kind = detail.summary.kind.clone();
+    let back_path = if kind == "sky" { "/sky/community" } else { "/community" }.to_string();
     let kind_text = kind_label(&kind);
     let title = detail.summary.title.clone();
     let author = detail.summary.author.clone();
@@ -272,9 +291,10 @@ fn community_detail_view(detail: CommunityDetail) -> impl IntoView {
                 }
             }
             let navigate = navigate.clone();
+            let back_nav = back_path.clone();
             leptos::task::spawn_local(async move {
                 match delete_community(id).await {
-                    Ok(Ok(())) => navigate("/community", Default::default()),
+                    Ok(Ok(())) => navigate(back_nav.as_str(), Default::default()),
                     Ok(Err(text)) => message.set(text),
                     Err(error) => message.set(format!("请求失败：{error}")),
                 }
@@ -355,7 +375,11 @@ fn kind_label_project(kind: &str) -> &str {
 
 /// 发布 / 编辑社区内容。
 #[component]
-pub fn CommunitySubmitPage() -> impl IntoView {
+pub fn CommunitySubmitPage(
+    /// 固定类型（光遇板块发布时固定 sky，不显示类型选择）。
+    #[prop(optional, into)]
+    forced_kind: Option<String>,
+) -> impl IntoView {
     let user_state = use_context::<UserState>().expect("UserState 应由 App 提供");
     let params = use_params_map();
     let username = route_param("username");
@@ -363,7 +387,8 @@ pub fn CommunitySubmitPage() -> impl IntoView {
     let is_edit = move || !params.with(|map| map.get("slug").unwrap_or_default()).is_empty();
     let page_title = if is_edit() { "编辑内容" } else { "发布内容" }.to_string();
 
-    let kind = RwSignal::new("post".to_string());
+    let forced_ui = forced_kind.is_some();
+    let kind = RwSignal::new(forced_kind.clone().unwrap_or_else(|| "post".to_string()));
     let title = RwSignal::new(String::new());
     let slug_input = RwSignal::new(String::new());
     let summary = RwSignal::new(String::new());
@@ -522,17 +547,19 @@ pub fn CommunitySubmitPage() -> impl IntoView {
 
                     view! {
                         <form class="auth-form community-form" on:submit=on_submit>
-                            <label class="field">
-                                <span>"类型"</span>
-                                <select on:change=move |ev| kind.set(event_target_value(&ev))>
-                                    <option value="post" selected=move || kind.get() == "post">"文章"</option>
-                                    <option value="project" selected=move || kind.get() == "project">"项目"</option>
-                                    {(kind.get() == "sky").then(|| view! {
-                                        <option value="sky" selected>"光遇"</option>
-                                    })}
-                                </select>
-                                <small class="muted">"编辑时类型不可更改。"</small>
-                            </label>
+                            {(!forced_ui).then(|| view! {
+                                <label class="field">
+                                    <span>"类型"</span>
+                                    <select on:change=move |ev| kind.set(event_target_value(&ev))>
+                                        <option value="post" selected=move || kind.get() == "post">"文章"</option>
+                                        <option value="project" selected=move || kind.get() == "project">"项目"</option>
+                                        {(kind.get() == "sky").then(|| view! {
+                                            <option value="sky" selected>"光遇"</option>
+                                        })}
+                                    </select>
+                                    <small class="muted">"编辑时类型不可更改。"</small>
+                                </label>
+                            })}
                             <label class="field">
                                 <span>"标题"</span>
                                 <input
@@ -680,4 +707,16 @@ pub fn CommunitySubmitPage() -> impl IntoView {
             </Suspense>
         </section>
     }
+}
+
+/// 光遇社区列表（固定 sky 类型，不显示类型筛选）。
+#[component]
+pub fn SkyCommunityIndex() -> impl IntoView {
+    view! { <CommunityIndex forced_kind="sky" /> }
+}
+
+/// 光遇社区发布 / 编辑（固定 sky 类型）。
+#[component]
+pub fn SkyCommunitySubmitPage() -> impl IntoView {
+    view! { <CommunitySubmitPage forced_kind="sky" /> }
 }

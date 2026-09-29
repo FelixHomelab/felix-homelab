@@ -82,6 +82,9 @@ pub struct AdminReview {
     pub reply: Option<String>,
     pub status: String,
     pub created_at: String,
+    /// 是否已设为代跑页精选。
+    #[serde(default)]
+    pub featured: bool,
 }
 
 /// 后台看到的用户。
@@ -269,16 +272,28 @@ pub async fn admin_list_reviews(status: String) -> Result<Vec<AdminReview>, Serv
         .await
         .map_err(|e| ServerFnError::new(format!("查询评价失败: {e}")))?;
 
+    let raw: String =
+        sqlx::query_scalar("SELECT value FROM sky_boosting WHERE key = 'featured_reviews'")
+            .fetch_optional(&app.pool)
+            .await
+            .map_err(|e| ServerFnError::new(format!("查询精选评价失败: {e}")))?
+            .unwrap_or_else(|| "[]".to_string());
+    let featured_ids: Vec<i64> = serde_json::from_str(&raw).unwrap_or_default();
+
     Ok(rows
         .into_iter()
-        .map(|row| AdminReview {
-            id: row.get("id"),
-            author: row.get("display_name"),
-            rating: row.get("rating"),
-            body: row.get("body"),
-            reply: row.get("reply"),
-            status: row.get("status"),
-            created_at: row.get("created_at"),
+        .map(|row| {
+            let id: i64 = row.get("id");
+            AdminReview {
+                id,
+                author: row.get("display_name"),
+                rating: row.get("rating"),
+                body: row.get("body"),
+                reply: row.get("reply"),
+                status: row.get("status"),
+                created_at: row.get("created_at"),
+                featured: featured_ids.contains(&id),
+            }
         })
         .collect())
 }

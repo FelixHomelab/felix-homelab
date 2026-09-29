@@ -23,6 +23,7 @@ pub mod content;
 pub mod pages;
 pub mod reviews;
 pub mod roles;
+pub mod sky;
 pub mod theme;
 
 // 只在服务端存在：客户端 wasm 包里既没有数据库也没有 Axum
@@ -106,6 +107,18 @@ pub fn register_server_fns() {
     server_fn::axum::register_explicit::<community::SubmitCommunity>();
     server_fn::axum::register_explicit::<community::UpdateCommunity>();
     server_fn::axum::register_explicit::<community::DeleteCommunity>();
+    // 光遇：官方内容 / 代跑展示 / 投稿管理 / 精选
+    server_fn::axum::register_explicit::<sky::ListSkyOfficial>();
+    server_fn::axum::register_explicit::<sky::GetSkyOfficial>();
+    server_fn::axum::register_explicit::<sky::SkyBoosting>();
+    server_fn::axum::register_explicit::<sky::ListSkyCommunity>();
+    server_fn::axum::register_explicit::<sky::AdminListSkyOfficial>();
+    server_fn::axum::register_explicit::<sky::AdminSaveSkyOfficial>();
+    server_fn::axum::register_explicit::<sky::AdminDeleteSkyOfficial>();
+    server_fn::axum::register_explicit::<sky::AdminSaveSkyBoosting>();
+    server_fn::axum::register_explicit::<sky::AdminListSkyPosts>();
+    server_fn::axum::register_explicit::<sky::AdminFeatureSkyPost>();
+    server_fn::axum::register_explicit::<sky::AdminPinReview>();
 
     // content
     server_fn::axum::register_explicit::<content::ListPosts>();

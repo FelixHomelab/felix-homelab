@@ -6,15 +6,16 @@
 use crate::auth::{current_user, UserState};
 use crate::pages::admin::{
     AdminAgentPage, AdminBackupPage, AdminCommentsPage, AdminCommunityPage,
-    AdminDashboardPage, AdminPodPage, AdminReviewsPage, AdminUsersPage,
+    AdminDashboardPage, AdminPodPage, AdminReviewsPage, AdminSkyPage, AdminUsersPage,
 };
 use crate::pages::community::{
     CommunityDetailPage, CommunityIndex, CommunitySubmitPage, CommunityTagPage,
+    SkyCommunityIndex, SkyCommunitySubmitPage,
 };
 use crate::pages::{
     AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, HomePage, Layout,
     LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, SkyBoostingPage,
-    SkyCategoryPage, SkyIndex, UserProfilePage,
+    SkyCategoryPage, SkyIndex, SkyOfficialPage, UserProfilePage,
 };
 use crate::theme::{ThemePrefs, ThemeState};
 use leptos::prelude::*;
@@ -79,11 +80,11 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/blog/tag/:tag") view=BlogTag ssr=SsrMode::Async />
                     <Route path=path!("/blog/:slug") view=BlogPost ssr=SsrMode::Async />
                     // 社区投稿：静态子路径必须排在 :username/:slug 之前
-                    <Route path=path!("/community") view=CommunityIndex ssr=SsrMode::Async />
-                    <Route path=path!("/community/posts") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route path=path!("/community") view=|| view! { <CommunityIndex /> } ssr=SsrMode::Async />
+                    <Route path=path!("/community/posts") view=|| view! { <CommunityIndex /> } ssr=SsrMode::Async />
                     <Route
                         path=path!("/community/projects")
-                        view=CommunityIndex
+                        view=|| view! { <CommunityIndex /> }
                         ssr=SsrMode::Async
                     />
                     <Route
@@ -93,12 +94,12 @@ pub fn App() -> impl IntoView {
                     />
                     <Route
                         path=path!("/community/new")
-                        view=CommunitySubmitPage
+                        view=|| view! { <CommunitySubmitPage /> }
                         ssr=SsrMode::Async
                     />
                     <Route
                         path=path!("/community/:username/:slug/edit")
-                        view=CommunitySubmitPage
+                        view=|| view! { <CommunitySubmitPage /> }
                         ssr=SsrMode::Async
                     />
                     <Route
@@ -112,6 +113,28 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/sky") view=SkyIndex ssr=SsrMode::Async />
                     // boosting 必须排在 :category 之前，否则它会被当成一个分类
                     <Route path=path!("/sky/boosting") view=SkyBoostingPage ssr=SsrMode::Async />
+                    // 光遇社区：静态路径必须排在 /sky/:category 之前
+                    <Route path=path!("/sky/community") view=SkyCommunityIndex ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/sky/community/new")
+                        view=SkyCommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/sky/community/:username/:slug/edit")
+                        view=SkyCommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/sky/community/:username/:slug")
+                        view=CommunityDetailPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/sky/:category/:slug")
+                        view=SkyOfficialPage
+                        ssr=SsrMode::Async
+                    />
                     <Route path=path!("/sky/:category") view=SkyCategoryPage ssr=SsrMode::Async />
                     // /me 会读「当前用户」这个资源，必须是 Async——否则登录后才该出现的
                     // 上传表单与改密码区块根本不会渲染（资源在首屏还是 None）。
@@ -133,6 +156,7 @@ pub fn App() -> impl IntoView {
                         view=AdminReviewsPage
                         ssr=SsrMode::Async
                     />
+                    <Route path=path!("/admin/sky") view=AdminSkyPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/users") view=AdminUsersPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/pod") view=AdminPodPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/agents") view=AdminAgentPage ssr=SsrMode::Async />
@@ -144,15 +168,15 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/blog/") view=BlogIndex ssr=SsrMode::Async />
                     <Route path=path!("/blog/tag/:tag/") view=BlogTag ssr=SsrMode::Async />
                     <Route path=path!("/blog/:slug/") view=BlogPost ssr=SsrMode::Async />
-                    <Route path=path!("/community/") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route path=path!("/community/") view=|| view! { <CommunityIndex /> } ssr=SsrMode::Async />
                     <Route
                         path=path!("/community/posts/")
-                        view=CommunityIndex
+                        view=|| view! { <CommunityIndex /> }
                         ssr=SsrMode::Async
                     />
                     <Route
                         path=path!("/community/projects/")
-                        view=CommunityIndex
+                        view=|| view! { <CommunityIndex /> }
                         ssr=SsrMode::Async
                     />
                     <Route
@@ -162,12 +186,12 @@ pub fn App() -> impl IntoView {
                     />
                     <Route
                         path=path!("/community/new/")
-                        view=CommunitySubmitPage
+                        view=|| view! { <CommunitySubmitPage /> }
                         ssr=SsrMode::Async
                     />
                     <Route
                         path=path!("/community/:username/:slug/edit/")
-                        view=CommunitySubmitPage
+                        view=|| view! { <CommunitySubmitPage /> }
                         ssr=SsrMode::Async
                     />
                     <Route
@@ -180,6 +204,27 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/about/") view=AboutPage ssr=SsrMode::Async />
                     <Route path=path!("/sky/") view=SkyIndex ssr=SsrMode::Async />
                     <Route path=path!("/sky/boosting/") view=SkyBoostingPage ssr=SsrMode::Async />
+                    <Route path=path!("/sky/community/") view=SkyCommunityIndex ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/sky/community/new/")
+                        view=SkyCommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/sky/community/:username/:slug/edit/")
+                        view=SkyCommunitySubmitPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/sky/community/:username/:slug/")
+                        view=CommunityDetailPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
+                        path=path!("/sky/:category/:slug/")
+                        view=SkyOfficialPage
+                        ssr=SsrMode::Async
+                    />
                     <Route path=path!("/sky/:category/") view=SkyCategoryPage ssr=SsrMode::Async />
                     <Route path=path!("/me/") view=AppearancePage ssr=SsrMode::Async />
                     <Route path=path!("/login/") view=LoginPage ssr=SsrMode::Async />
@@ -201,6 +246,7 @@ pub fn App() -> impl IntoView {
                         view=AdminReviewsPage
                         ssr=SsrMode::Async
                     />
+                    <Route path=path!("/admin/sky/") view=AdminSkyPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/users/") view=AdminUsersPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/pod/") view=AdminPodPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/agents/") view=AdminAgentPage ssr=SsrMode::Async />

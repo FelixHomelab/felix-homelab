@@ -56,11 +56,17 @@ pub struct CommunitySummary {
     pub author: String,
     pub author_username: String,
     pub created_at: String,
+    /// 光遇投稿的“加精”（其它类型恒为 false）。
+    #[serde(default)]
+    pub featured: bool,
 }
 
 /// 按类型存放的附加字段。
 #[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub struct CommunityMeta {
+    /// 光遇投稿加精标记。
+    #[serde(default)]
+    pub featured: bool,
     #[serde(default)]
     pub project_kind: String,
     #[serde(default)]
@@ -353,6 +359,7 @@ pub async fn list_community(kind: Option<String>) -> Result<Vec<CommunitySummary
     }
 
     let base = "SELECT c.id, c.kind, c.slug, c.title, c.summary, c.tags, c.created_at, \
+                       COALESCE(json_extract(c.meta, '$.featured'), 0) AS featured, \
                        u.display_name, u.username \
                 FROM community_posts c JOIN users u ON u.id = c.author_id \
                 WHERE c.status = 'published'";
@@ -379,25 +386,12 @@ pub async fn list_community(kind: Option<String>) -> Result<Vec<CommunitySummary
     }
     .map_err(|e| ServerFnError::new(format!("查询社区内容失败: {e}")))?;
 
-    Ok(rows
-        .into_iter()
-        .map(|row| CommunitySummary {
-            id: row.get("id"),
-            kind: row.get("kind"),
-            slug: row.get("slug"),
-            title: row.get("title"),
-            summary: row.get("summary"),
-            tags: serde_json::from_str(&row.get::<String, _>("tags")).unwrap_or_default(),
-            author: row.get("display_name"),
-            author_username: row.get("username"),
-            created_at: row.get("created_at"),
-        })
-        .collect())
+    Ok(rows.iter().map(summary_from_row).collect())
 }
 
 /// 行 → 列表项（各查询共用）。
 #[cfg(feature = "ssr")]
-fn summary_from_row(row: &sqlx::sqlite::SqliteRow) -> CommunitySummary {
+pub(crate) fn summary_from_row(row: &sqlx::sqlite::SqliteRow) -> CommunitySummary {
     use sqlx::Row;
     CommunitySummary {
         id: row.get("id"),
@@ -409,6 +403,7 @@ fn summary_from_row(row: &sqlx::sqlite::SqliteRow) -> CommunitySummary {
         author: row.get("display_name"),
         author_username: row.get("username"),
         created_at: row.get("created_at"),
+        featured: row.get::<i64, _>("featured") != 0,
     }
 }
 
@@ -492,6 +487,7 @@ pub async fn list_community_by_tag(tag: String) -> Result<Vec<CommunitySummary>,
 
     let rows = sqlx::query(
         "SELECT c.id, c.kind, c.slug, c.title, c.summary, c.tags, c.created_at, \
+                COALESCE(json_extract(c.meta, '$.featured'), 0) AS featured, \
                 u.display_name, u.username \
          FROM community_posts c JOIN users u ON u.id = c.author_id \
          WHERE c.status = 'published' \
@@ -517,6 +513,7 @@ pub async fn random_sky_teasers(limit: i64) -> Result<Vec<CommunitySummary>, Ser
 
     let rows = sqlx::query(
         "SELECT c.id, c.kind, c.slug, c.title, c.summary, c.tags, c.created_at, \
+                COALESCE(json_extract(c.meta, '$.featured'), 0) AS featured, \
                 u.display_name, u.username \
          FROM community_posts c JOIN users u ON u.id = c.author_id \
          WHERE c.status = 'published' AND c.kind = 'sky' \
@@ -669,6 +666,7 @@ pub async fn get_community(
 
     let row = sqlx::query(
         "SELECT c.id, c.kind, c.slug, c.title, c.summary, c.tags, c.body_md, c.body_html, c.meta, \
+                COALESCE(json_extract(c.meta, '$.featured'), 0) AS featured, \
                 c.status, c.created_at, c.author_id, u.display_name, u.username \
          FROM community_posts c JOIN users u ON u.id = c.author_id \
          WHERE u.username = ?1 COLLATE NOCASE AND c.slug = ?2",
@@ -708,6 +706,7 @@ pub async fn get_community(
             author: row.get("display_name"),
             author_username: row.get("username"),
             created_at: row.get("created_at"),
+            featured: row.get::<i64, _>("featured") != 0,
         },
         body_md: row.get("body_md"),
         body_html: row.get("body_html"),
@@ -790,7 +789,8 @@ pub async fn submit_community(
         .await
         .map_err(|e| ServerFnError::new(format!("读取用户失败: {e}")))?;
 
-    Ok(Ok(format!("/community/{username}/{slug}")))
+    let prefix = if kind == "sky" { "/sky/community" } else { "/community" };
+    Ok(Ok(format!("{prefix}/{username}/{slug}")))
 }
 
 /// 更新自己的社区内容（管理员也可）。成功时返回详情页地址。
@@ -878,7 +878,8 @@ pub async fn update_community(
         .await
         .map_err(|e| ServerFnError::new(format!("读取用户失败: {e}")))?;
 
-    Ok(Ok(format!("/community/{username}/{slug}")))
+    let prefix = if kind == "sky" { "/sky/community" } else { "/community" };
+    Ok(Ok(format!("{prefix}/{username}/{slug}")))
 }
 
 /// 删除自己的社区内容（管理员也可）。

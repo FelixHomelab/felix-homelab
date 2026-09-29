@@ -366,6 +366,22 @@ a:hover {
     margin-bottom: 2rem;
 }
 
+/* 光遇公告：显示在光遇首页与代跑页 */
+.sky-announce {
+    margin: 0 0 1.5rem;
+    padding: 0.875rem 1.125rem;
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border));
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+    font-size: 0.9375rem;
+}
+
+/* 精选徽标（光遇投稿与代跑评价） */
+.badge-featured {
+    background: color-mix(in srgb, var(--warn) 16%, var(--surface));
+    color: var(--warn);
+}
+
 /* 投稿页的预置分类（可多选；正文 #分类 另行解析） */
 .tag-pick {
     display: flex;

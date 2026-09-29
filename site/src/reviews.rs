@@ -31,6 +31,9 @@ pub struct ReviewView {
     /// 站长的回复，可能没有。
     pub reply: Option<String>,
     pub created_at: String,
+    /// 是否被光遇管理员设为精选（代跑页会置顶）。
+    #[serde(default)]
+    pub featured: bool,
 }
 
 /// 评价区的数据：列表 + 当前用户是否有待审评价。
@@ -61,17 +64,31 @@ pub async fn load_review_board() -> Result<ReviewBoard, ServerFnError> {
     .await
     .map_err(|e| ServerFnError::new(format!("查询评价失败: {e}")))?;
 
-    let reviews: Vec<ReviewView> = rows
+    // 精选：读光遇展示设置里的 id 列表，置顶并打标
+    let raw: String =
+        sqlx::query_scalar("SELECT value FROM sky_boosting WHERE key = 'featured_reviews'")
+            .fetch_optional(&app.pool)
+            .await
+            .map_err(|e| ServerFnError::new(format!("查询精选评价失败: {e}")))?
+            .unwrap_or_else(|| "[]".to_string());
+    let featured_ids: Vec<i64> = serde_json::from_str(&raw).unwrap_or_default();
+
+    let mut reviews: Vec<ReviewView> = rows
         .into_iter()
-        .map(|row| ReviewView {
-            id: row.get("id"),
-            author: row.get("display_name"),
-            rating: row.get("rating"),
-            body: row.get("body"),
-            reply: row.get("reply"),
-            created_at: row.get("created_at"),
+        .map(|row| {
+            let id: i64 = row.get("id");
+            ReviewView {
+                id,
+                author: row.get("display_name"),
+                rating: row.get("rating"),
+                body: row.get("body"),
+                reply: row.get("reply"),
+                created_at: row.get("created_at"),
+                featured: featured_ids.contains(&id),
+            }
         })
         .collect();
+    reviews.sort_by_key(|review| !review.featured);
 
     let viewer_has_pending = match viewer {
         Some(user_id) => {

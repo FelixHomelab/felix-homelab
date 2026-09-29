@@ -9,7 +9,11 @@ use crate::community::{kind_label, CommunitySummary};
 /// 社区内容卡片。
 #[component]
 pub fn CommunityCard(item: CommunitySummary) -> impl IntoView {
-    let href = format!("/community/{}/{}", item.author_username, item.slug);
+    let href = if item.kind == "sky" {
+        format!("/sky/community/{}/{}", item.author_username, item.slug)
+    } else {
+        format!("/community/{}/{}", item.author_username, item.slug)
+    };
     let kind = kind_label(&item.kind);
     let author_href = format!("/user/{}", item.author_username);
     // 展示到日即可，时间戳对列表没有意义
@@ -22,6 +26,7 @@ pub fn CommunityCard(item: CommunitySummary) -> impl IntoView {
             <div class="card-head">
                 <a class="card-title" href=href>{item.title.clone()}</a>
                 <span class="badge">{kind}</span>
+                {item.featured.then(|| view! { <span class="badge badge-featured">"精选"</span> })}
             </div>
             <p class="card-meta">
                 <a href=author_href>{author}</a>
