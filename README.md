@@ -409,6 +409,9 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
     多租户下也不挂宿主桌面套接字。
   `felix-ego-chrome.sh` 负责协议适配（Obscura 是 CDP 服务形态，运行时是
   Chrome 命令行形态）并在 Obscura 不可用时自动回退 Chromium 无头。
+  fork 里带一处 runtime 补丁：内部同步表达式改走 `evaluateSync()`
+  （`awaitPromise:false`）——否则 Obscura 在 Bing 等重页面上 `page.info()`
+  会因 awaitPromise 排队 >15s 超时（实测修复后 info 5ms）。
   **两套引擎存储独立**：Obscura 用 `--storage-dir` 的 `cookies.json`，
   Chromium 用自己的 Profile——想让日常无头会话带登录态，就在无头观察窗里
   登录。**镜像内置 Noto CJK / Emoji 字体**（否则观察窗里中文全是方框）；

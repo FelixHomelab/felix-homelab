@@ -188,7 +188,7 @@ RUN (dsh plugin --profile web add "github:Grant-Felix/dev-rules#${DSHDEV_RULES_R
 # https://github.com/Fisfzy/dsh-ego-browser；浏览器由镜像内置的 Fedora chromium
 # 提供（插件自带 --no-sandbox wrapper 适配 root/容器；无内置浏览器插件不可用）。
 # 按平台规则从 fork 固定提交安装（分支 felix/main，优化尝试都发生在这里，见 FORKS.md）。
-ARG DSHEGOBROWSER_REF=e20e90a18744a79ba19e9af3d918d5e8573dd68f
+ARG DSHEGOBROWSER_REF=3fc4245d9b95b1eb2cfe540e32d04c363ba9ca31
 RUN dsh plugin --profile web add "github:FelixHomelab/dsh-ego-browser#${DSHEGOBROWSER_REF}" \
 	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-ego-browser/package.json \
 	&& grep -q '"dsh-ego-browser"' /opt/dsh-home/profiles/web/package.json \
@@ -207,7 +207,7 @@ RUN printf '%s\n' \
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=10
+ARG PROFILE_REV=11
 RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_REF:0:8}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_REF:0:8}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_REF:0:8}+devrules${DSHDEV_RULES_REF}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
