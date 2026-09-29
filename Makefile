@@ -124,7 +124,7 @@ uninstall: ## 停止并移除单元（保留数据）
 purge: ## 停止、移除单元并删除数据卷（危险）
 	$(REPO_DIR)/scripts/uninstall.sh --purge
 
-prune: ## 清理构建残留（悬空镜像、构建工作容器、匿名卷；不动命名卷与在用镜像）
+prune: ## 清理构建残留（悬空镜像、构建工作容器）；**不删任何数据卷**
 	-buildah rm --all >/dev/null 2>&1 || true
 	-podman image prune -f
-	-podman volume prune -f
+	@echo "提示：数据卷（含未使用的命名卷）一律手动确认后再删；本目标不做卷清理。"
