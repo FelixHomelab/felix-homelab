@@ -100,6 +100,10 @@ Public Hostnames（Zero Trust → 该隧道 → Public Hostname）：
 
 > 顶点留给邮箱；Agent 域名是**一级子域**（`<18位随机码>.wraindrock.com`），
 > Cloudflare 免费版 Universal SSL 正好覆盖，无需付费证书。
+>
+> **Forgejo SSH 不走 Tunnel**（免费版不转发任意 TCP）：在 Cloudflare 另加一条
+> **灰云** A 记录 `ssh` → 云服务器 IP，并把 `FORGEJO__server__SSH_DOMAIN`
+> 指向 `ssh.<域名>`；克隆地址即 `ssh://git@ssh.<域名>:20022/...`。
 
 ### 备选：云服务器 frp 中转
 
