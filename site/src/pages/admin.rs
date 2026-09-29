@@ -306,24 +306,6 @@ pub fn AdminDashboardPage() -> impl IntoView {
                         <strong>"OpenCloud"</strong>
                         <span>"文件同步 / 分享（cloud.grantfelix.top）"</span>
                     </a>
-                    <a
-                        class="quick-tile"
-                        href="https://dash.grantfelix.top/"
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        <strong>"控制台看板"</strong>
-                        <span>"Homepage 服务与容器总览"</span>
-                    </a>
-                    <a
-                        class="quick-tile"
-                        href="https://forgejo.grantfelix.top/-/admin"
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        <strong>"Forgejo 后台"</strong>
-                        <span>"仓库、账号与 Actions"</span>
-                    </a>
                 </div>
             </section>
         </AdminPage>
@@ -847,22 +829,6 @@ pub fn AdminPodPage() -> impl IntoView {
                 <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
                     "刷新"
                 </button>
-                <a
-                    class="btn btn-small"
-                    href="https://dash.grantfelix.top/"
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    "控制台看板"
-                </a>
-                <a
-                    class="btn btn-small"
-                    href="https://forgejo.grantfelix.top/-/admin"
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    "Forgejo 后台"
-                </a>
             </div>
 
             <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>

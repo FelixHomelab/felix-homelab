@@ -266,12 +266,16 @@ fn MyAgentCard(agent: AgentRow) -> impl IntoView {
 pub fn BlogIndex() -> impl IntoView {
     let posts = Resource::new(|| (), |_| list_posts());
     let tags = Resource::new(|| (), |_| list_tags());
+    let projects = Resource::new(|| (), |_| list_projects());
 
     view! {
         <Title text="博客 — Felix Homelab" />
-        <Meta name="description" content="写的文章与笔记，按时间倒序排列。" />
+        <Meta name="description" content="官方博客：文章、笔记与项目。社区内容在「社区」。" />
         <section class="wrap">
-            <PageHeader title="博客" lede="写下来的才算想过。".to_string() />
+            <PageHeader
+                title="博客"
+                lede="官方内容：写下来的才算想过。社区投稿在「社区」。".to_string()
+            />
             <ContentTabs active="official" official_href="/blog" community_href="/community/posts" />
 
             <Suspense fallback=loading>
@@ -298,6 +302,25 @@ pub fn BlogIndex() -> impl IntoView {
                         </div>
                     }.into_any(),
                     Err(e) => load_error(e.to_string()).into_any(),
+                })}
+            </Suspense>
+
+            // 官方项目并入博客：官方内容只有一个入口，项目在这里沉底展示。
+            <Suspense fallback=loading>
+                {move || projects.get().map(|res| match res {
+                    Ok(list) if list.is_empty() => ().into_any(),
+                    Ok(list) => view! {
+                        <section class="section">
+                            <div class="section-head">
+                                <h2>"官方项目"</h2>
+                                <a href="/projects">"全部项目 →"</a>
+                            </div>
+                            <div class="card-list">
+                                {list.into_iter().map(|p| view! { <ProjectCard project=p /> }).collect_view()}
+                            </div>
+                        </section>
+                    }.into_any(),
+                    Err(_) => ().into_any(),
                 })}
             </Suspense>
         </section>

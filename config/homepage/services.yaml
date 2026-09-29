@@ -68,12 +68,6 @@
         description: 公网域名（推荐）
         abbr: FJ
 
-    - Forgejo 管理后台:
-        icon: /icons/forgejo.png
-        href: https://forgejo.grantfelix.top/-/admin
-        description: 站点设置 / 用户 / Runner
-        abbr: AD
-
     - 统一入口（Caddy）:
         icon: /icons/homepage.png
         href: https://grantfelix.top/

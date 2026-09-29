@@ -177,6 +177,20 @@ a:hover {
     text-decoration: none;
 }
 
+/* 外部服务入口（Forgejo / OpenCloud）：加一个轻量的外链箭头 */
+.site-nav a.nav-service {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.site-nav a.nav-service::after {
+    content: "↗";
+    font-size: 0.72em;
+    opacity: 0.55;
+    transform: translateY(-0.15em);
+}
+
 .site-footer {
     border-top: 1px solid var(--border);
     padding: 2rem 0;

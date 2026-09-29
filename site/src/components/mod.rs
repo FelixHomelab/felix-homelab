@@ -35,10 +35,24 @@ pub fn SiteHeader() -> impl IntoView {
                     <nav class="site-nav">
                         <a href="/blog">"博客"</a>
                         <a href="/community">"社区"</a>
-                        <a href="/projects">"项目"</a>
                         <a href="/sky">"光遇"</a>
+                        <a
+                            class="nav-service"
+                            href="https://cloud.grantfelix.top/"
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            "OpenCloud"
+                        </a>
+                        <a
+                            class="nav-service"
+                            href="https://forgejo.grantfelix.top/"
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            "Forgejo"
+                        </a>
                         <a href="/about">"关于"</a>
-                        <a href="/contact">"联系"</a>
                     </nav>
                     <ThemeToggle />
                     <UserMenu />
