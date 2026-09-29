@@ -958,3 +958,48 @@ UPDATE users SET role = 'admin' WHERE username = 'Felix' COLLATE NOCASE;
   - 迁移 SQL 在内存库按 0001 → 0002 → 0003 执行：评论数据保留、
     唯一约束与 CHECK 生效（见提交记录中的验证）
   - 运行后 `scripts/check-links.sh`，路由列表已覆盖社区各入口
+
+---
+
+## 统一账户（Kanidm + Tuwunel）— 未排期，方案已定稿待 P0 验证
+
+> 决策记录：因云服务器端口限制无法自建邮箱，改用 **Kanidm（IdP）+ Tuwunel（Matrix
+> Homeserver）** 做统一账号。**当前优先做光遇整改，本项暂缓**；恢复时从 P0 开始。
+
+**目标**：一套账号覆盖统一登录 / 昵称 / 私聊 / 联系人 / 多级管理员与 VIP；
+下游 Forgejo、OpenCloud、主站、Matrix 全部走 Kanidm OIDC。
+
+**组件与预算**：Kanidm（OIDC Provider，~80MB）、Tuwunel（Matrix，~200MB，最新
+v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
+
+**核查后的修正（相对初版提案）**：
+1. Tuwunel 直接部署**当前最新版**（v1.9.3，2026-09-25）。提案里的 1.4.9 只是修复
+   CVE 的下限；该 CVE 编号未在 GitHub Advisory 库查到，部署时对照 release notes。
+2. Tuwunel 是**双角色**：对 Matrix 客户端是 OIDC 授权服务器（MSC3861），对上游是
+   relying party。需同时配置 `[[global.identity_provider]]`（自定义 brand +
+   `issuer_url`/`discovery_url` 指向 Kanidm）与内置 issuer；回调固定为
+   `/_matrix/client/unstable/login/sso/callback/<client_id>`。
+3. Kanidm 的 `update-claim-map` 命令**未在稳定文档出现**（稳定文档只有
+   `update-scope-map`：组→scope）。P0 必须实机 `kanidm system oauth2 --help`
+   确认 claim 映射的真实命令与格式。
+4. OpenCloud 接外部 IdP 最复杂（需 `PROXY_AUTOPROVISION_ACCOUNTS`、
+   `PROXY_USER_OIDC_CLAIM` 等自动供应，内部 IDM 仍是空间/共享事实源），放到 P3；
+   失败则接受 OpenCloud 是一个例外。
+
+**落地阶段（未开始）**：
+- P0 验证（不动现有登录）：Kanidm 试实例，确认 claim 命令、Caddy TLS 回源
+  （`reverse_proxy https://kanidm:8443 { transport http { tls_insecure_skip_verify } }`）、
+  Tuwunel 对 Kanidm discovery 的连通；产出定稿配置。
+- P1：Forgejo OIDC（官方文档最成熟）→ 主站加 OIDC 登录（**并联**，保留密码登录）；
+  按 `preferred_username` 绑定既有账号。
+- P2：Tuwunel 部署（**完全关闭联邦**），Element 接入；数据卷纳入备份。
+- P3：OpenCloud 外接 IdP PoC。
+
+**动手前必须先定的不可逆项**：Kanidm 的 SPN 域名（拟 `id.grantfelix.top`）、
+Tuwunel `server_name`（拟 `grantfelix.top`，一旦初始化不可改）。
+
+**必须一并补进方案**：Kanidm 数据库与 Tuwunel 数据卷纳入 backup-run/`KEEP_DAYS`
+及恢复流程；Kanidm 组 → 站点 roles（super/communitymaster/skymaster/agentmaster）
+映射表；VIP 的权限定义（先定义能做什么，再谈同步）；无邮件找回的线下重置流程。
+
+**备用路径**：Tuwunel 由 Conduwuit 衍生，回退选项为 Continuwuity（同源、内存相近）。
