@@ -366,6 +366,42 @@ a:hover {
     margin-bottom: 2rem;
 }
 
+/* 投稿页的预置分类（可多选；正文 #分类 另行解析） */
+.tag-pick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.tag-pick-btn {
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.tag-pick-btn:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    color: var(--text);
+}
+
+.tag-pick-btn.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* 后台标签管理：改名输入窄一些 */
+.tag-rename-input {
+    flex: 0 0 11rem;
+}
+
 .tag {
     display: inline-block;
     padding: 0.1875rem 0.625rem;

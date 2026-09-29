@@ -10,12 +10,15 @@ use leptos_router::hooks::{use_location, use_navigate, use_params_map};
 use super::{description_or_default, load_error, loading, route_param};
 use crate::auth::UserState;
 use crate::community::{
-    delete_community, get_community, kind_label, list_community, submit_community, update_community,
-    CommunityDetail,
+    delete_community, get_community, kind_label, list_community, list_community_by_tag,
+    list_community_tags, random_sky_teasers, submit_community, update_community, CommunityDetail,
 };
 use crate::components::comments::CommentSection;
 use crate::components::community::{CommunityCard, ContentTabs};
 use crate::components::PageHeader;
+
+/// 发布页展示的预置分类（与迁移 `0009_community_tags.sql` 一致）。
+pub const PRESET_TAGS: [&str; 6] = ["公告", "技术", "创作", "闲聊", "资源", "问答"];
 
 /// 从当前路径判断要展示的类型（`/community/posts` → 文章）。
 fn kind_from_path(path: &str) -> Option<String> {
@@ -60,6 +63,8 @@ pub fn CommunityIndex() -> impl IntoView {
     let path = use_location().pathname;
     let kind = Signal::derive(move || kind_from_path(&path.get()));
     let items = Resource::new_blocking(move || kind.get(), |kind| list_community(kind));
+    let tag_list = Resource::new(|| (), |_| list_community_tags());
+    let sky_teasers = Resource::new(|| (), |_| random_sky_teasers(3));
 
     view! {
         <Title text="社区 — Felix Homelab" />
@@ -73,6 +78,33 @@ pub fn CommunityIndex() -> impl IntoView {
                 lede="注册用户发布的内容；发布即公开，违规会被下架。".to_string()
             />
             <ContentTabs active="community" official_href="/blog" community_href="/community" />
+            <Suspense fallback=loading>
+                {move || {
+                    view! {
+                        {move || tag_list.get().map(|res| match res {
+                            Ok(list) if list.is_empty() => ().into_any(),
+                            Ok(list) => view! {
+                                <ul class="tag-row tag-row-lg">
+                                    {list
+                                        .into_iter()
+                                        .map(|t| {
+                                            let href = format!("/community/tag/{}", t.tag);
+                                            let label = if t.pinned {
+                                                format!("#{} · {} ★", t.display_name, t.count)
+                                            } else {
+                                                format!("#{} · {}", t.display_name, t.count)
+                                            };
+                                            view! { <li><a class="tag" href=href>{label}</a></li> }
+                                        })
+                                        .collect_view()}
+                                </ul>
+                            }
+                                .into_any(),
+                            Err(_) => ().into_any(),
+                        })}
+                    }
+                }}
+            </Suspense>
             <Suspense fallback=loading>
                 {move || {
                     let logged_in = matches!(user_state.get(), Some(Ok(Some(_))));
@@ -101,6 +133,67 @@ pub fn CommunityIndex() -> impl IntoView {
                     Err(e) => load_error(e.to_string()).into_any(),
                 })}
             </Suspense>
+
+            // 娱乐缓冲：随机几则光遇内容（光遇的社区主体仍在光遇板块）
+            <Suspense fallback=loading>
+                {move || {
+                    view! {
+                        {move || sky_teasers.get().map(|res| match res {
+                            Ok(list) if list.is_empty() => ().into_any(),
+                            Ok(list) => view! {
+                                <section class="section">
+                                    <div class="section-head">
+                                        <h2>"光遇随览"</h2>
+                                        <a href="/sky">"去光遇板块 →"</a>
+                                    </div>
+                                    <div class="card-list">
+                                        {list
+                                            .into_iter()
+                                            .map(|item| view! { <CommunityCard item=item /> })
+                                            .collect_view()}
+                                    </div>
+                                </section>
+                            }
+                                .into_any(),
+                            Err(_) => ().into_any(),
+                        })}
+                    }
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+/// 按标签浏览社区内容。
+#[component]
+pub fn CommunityTagPage() -> impl IntoView {
+    let tag = route_param("tag");
+    let items = {
+        let tag = tag.clone();
+        Resource::new_blocking(tag, |tag| list_community_by_tag(tag))
+    };
+    let tag_label = tag.clone();
+
+    view! {
+        <Title text="标签 — Felix Homelab" />
+        <Meta name="description" content="按 #分类 浏览社区内容。" />
+        <section class="wrap">
+            <PageHeader title="标签" lede="按 #分类 浏览社区内容。".to_string() />
+            <p class="lede">"标签：" <strong>{tag_label}</strong></p>
+            <Suspense fallback=loading>
+                {move || items.get().map(|res| match res {
+                    Ok(list) if list.is_empty() => view! {
+                        <p class="muted">"这个标签下还没有内容。"</p>
+                    }.into_any(),
+                    Ok(list) => view! {
+                        <div class="card-list">
+                            {list.into_iter().map(|item| view! { <CommunityCard item=item /> }).collect_view()}
+                        </div>
+                    }.into_any(),
+                    Err(e) => load_error(e.to_string()).into_any(),
+                })}
+            </Suspense>
+            <p class="back"><a href="/community">"← 回社区"</a></p>
         </section>
     }
 }
@@ -467,14 +560,50 @@ pub fn CommunitySubmitPage() -> impl IntoView {
                                     on:input=move |ev| summary.set(event_target_value(&ev))
                                 />
                             </label>
-                            <label class="field">
-                                <span>"标签（可留空，逗号分隔，最多 10 个）"</span>
-                                <input
-                                    type="text"
-                                    prop:value=move || tags.get()
-                                    on:input=move |ev| tags.set(event_target_value(&ev))
-                                />
-                            </label>
+                            <div class="field">
+                                <span>"标签（点选预置分类，最多 10 个）"</span>
+                                <div class="tag-pick">
+                                    {PRESET_TAGS
+                                        .iter()
+                                        .map(|preset| {
+                                            let preset = *preset;
+                                            let active = move || {
+                                                tags.get()
+                                                    .split([',', '，'])
+                                                    .map(|t| t.trim())
+                                                    .any(|t| t == preset)
+                                            };
+                                            view! {
+                                                <button
+                                                    type="button"
+                                                    class="tag-pick-btn"
+                                                    class:active=active
+                                                    on:click=move |_| {
+                                                        let mut list: Vec<String> = tags
+                                                            .get_untracked()
+                                                            .split([',', '，'])
+                                                            .map(|t| t.trim().to_string())
+                                                            .filter(|t| !t.is_empty())
+                                                            .collect();
+                                                        match list.iter().position(|t| t == preset) {
+                                                            Some(pos) => {
+                                                                list.remove(pos);
+                                                            }
+                                                            None => list.push(preset.to_string()),
+                                                        }
+                                                        tags.set(list.join(", "));
+                                                    }
+                                                >
+                                                    "#"{preset}
+                                                </button>
+                                            }
+                                        })
+                                        .collect_view()}
+                                </div>
+                                <small class="muted">
+                                    "正文里写 #分类 也会自动加入；自定义分类由你直接写。"
+                                </small>
+                            </div>
 
                             {move || (kind.get() == "project").then(|| view! {
                                 <label class="field">

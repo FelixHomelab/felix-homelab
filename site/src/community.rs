@@ -73,6 +73,21 @@ pub struct CommunityMeta {
     pub cover: String,
 }
 
+/// 标签（聚合页与后台管理共用）。
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct CommunityTag {
+    /// 规范化后的标签原文（投稿里存的值）。
+    pub tag: String,
+    /// 显示名（可被管理员重命名）。
+    pub display_name: String,
+    /// 使用该标签的已发布内容数。
+    pub count: i64,
+    /// 是否为预置分类（发布页会展示）。
+    pub preset: bool,
+    /// 是否置顶（聚合页与管理列表优先展示）。
+    pub pinned: bool,
+}
+
 /// 详情页数据。
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct CommunityDetail {
@@ -92,6 +107,48 @@ pub struct CommunityDetail {
 const PROJECT_KINDS: [&str; 3] = ["open", "private", "team"];
 #[cfg(feature = "ssr")]
 const SKY_CATEGORIES: [&str; 2] = ["gameplay", "gallery"];
+
+/// 从正文里提取 `#分类`。
+///
+/// 只在空白/行首/左括号/另一个 # 之后识别，避免把 URL 锚点或 Markdown 标题当成标签；
+/// 汉字、字母数字与 -_ 都允许，长度受 TAG_LEN_MAX 限制。
+#[cfg(feature = "ssr")]
+fn collect_hashtags(body: &str) -> Vec<String> {
+    let chars: Vec<char> = body.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '#' {
+            i += 1;
+            continue;
+        }
+        let prev_ok = i == 0
+            || chars[i - 1].is_whitespace()
+            || matches!(chars[i - 1], '(' | '（' | '#' | '>' | '"' | '“');
+        let mut j = i + 1;
+        let mut buf = String::new();
+        while j < chars.len() {
+            let c = chars[j];
+            if c.is_whitespace()
+                || matches!(
+                    c,
+                    '#' | ',' | '，' | '、' | '。' | '！' | '？' | '!' | '?' | '；' | ';' | '：'
+                        | ':' | '）' | ')'
+                )
+            {
+                break;
+            }
+            buf.push(c);
+            j += 1;
+        }
+        let tag = buf.trim_matches(|c: char| matches!(c, ')' | '）' | '"' | '\'' | '“' | '”'));
+        if prev_ok && !tag.is_empty() && tag.chars().count() <= TAG_LEN_MAX {
+            out.push(tag.to_string());
+        }
+        i = j.max(i + 1);
+    }
+    out
+}
 
 /// 校验并整理一条投稿的公共输入，返回 `(slug, tags_json, meta_json)`。
 #[cfg(feature = "ssr")]
@@ -170,7 +227,7 @@ fn validate_input(
         return Err("链接名只能用字母、数字、连字符和下划线（不超过 80 字符）。".to_string());
     }
 
-    // 标签：中英文逗号与顿号都当分隔符，去重后最多 10 个
+    // 标签：预选（逗号/顿号分隔）+ 正文里的 `#分类`，去重后最多 10 个
     let mut tags: Vec<String> = Vec::new();
     for raw in tags_raw.split([',', '，', '、']) {
         let tag = raw.trim();
@@ -182,6 +239,11 @@ fn validate_input(
         }
         if !tags.iter().any(|existing| existing == tag) {
             tags.push(tag.to_string());
+        }
+    }
+    for tag in collect_hashtags(body) {
+        if !tags.iter().any(|existing| existing == &tag) {
+            tags.push(tag);
         }
     }
     if tags.len() > TAG_MAX {
@@ -330,6 +392,262 @@ pub async fn list_community(kind: Option<String>) -> Result<Vec<CommunitySummary
             created_at: row.get("created_at"),
         })
         .collect())
+}
+
+/// 行 → 列表项（各查询共用）。
+#[cfg(feature = "ssr")]
+fn summary_from_row(row: &sqlx::sqlite::SqliteRow) -> CommunitySummary {
+    use sqlx::Row;
+    CommunitySummary {
+        id: row.get("id"),
+        kind: row.get("kind"),
+        slug: row.get("slug"),
+        title: row.get("title"),
+        summary: row.get("summary"),
+        tags: serde_json::from_str(&row.get::<String, _>("tags")).unwrap_or_default(),
+        author: row.get("display_name"),
+        author_username: row.get("username"),
+        created_at: row.get("created_at"),
+    }
+}
+
+/// 标签聚合的内部实现（server fn 与后台共用）。
+#[cfg(feature = "ssr")]
+async fn list_tags_impl(pool: &sqlx::SqlitePool) -> Result<Vec<CommunityTag>, String> {
+    use sqlx::Row;
+
+    let counts = sqlx::query(
+        "SELECT json_each.value AS tag, COUNT(*) AS n \
+         FROM community_posts, json_each(community_posts.tags) \
+         WHERE community_posts.status = 'published' \
+         GROUP BY json_each.value",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("统计标签失败: {e}"))?;
+
+    let metas = sqlx::query("SELECT tag, display_name, preset, pinned FROM community_tags")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("读取标签失败: {e}"))?;
+
+    let mut list: Vec<CommunityTag> = metas
+        .iter()
+        .map(|row| CommunityTag {
+            tag: row.get("tag"),
+            display_name: row.get("display_name"),
+            count: 0,
+            preset: row.get::<i64, _>("preset") != 0,
+            pinned: row.get::<i64, _>("pinned") != 0,
+        })
+        .collect();
+
+    for row in counts {
+        let tag: String = row.get("tag");
+        let n: i64 = row.get("n");
+        match list.iter_mut().find(|t| t.tag == tag) {
+            Some(entry) => entry.count = n,
+            None => list.push(CommunityTag {
+                display_name: tag.clone(),
+                tag,
+                count: n,
+                preset: false,
+                pinned: false,
+            }),
+        }
+    }
+
+    // 置顶优先，其次常用优先，再次按名字
+    list.sort_by(|a, b| {
+        b.pinned
+            .cmp(&a.pinned)
+            .then(b.count.cmp(&a.count))
+            .then(a.display_name.cmp(&b.display_name))
+    });
+    Ok(list)
+}
+
+/// 标签聚合：预置分类 + 使用中的标签（置顶/常用优先）。
+#[server]
+pub async fn list_community_tags() -> Result<Vec<CommunityTag>, ServerFnError> {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    list_tags_impl(&app.pool)
+        .await
+        .map_err(ServerFnError::new)
+}
+
+/// 按标签筛选的社区内容（已发布）。
+#[server]
+pub async fn list_community_by_tag(tag: String) -> Result<Vec<CommunitySummary>, ServerFnError> {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    let tag = tag.trim();
+    if tag.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows = sqlx::query(
+        "SELECT c.id, c.kind, c.slug, c.title, c.summary, c.tags, c.created_at, \
+                u.display_name, u.username \
+         FROM community_posts c JOIN users u ON u.id = c.author_id \
+         WHERE c.status = 'published' \
+           AND EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value = ?1) \
+         ORDER BY c.created_at DESC, c.id DESC LIMIT ?2",
+    )
+    .bind(tag)
+    .bind(LIST_LIMIT)
+    .fetch_all(&app.pool)
+    .await
+    .map_err(|e| ServerFnError::new(format!("查询标签内容失败: {e}")))?;
+
+    Ok(rows.iter().map(summary_from_row).collect())
+}
+
+/// 社区页的“光遇随机”：随机几则光遇内容当作娱乐缓冲。
+#[server]
+pub async fn random_sky_teasers(limit: i64) -> Result<Vec<CommunitySummary>, ServerFnError> {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    let limit = limit.clamp(1, 10);
+
+    let rows = sqlx::query(
+        "SELECT c.id, c.kind, c.slug, c.title, c.summary, c.tags, c.created_at, \
+                u.display_name, u.username \
+         FROM community_posts c JOIN users u ON u.id = c.author_id \
+         WHERE c.status = 'published' AND c.kind = 'sky' \
+         ORDER BY RANDOM() LIMIT ?1",
+    )
+    .bind(limit)
+    .fetch_all(&app.pool)
+    .await
+    .map_err(|e| ServerFnError::new(format!("查询光遇内容失败: {e}")))?;
+
+    Ok(rows.iter().map(summary_from_row).collect())
+}
+
+/// 后台：标签列表（与前台同一套口径）。
+#[server]
+pub async fn admin_list_tags() -> Result<Vec<CommunityTag>, ServerFnError> {
+    use crate::state::AppState;
+
+    if let Err(message) = crate::roles::require_permission("community").await {
+        return Err(ServerFnError::new(message));
+    }
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    list_tags_impl(&app.pool)
+        .await
+        .map_err(ServerFnError::new)
+}
+
+/// 后台：重命名 / 置顶标签（标签不存在则创建元数据行）。
+#[server]
+pub async fn admin_save_tag(
+    tag: String,
+    display_name: String,
+    pinned: bool,
+) -> Result<Result<(), String>, ServerFnError> {
+    use crate::state::AppState;
+
+    if let Err(message) = crate::roles::require_permission("community").await {
+        return Ok(Err(message));
+    }
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+
+    let tag = tag.trim();
+    let name = display_name.trim();
+    if tag.is_empty() {
+        return Ok(Err("标签不能为空。".to_string()));
+    }
+    if name.is_empty() {
+        return Ok(Err("显示名不能为空。".to_string()));
+    }
+    if name.chars().count() > TAG_LEN_MAX {
+        return Ok(Err(format!("标签不能超过 {TAG_LEN_MAX} 个字符。")));
+    }
+
+    sqlx::query(
+        "INSERT INTO community_tags (tag, display_name, preset, pinned) VALUES (?1, ?2, 0, ?3) \
+         ON CONFLICT(tag) DO UPDATE SET display_name = excluded.display_name, \
+                                        pinned = excluded.pinned",
+    )
+    .bind(tag)
+    .bind(name)
+    .bind(i64::from(pinned))
+    .execute(&app.pool)
+    .await
+    .map_err(|e| ServerFnError::new(format!("保存标签失败: {e}")))?;
+
+    Ok(Ok(()))
+}
+
+/// 后台：把 `from` 合并进 `into`（改写所有投稿的标签数组，删除旧标签元数据）。
+#[server]
+pub async fn admin_merge_tag(
+    from: String,
+    into: String,
+) -> Result<Result<(), String>, ServerFnError> {
+    use crate::state::AppState;
+    use sqlx::Row;
+
+    if let Err(message) = crate::roles::require_permission("community").await {
+        return Ok(Err(message));
+    }
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+
+    let from = from.trim();
+    let into = into.trim();
+    if from.is_empty() || into.is_empty() {
+        return Ok(Err("请选择要合并的标签。".to_string()));
+    }
+    if from == into {
+        return Ok(Err("目标标签不能和原标签相同。".to_string()));
+    }
+    if into.chars().count() > TAG_LEN_MAX {
+        return Ok(Err(format!("标签不能超过 {TAG_LEN_MAX} 个字符。")));
+    }
+
+    let rows = sqlx::query("SELECT id, tags FROM community_posts")
+        .fetch_all(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("读取投稿失败: {e}")))?;
+
+    for row in rows {
+        let tags: Vec<String> =
+            serde_json::from_str(&row.get::<String, _>("tags")).unwrap_or_default();
+        if !tags.iter().any(|t| t == from) {
+            continue;
+        }
+        let mut next: Vec<String> = tags.into_iter().filter(|t| t != from).collect();
+        if !next.iter().any(|t| t == into) {
+            next.push(into.to_string());
+        }
+        let id: i64 = row.get("id");
+        sqlx::query("UPDATE community_posts SET tags = ?1 WHERE id = ?2")
+            .bind(serde_json::to_string(&next).unwrap_or_else(|_| "[]".to_string()))
+            .bind(id)
+            .execute(&app.pool)
+            .await
+            .map_err(|e| ServerFnError::new(format!("更新投稿标签失败: {e}")))?;
+    }
+
+    sqlx::query("DELETE FROM community_tags WHERE tag = ?1")
+        .bind(from)
+        .execute(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("删除旧标签失败: {e}")))?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO community_tags (tag, display_name, preset) VALUES (?1, ?1, 0)",
+    )
+    .bind(into)
+    .execute(&app.pool)
+    .await
+    .map_err(|e| ServerFnError::new(format!("写入目标标签失败: {e}")))?;
+
+    Ok(Ok(()))
 }
 
 /// 一篇文章的详情。隐藏内容仅作者本人与管理员可见。

@@ -8,7 +8,9 @@ use crate::pages::admin::{
     AdminAgentPage, AdminBackupPage, AdminCommentsPage, AdminCommunityPage,
     AdminDashboardPage, AdminPodPage, AdminReviewsPage, AdminUsersPage,
 };
-use crate::pages::community::{CommunityDetailPage, CommunityIndex, CommunitySubmitPage};
+use crate::pages::community::{
+    CommunityDetailPage, CommunityIndex, CommunitySubmitPage, CommunityTagPage,
+};
 use crate::pages::{
     AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, ContactPage, HomePage, Layout,
     LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, SkyBoostingPage,
@@ -86,6 +88,11 @@ pub fn App() -> impl IntoView {
                     />
                     <Route path=path!("/community/sky") view=CommunityIndex ssr=SsrMode::Async />
                     <Route
+                        path=path!("/community/tag/:tag")
+                        view=CommunityTagPage
+                        ssr=SsrMode::Async
+                    />
+                    <Route
                         path=path!("/community/new")
                         view=CommunitySubmitPage
                         ssr=SsrMode::Async
@@ -151,6 +158,11 @@ pub fn App() -> impl IntoView {
                         ssr=SsrMode::Async
                     />
                     <Route path=path!("/community/sky/") view=CommunityIndex ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/community/tag/:tag/")
+                        view=CommunityTagPage
+                        ssr=SsrMode::Async
+                    />
                     <Route
                         path=path!("/community/new/")
                         view=CommunitySubmitPage

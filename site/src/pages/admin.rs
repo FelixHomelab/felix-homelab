@@ -22,6 +22,9 @@ use crate::agents::{
 };
 use crate::roles::{admin_permissions, role_label, SCOPED_ROLES};
 use crate::community::kind_label as community_kind_label;
+use crate::community::{
+    admin_list_tags, admin_merge_tag, admin_save_tag, CommunityTag,
+};
 use crate::components::PageHeader;
 
 use super::set_status;
@@ -481,6 +484,8 @@ pub fn AdminCommunityPage() -> impl IntoView {
                     .into_any(),
                 }}
             </Suspense>
+
+            <TagAdminPanel revision=revision message=message />
         </AdminPage>
     }
 }
@@ -532,6 +537,164 @@ fn AdminCommunityRow(
                     on:click=move |_| run_action(revision, message, admin_delete_community(id))
                 >
                     "删除"
+                </button>
+            </div>
+        </article>
+    }
+}
+
+/// 标签管理面板：重命名 / 置顶 / 合并。
+#[component]
+fn TagAdminPanel(revision: RwSignal<u32>, message: RwSignal<String>) -> impl IntoView {
+    let tags = Resource::new_blocking(move || revision.get(), |_| admin_list_tags());
+
+    view! {
+        <section class="panel">
+            <div class="panel-head">
+                <div class="panel-head-main">
+                    <h2 class="panel-title">"标签管理"</h2>
+                    <p class="panel-desc">
+                        "重命名、置顶，或把冷门标签合并到常用标签；合并会改写所有投稿的标签。"
+                    </p>
+                </div>
+                <div class="panel-actions">
+                    <button
+                        class="btn btn-small"
+                        on:click=move |_| revision.update(|n| *n += 1)
+                    >
+                        "刷新"
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                    {move || match tags.get() {
+                        None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                        Some(Err(error)) => view! {
+                            <p class="error">"载入标签失败："{error.to_string()}</p>
+                        }
+                        .into_any(),
+                        Some(Ok(list)) if list.is_empty() => view! {
+                            <p class="admin-empty">"还没有标签，发布内容时会自动产生。"</p>
+                        }
+                        .into_any(),
+                        Some(Ok(list)) => view! {
+                            <div class="admin-list">
+                                {list
+                                    .iter()
+                                    .map(|tag| {
+                                        let others = list
+                                            .iter()
+                                            .filter(|t| t.tag != tag.tag)
+                                            .cloned()
+                                            .collect::<Vec<_>>();
+                                        view! {
+                                            <TagAdminRow
+                                                tag=tag.clone()
+                                                others=others
+                                                revision=revision
+                                                message=message
+                                            />
+                                        }
+                                    })
+                                    .collect_view()}
+                            </div>
+                        }
+                        .into_any(),
+                    }}
+                </Suspense>
+            </div>
+        </section>
+    }
+}
+
+/// 标签管理里的一行。
+#[component]
+fn TagAdminRow(
+    tag: CommunityTag,
+    others: Vec<CommunityTag>,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let raw = tag.tag.clone();
+    let name = RwSignal::new(tag.display_name.clone());
+    let pinned = RwSignal::new(tag.pinned);
+    let target = RwSignal::new(String::new());
+    let save_name = raw.clone();
+    let save_pin = raw.clone();
+    let merge_from = raw.clone();
+
+    view! {
+        <article class="admin-row">
+            <p class="admin-meta">
+                <span class="status">"#"{tag.tag.clone()}</span>
+                <span class="comment-time">{format!("{} 条内容", tag.count)}</span>
+                {tag.preset.then(|| view! { <span class="status status-active">"预置"</span> })}
+                {tag.pinned.then(|| view! { <span class="status status-role-admin">"置顶"</span> })}
+            </p>
+            <div class="admin-actions">
+                <input
+                    class="text-input tag-rename-input"
+                    type="text"
+                    prop:value=move || name.get()
+                    on:input=move |ev| name.set(event_target_value(&ev))
+                />
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        let raw = save_name.clone();
+                        run_action(
+                            revision,
+                            message,
+                            admin_save_tag(raw, name.get(), pinned.get()),
+                        );
+                    }
+                >
+                    "保存"
+                </button>
+                <button
+                    class="btn btn-small"
+                    on:click=move |_| {
+                        let raw = save_pin.clone();
+                        let next = !pinned.get();
+                        pinned.set(next);
+                        run_action(
+                            revision,
+                            message,
+                            admin_save_tag(raw, name.get(), next),
+                        );
+                    }
+                >
+                    {move || if pinned.get() { "取消置顶" } else { "置顶" }}
+                </button>
+                <select
+                    prop:value=move || target.get()
+                    on:change=move |ev| target.set(event_target_value(&ev))
+                >
+                    <option value="">"合并到…"</option>
+                    {others
+                        .iter()
+                        .map(|t| {
+                            view! { <option value=t.tag.clone()>{t.display_name.clone()}</option> }
+                        })
+                        .collect_view()}
+                </select>
+                <button
+                    class="btn btn-small btn-danger"
+                    on:click=move |_| {
+                        let into = target.get();
+                        if into.trim().is_empty() {
+                            message.set("请先选择要合并到的目标标签。".to_string());
+                            return;
+                        }
+                        run_action(
+                            revision,
+                            message,
+                            admin_merge_tag(merge_from.clone(), into),
+                        );
+                    }
+                >
+                    "合并"
                 </button>
             </div>
         </article>
