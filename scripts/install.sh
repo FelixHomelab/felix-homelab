@@ -110,7 +110,7 @@ ensure_env_default() {
 }
 ensure_env_default AGENT_IMAGE localhost/felix-agent-opencode:latest
 ensure_env_default AGENT_DSH_IMAGE localhost/felix-agent-dsh:latest
-ensure_env_default AGENT_BASE_DOMAIN agent.wraindrock.com
+ensure_env_default AGENT_BASE_DOMAIN wraindrock.com
 ensure_env_default AGENT_LOCAL_DOMAIN agent.localhost
 ensure_env_default AGENT_PORT_BASE 20001
 ensure_env_default AGENT_PORT_MAX 20099
@@ -395,6 +395,15 @@ for f in "$REPO_DIR"/quadlet/*; do
 			fi
 			continue
 			;;
+		felix-homelab-cloudflared.container)
+			if grep -qE '^TUNNEL_TOKEN=.+' "$CONFIG_DIR/.env" 2>/dev/null; then
+				ln -sfn "$f" "$UNIT_DIR/$(basename "$f")"
+			else
+				rm -f "$UNIT_DIR/$(basename "$f")"
+				warn "跳过 $(basename "$f")：请先在 $CONFIG_DIR/.env 填 TUNNEL_TOKEN 后重跑 make install"
+			fi
+			continue
+			;;
 	esac
 	ln -sfn "$f" "$UNIT_DIR/$(basename "$f")"
 done
@@ -405,6 +414,9 @@ if [ -L "$UNIT_DIR/felix-homelab-frpc.container" ]; then
 fi
 if [ -L "$UNIT_DIR/felix-homelab-agent-frpc.container" ]; then
 	CORE_SERVICES+=(felix-homelab-agent-frpc.service)
+fi
+if [ -L "$UNIT_DIR/felix-homelab-cloudflared.container" ]; then
+	CORE_SERVICES+=(felix-homelab-cloudflared.service)
 fi
 
 # ---------------------------------------------------------------------------

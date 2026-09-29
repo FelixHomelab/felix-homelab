@@ -5,6 +5,7 @@
 # 域名方案（Cloudflare 托管，混合模式）：
 #   · **橙云代理**：wraindrock.com（301 → www）、www、forgejo、dash、opencloud
 #     回源用 Cloudflare Origin CA 证书（SSL/TLS 模式 = Full (strict)）；
+#     注：真实客户端 IP 依赖 X-Forwarded-For 透传（本机链路不使用 CF 源站 IP 做判断）；
 #   · **灰云（DNS only）**：泛解析 `*` → 云服务器。Agent 多级子域
 #     （<随机>.<用户名>.<agent名>.agent.wraindrock.com）必须走灰云：
 #     Cloudflare 免费版通用证书不覆盖深层子域，灰云下由本 Caddy
@@ -20,9 +21,6 @@
 
 {
 	email admin@wraindrock.com
-
-	# 橙云回源后拿到真实客户端 IP（Caddy ≥ 2.7 支持；旧版换 static 段）
-	trusted_proxies cloudflare
 
 	on_demand_tls {
 		# 云侧 20080 是 frp 隧道口，转发到本机 Caddy → 主站

@@ -347,7 +347,6 @@ async fn unique_slug(
 #[server]
 pub async fn list_community(kind: Option<String>) -> Result<Vec<CommunitySummary>, ServerFnError> {
     use crate::state::AppState;
-    use sqlx::Row;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
 

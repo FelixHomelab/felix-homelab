@@ -40,27 +40,22 @@ pub fn agent_kind_label(kind: &str) -> &'static str {
     }
 }
 
-/// 域名里的 agent 名段（仅服务端使用：域名生成与宿主请求）。
-#[cfg(feature = "ssr")]
-fn agent_name(kind: &str) -> &'static str {
-    match kind {
-        "dsh" => "deepseekharness",
-        _ => "opencode",
-    }
-}
-
 /// 用户名 → 域名标签：小写、`_`→`-`（DNS 标签/证书不接受下划线；仅服务端使用）。
 #[cfg(feature = "ssr")]
 fn username_slug(username: &str) -> String {
     username.trim().to_ascii_lowercase().replace('_', "-")
 }
 
-/// 生成随机标签（6 位十六进制）。
+/// 生成随机子域码：18 位小写字母 + 数字（DNS 一级标签，避免被枚举）。
 #[cfg(feature = "ssr")]
-fn random_label() -> String {
-    let mut bytes = [0u8; 3];
+fn random_code() -> String {
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bytes = [0u8; 18];
     rand::fill(&mut bytes);
-    hex::encode(bytes)
+    bytes
+        .iter()
+        .map(|b| CHARS[(*b as usize) % CHARS.len()] as char)
+        .collect()
 }
 
 /// 宿主回写的运行态（来自 `/agents/status.json`，按 subdomain 索引）。
@@ -159,20 +154,15 @@ fn agent_url(subdomain: &str) -> String {
     format!("{scheme}://{subdomain}.{domain}")
 }
 
-/// 生成一个全表唯一的子域（随机标签 + 用户名 + agent 名）。
+/// 生成一个全表唯一的子域：18 位随机码（一级标签，公开形态为 `<码>.wraindrock.com`；
+/// 本地开发为 `<码>.agent.localhost`）。
+///
+/// 不再把用户名/Agent 类型编进域名：新增 Agent 类型无需改动域名方案，
+/// 码本身足够随机、且按实例唯一记录在订阅表里。
 #[cfg(feature = "ssr")]
-async fn unique_subdomain(
-    pool: &sqlx::SqlitePool,
-    kind: &str,
-    username: &str,
-) -> Result<String, String> {
+async fn unique_subdomain(pool: &sqlx::SqlitePool) -> Result<String, String> {
     for _ in 0..8 {
-        let candidate = format!(
-            "{}.{}.{}",
-            random_label(),
-            username_slug(username),
-            agent_name(kind)
-        );
+        let candidate = random_code();
         let exists: Option<i64> =
             sqlx::query_scalar("SELECT 1 FROM agent_subscriptions WHERE subdomain = ?1")
                 .bind(&candidate)
@@ -208,7 +198,7 @@ pub async fn ensure_subdomains(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
             .bind(id)
             .fetch_one(pool)
             .await?;
-        let subdomain = unique_subdomain(pool, &kind, &username)
+        let subdomain = unique_subdomain(pool)
             .await
             .map_err(anyhow::Error::msg)?;
         sqlx::query("UPDATE agent_subscriptions SET subdomain = ?1 WHERE id = ?2")
@@ -754,7 +744,7 @@ pub async fn admin_grant_agent(
 
     for offset in 1..=count {
         let slot = max_slot + offset;
-        let subdomain = unique_subdomain(&app.pool, &kind, &actual_name)
+        let subdomain = unique_subdomain(&app.pool)
             .await
             .map_err(ServerFnError::new)?;
 

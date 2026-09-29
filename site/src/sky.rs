@@ -264,7 +264,6 @@ pub async fn sky_boosting() -> Result<SkyBoostingInfo, ServerFnError> {
 #[server]
 pub async fn list_sky_community() -> Result<Vec<CommunitySummary>, ServerFnError> {
     use crate::state::AppState;
-    use sqlx::Row;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
     let rows = sqlx::query(
@@ -394,10 +393,7 @@ pub async fn admin_save_sky_official(
     match result {
         Ok(id) => Ok(Ok(id)),
         Err(sqlx::Error::Database(db))
-            if {
-                use sqlx::error::DatabaseError;
-                db.is_unique_violation()
-            } =>
+            if db.is_unique_violation() =>
         {
             Ok(Err("同一分类下链接名重复，换一个链接名。".to_string()))
         }

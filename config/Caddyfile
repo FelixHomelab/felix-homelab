@@ -42,6 +42,10 @@ http://:8080 {
 		}
 	}
 
+	# 顶点域名留给邮箱：统一 301 到 www（Cloudflare Tunnel 会把 apex 也转到这里）
+	@apex host wraindrock.com
+	redir @apex https://www.wraindrock.com{uri} permanent
+
 	# 多租户 AI Agent 已迁到独立网关（felix-homelab-agent-gateway，host 网络）：
 	# Agent 各自在独立 bridge 网络里，Pod 内的 Caddy 到不了；
 	# 每用户路由仍由 scripts/agent-ctl.sh 生成，由 Agent 网关消费。

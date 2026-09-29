@@ -44,7 +44,7 @@ fi
 
 AGENT_IMAGE="${AGENT_IMAGE:-localhost/felix-agent-opencode:latest}"
 AGENT_DSH_IMAGE="${AGENT_DSH_IMAGE:-localhost/felix-agent-dsh:latest}"
-AGENT_BASE_DOMAIN="${AGENT_BASE_DOMAIN:-agent.wraindrock.com}"
+AGENT_BASE_DOMAIN="${AGENT_BASE_DOMAIN:-wraindrock.com}"
 AGENT_LOCAL_DOMAIN="${AGENT_LOCAL_DOMAIN:-agent.localhost}"
 AGENT_PORT_BASE="${AGENT_PORT_BASE:-20001}"
 AGENT_PORT_MAX="${AGENT_PORT_MAX:-20099}"
@@ -90,16 +90,10 @@ state_key() {
 container_of() { printf 'felix-agent-%s' "$(slug_of "$1")"; }
 
 # 模板对应的域名段（与站点保持一致的命名）
-agent_name_of() {
-	case "$1" in
-	dsh) printf 'deepseekharness' ;;
-	*) printf 'opencode' ;;
-	esac
-}
-
-# 本地生成子域（CLI 用；正常由站点生成并随请求传入）
+# 本地生成子域（CLI 用；正常由站点生成并随请求传入）。
+# 与站点一致：18 位随机码，一级标签（`<码>.wraindrock.com`）。
 gen_subdomain() {
-	printf '%s.%s.%s' "$(openssl rand -hex 3)" "$(slugify "$1")" "$(agent_name_of "$2")"
+	printf '%s' "$(openssl rand -hex 9)"
 }
 
 # 读取某个状态键的字段（键可能是 user 或 user#slot）

@@ -78,10 +78,33 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 > （runner 配置 `container.docker_host: "-"`），所以无法直接操作容器运行时。
 > 若不接受该代价，可改用「自建 bridge 网络 + 在作业容器内解析宿主网关」的方案。
 
-## 公网访问（云服务器中转）
+## 公网访问
 
-本机端口只绑回环；需要公网访问时，推荐用一台云服务器做 **frp 中转 + 云侧 Caddy HTTPS**
-（本仓库在阿里云 + `wraindrock.com` 实测通过）：
+### Cloudflare Tunnel（推荐）
+
+在 Cloudflare Zero Trust → Networks → Tunnels 建一个隧道，把**连接器令牌**填进
+`~/.config/felix-homelab/.env` 的 `TUNNEL_TOKEN`，再 `make install`：仓库内的
+`felix-homelab-cloudflared`（host 网络容器）会自动接入。不需要公网 IP、不需要开
+入站端口，也不依赖云服务器；HTTP 服务与 Agent 都经隧道回源。
+
+Public Hostnames（Zero Trust → 该隧道 → Public Hostname）：
+
+| 主机名 | 服务 | 说明 |
+| --- | --- | --- |
+| `www.wraindrock.com` | `http://localhost:5729` | 主站 |
+| `forgejo.wraindrock.com` | `http://localhost:5729` | Forgejo |
+| `dash.wraindrock.com` | `http://localhost:5729` | Homepage 控制台 |
+| `opencloud.wraindrock.com` | `http://localhost:5729` | OpenCloud |
+| `wraindrock.com` | `http://localhost:5729` | 顶点 301 → www（本地 Caddy 处理）|
+| `*.wraindrock.com` | `http://localhost:5740` | Agent（18 位随机码一级子域）|
+
+> 顶点留给邮箱；Agent 域名是**一级子域**（`<18位随机码>.wraindrock.com`），
+> Cloudflare 免费版 Universal SSL 正好覆盖，无需付费证书。
+
+### 备选：云服务器 frp 中转
+
+不使用 Tunnel 时，可用一台云服务器做 **frp 中转 + 云侧 Caddy HTTPS**
+（本仓库早期在阿里云 + 域名实测通过）：
 
 ```
 访客 ──HTTPS──▶ 云 Caddy :443（Let's Encrypt，Host 原样透传）
@@ -323,9 +346,9 @@ TLS 由主 Caddy 终止）。
 入口**，后台只负责指定用户、指定类型（OpenCode / DeepSeek Harness）、数量与备注。
 
 ```
-用户首屏「我的 Agent」 ─▶ <随机>.<用户名>.<agent名>.agent.wraindrock.com
-      ─▶ 云 Caddy（按需证书；ask 只放行订阅表里的域名）
-      ─▶ frp 第二隧道 20081 ─▶ Agent 网关（独立容器，host 网络，只监听 127.0.0.1:5740）
+用户首屏「我的 Agent」 ─▶ <18位随机码>.wraindrock.com
+      ─▶ Cloudflare（Tunnel 的 `*.wraindrock.com` 公共主机名，橙云 Universal SSL）
+      ─▶ Agent 网关（独立容器，host 网络，只监听 127.0.0.1:5740）
             ├─ forward_auth ─▶ 127.0.0.1:5735（主站 /api/agent/auth：会话 + 订阅校验；
             │                   睡眠实例在这里被唤醒，等宿主探测到 ready 才放行）
             └─ reverse_proxy ─▶ 127.0.0.1:20001..（各 Agent 的独立 bridge 网络）
@@ -492,7 +515,7 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   绑定 `0.0.0.0`；镜像用 `DSH_ALLOW_NON_LOOPBACK` 环境变量门控放行（仅本
   平台容器设置），绑 `0.0.0.0` 但端口只发布到宿主回环、外面还有网关鉴权。
 - **信任栅栏必须用实例子域**：启动参数 `--trusted-host` 要传浏览器实际访问的
-  域名（`<随机>.<用户名>.<agent名>.agent.<域名>`）。若错传内部 slug，
+  域名（`<18位随机码>.<域名>`，实例的真实子域）。若错传内部 slug，
   DSH 自己的 `/api`（设置、模型、插件清单等）会全部 403，表现为“模型提供商
   不可用 / 设置页打不开”。
 
