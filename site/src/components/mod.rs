@@ -59,7 +59,7 @@ pub fn SiteHeader() -> impl IntoView {
                 <div class="header-right">
                     <button
                         type="button"
-                        class="nav-toggle"
+                        class="btn btn-small nav-toggle"
                         aria-expanded=move || if nav_open.get() { "true" } else { "false" }
                         on:click=move |_| nav_open.update(|v| *v = !*v)
                     >

@@ -91,6 +91,25 @@ html.dark {
     box-sizing: border-box;
 }
 
+/* 比例自适应基线：媒体元素永远不超过容器，长单词/表格不撑破 */
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.prose table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.prose {
+    overflow-wrap: break-word;
+}
+
 body {
     margin: 0;
     min-height: 100vh;
@@ -125,7 +144,8 @@ a:hover {
     width: 100%;
     max-width: var(--wrap);
     margin: 0 auto;
-    padding: 0 1.5rem;
+    /* 留白按比例伸缩：窄屏约 1rem，宽屏约 1.5rem */
+    padding: 0 clamp(1rem, 2.5vw + 0.4rem, 1.5rem);
 }
 
 .site-main {
@@ -146,8 +166,9 @@ a:hover {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.5rem;
-    height: 4rem;
+    gap: clamp(0.75rem, 1.5vw, 1.5rem);
+    min-height: 4rem;
+    padding: 0.25rem 0;
 }
 
 .brand {
@@ -164,17 +185,18 @@ a:hover {
 
 .site-nav {
     display: flex;
-    gap: 1.5rem;
+    flex-wrap: wrap;
+    gap: clamp(0.75rem, 1.2vw, 1.5rem);
 }
 
-/* 移动端菜单按钮：桌面隐藏 */
+/* 移动端菜单按钮：桌面隐藏；外观复用 .btn，仅控制显隐 */
 .nav-toggle {
     display: none;
 }
 
 .site-nav a {
     color: var(--text-muted);
-    font-size: 0.9375rem;
+    font-size: clamp(0.875rem, 0.2vw + 0.8rem, 0.9375rem);
 }
 
 .site-nav a:hover {
@@ -205,7 +227,7 @@ a:hover {
 /* ---------- 首页 ---------- */
 
 .hero {
-    padding: 5.5rem 0 2rem;
+    padding: clamp(2rem, 6vw, 5.5rem) 0 2rem;
 }
 
 .eyebrow {
@@ -220,7 +242,7 @@ a:hover {
 .hero-title {
     margin: 0 0 1.25rem;
     /* 作品集风的核心：标题足够大，且字距收紧 */
-    font-size: clamp(2.25rem, 6vw, 3.75rem);
+    font-size: clamp(1.75rem, 5vw + 0.5rem, 3.75rem);
     line-height: 1.12;
     letter-spacing: -0.03em;
     font-weight: 700;
@@ -270,7 +292,7 @@ a:hover {
 }
 
 .section {
-    padding-top: 3.5rem;
+    padding-top: clamp(2rem, 4.5vw, 3.5rem);
 }
 
 .section-head {
@@ -461,7 +483,7 @@ a:hover {
 
 .page-header h1 {
     margin: 0 0 0.75rem;
-    font-size: clamp(1.875rem, 4vw, 2.5rem);
+    font-size: clamp(1.5rem, 2.5vw + 0.75rem, 2.5rem);
     line-height: 1.15;
     letter-spacing: -0.025em;
 }
@@ -694,15 +716,6 @@ button.btn {
     /* 窄屏：导航收敛为菜单，点击展开（默认隐藏，不再挤压/溢出） */
     .nav-toggle {
         display: inline-flex;
-        align-items: center;
-        padding: 0.3125rem 0.75rem;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        background: var(--surface);
-        color: var(--text);
-        font: inherit;
-        font-size: 0.875rem;
-        cursor: pointer;
     }
 
     .site-nav {
@@ -1056,7 +1069,7 @@ html.dark .admin-nav a.active {
 /* 概览数字卡片：一眼看到积压了多少待审 */
 .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
     gap: 0.875rem;
 }
 
@@ -1190,7 +1203,7 @@ html.dark .admin-nav a.active {
 /* 快捷入口：标题 + 一句话说明的磁贴 */
 .quick-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
     gap: 0.75rem;
 }
 
@@ -1442,7 +1455,7 @@ html.dark .admin-nav a.active {
     white-space: nowrap;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 45rem) {
     .admin-row {
         grid-template-columns: 1fr;
         grid-template-areas:
@@ -1471,7 +1484,7 @@ html.dark .admin-nav a.active {
 /* 首屏「我的 Agent」入口卡片 */
 .agent-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
     gap: 0.75rem;
 }
 
