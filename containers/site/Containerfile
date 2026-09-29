@@ -53,7 +53,8 @@ COPY . .
 # 注意：cache 挂载的内容不会进入镜像层，因此构建后把产物拷到 /out。
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
-    cargo leptos build --release \
+    rm -rf target/site \
+ && cargo leptos build --release \
  && rm -rf /out && mkdir -p /out \
  && cp target/release/felix-homelab-site /out/ \
  && cp -r target/site /out/site

@@ -32,31 +32,31 @@ pub fn SiteHeader() -> impl IntoView {
             <div class="wrap header-inner">
                 <a class="brand" href="/">"Wraindrock"</a>
                 <div class="header-right">
-                    <nav class="site-nav">
-                        <a href="/blog">"博客"</a>
-                        <a href="/community">"社区"</a>
-                        <a href="/sky">"光遇"</a>
-                        <a
-                            class="nav-service"
-                            href="https://opencloud.wraindrock.com/"
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            "OpenCloud"
-                        </a>
-                        <a
-                            class="nav-service"
-                            href="https://forgejo.wraindrock.com/"
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            "Forgejo"
-                        </a>
-                        <a href="/about">"关于"</a>
-                    </nav>
                     <ThemeToggle />
                     <UserMenu />
                 </div>
+                <nav class="site-nav">
+                    <a href="/blog">"博客"</a>
+                    <a href="/community">"社区"</a>
+                    <a href="/sky">"光遇"</a>
+                    <a
+                        class="nav-service"
+                        href="https://opencloud.wraindrock.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        "OpenCloud"
+                    </a>
+                    <a
+                        class="nav-service"
+                        href="https://forgejo.wraindrock.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        "Forgejo"
+                    </a>
+                    <a href="/about">"关于"</a>
+                </nav>
             </div>
         </header>
     }

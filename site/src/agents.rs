@@ -116,6 +116,70 @@ pub struct AgentAuthQuery {
     /// 实例号；路由文件总是显式带上
     #[serde(default = "default_slot")]
     pub slot: i64,
+    /// VNC 子请求标记（VNC 有自己的鉴权路径，不参与 DSH 令牌跳转）
+    #[serde(default)]
+    pub vnc: Option<String>,
+    /// 原始请求 URI（forward_auth 用占位符转发过来；形如 `/?token=xyz`）
+    #[serde(default)]
+    pub orig: Option<String>,
+}
+
+/// 是否是浏览器地址栏/链接的页面导航（而非子资源请求）。
+#[cfg(feature = "ssr")]
+fn is_document_request(headers: &axum::http::HeaderMap) -> bool {
+    let get = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+    };
+    if get("sec-fetch-dest").eq_ignore_ascii_case("document")
+        || get("sec-fetch-mode").eq_ignore_ascii_case("navigate")
+    {
+        return true;
+    }
+    get("accept").contains("text/html")
+}
+
+/// 是否已带 DSH 自己的登录 Cookie（`dsh-auth-*` → 已登录，勿再重定向）。
+#[cfg(feature = "ssr")]
+fn has_dsh_session(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|cookies| cookies.contains("dsh-auth-"))
+}
+
+/// 请求的 Referer 是否与 Agent 自身同域（站内二次导航 → 不重定向）。
+#[cfg(feature = "ssr")]
+fn referer_is_same_host(headers: &axum::http::HeaderMap) -> bool {
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let referer = headers
+        .get(axum::http::header::REFERER)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if referer.is_empty() {
+        return false;
+    }
+    let referer_host = referer
+        .split("//")
+        .nth(1)
+        .unwrap_or("")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    !referer_host.is_empty() && referer_host == host
 }
 
 /// Caddy on-demand TLS 的 ask 查询参数。
@@ -389,6 +453,55 @@ pub async fn agent_auth(
     }
 
     if ready(runtime.as_ref()) {
+        // DSH 的令牌每次启动都会重新生成：睡眠期间卡片只能给出无令牌链接。
+        // 对「页面导航」且不是站内二次跳转的请求：302 到最新令牌地址，让首次
+        // 进入自动完成登录；子资源与站内导航直接放行（DSH 自己用 Cookie）。
+        // DSH 令牌每次启动都会重新生成。判定顺序（页面导航场景）：
+        //   · 带 DSH 登录 Cookie（登录完成后）→ 放行；
+        //   · 原始 URL 里的 token 与当前令牌一致 → 放行（DSH 会消费它并种 Cookie）；
+        //   · 否则 302 到最新令牌地址（`/?token=…`），让首次进入自动完成登录。
+        // 原始 URI 由 agent-ctl 在 forward_auth 里用 `orig={http.request.uri}` 带过来。
+        let provided = query
+            .orig
+            .as_deref()
+            .and_then(|uri| uri.split("token=").nth(1))
+            .map(|value| value.split(['&', '#']).next().unwrap_or(""))
+            .unwrap_or("");
+        let current = runtime.as_ref().and_then(|r| r.token.clone());
+        let needs_token_redirect = kind == "dsh"
+            && query.vnc.is_none()
+            && is_document_request(&headers)
+            && !referer_is_same_host(&headers)
+            && !has_dsh_session(&headers)
+            && current.as_deref() != Some(provided);
+        if needs_token_redirect {
+            // 令牌可能比 ready 晚几秒落盘：短轮询等待
+            let mut token = current.clone().filter(|t| !t.is_empty());
+            let mut waited = 0u64;
+            while token.as_deref().unwrap_or("").is_empty() && waited < 20_000 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                waited += 500;
+                token = read_agent_status()
+                    .get(&subdomain)
+                    .and_then(|r| r.token.clone());
+            }
+            match token.filter(|t| !t.is_empty()) {
+                Some(token) => {
+                    let target = format!("{}?token={}", agent_url(&subdomain), token);
+                    return axum::response::Redirect::to(&target).into_response();
+                }
+                None => {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        axum::response::Html(waking(
+                            "正在准备登录",
+                            "实例已就绪，正在生成登录链接，请稍候。",
+                        )),
+                    )
+                        .into_response();
+                }
+            }
+        }
         StatusCode::NO_CONTENT.into_response()
     } else {
         (

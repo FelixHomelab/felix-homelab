@@ -325,7 +325,7 @@ route_write() {
 @agent_${slug}_vnc host $subdomain.$AGENT_LOCAL_DOMAIN $subdomain.$AGENT_BASE_DOMAIN
 handle_path /vnc/* {
 	forward_auth 127.0.0.1:$AGENT_SITE_PORT {
-		uri /api/agent/auth?user=$username&slot=$slot
+		uri /api/agent/auth?user=$username&slot=$slot&vnc=1
 	}
 	reverse_proxy 127.0.0.1:$vnc_port
 }"
@@ -333,7 +333,7 @@ handle_path /vnc/* {
 	local before=""
 	[ -f "$CADDY_DIR/$slug.caddy" ] && before="$(cat "$CADDY_DIR/$slug.caddy")"
 	cat >"$CADDY_DIR/$slug.caddy" <<EOF
-# Felix-Homelab Agent：$username（实例 #$slot，由 scripts/agent-ctl.sh 生成，请勿手改）
+# Felix-Homelab Agent：$username（实例 $subdomain，由 scripts/agent-ctl.sh 生成，请勿手改）
 # 命名匹配器必须用块状写法：单行里塞多个匹配器（host + not path）会被
 # 当作 host 的参数解析，导致 /vnc/* 也被主路由吞掉。
 @agent_$slug {
@@ -342,7 +342,7 @@ handle_path /vnc/* {
 }
 handle @agent_$slug {
 	forward_auth 127.0.0.1:$AGENT_SITE_PORT {
-		uri /api/agent/auth?user=$username&slot=$slot
+		uri /api/agent/auth?user=$username&slot=$slot&orig={http.request.uri}
 	}
 	reverse_proxy 127.0.0.1:$port {
 		header_up Authorization "Basic $b64"

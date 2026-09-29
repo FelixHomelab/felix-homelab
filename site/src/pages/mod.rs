@@ -183,24 +183,40 @@ fn MyAgentsSection() -> impl IntoView {
         if !mounted.get() {
             return None;
         }
-        let list = agents
-            .get()
-            .and_then(|result| result.ok())
-            .filter(|list| !list.is_empty())?;
-        Some(view! {
-            <section class="wrap section">
-                <div class="section-head">
-                    <h2>"我的 Agent"</h2>
-                    <span class="muted">"管理员开通后自动显示在这里"</span>
-                </div>
-                <div class="agent-grid">
-                    {list
-                        .into_iter()
-                        .map(|agent| view! { <MyAgentCard agent=agent /> })
-                        .collect_view()}
-                </div>
-            </section>
-        })
+        let list = match agents.get().and_then(|result| result.ok()) {
+            Some(list) if !list.is_empty() => list,
+            // 未登录 / 未开通：给一句提示，避免整块消失让人以为坏了
+            _ => {
+                return Some(
+                    view! {
+                        <section class="wrap section">
+                            <div class="section-head">
+                                <h2>"我的 Agent"</h2>
+                                <span class="muted">"登录主站后显示；管理员开通后自动出现在这里"</span>
+                            </div>
+                        </section>
+                    }
+                    .into_any(),
+                );
+            }
+        };
+        Some(
+            view! {
+                <section class="wrap section">
+                    <div class="section-head">
+                        <h2>"我的 Agent"</h2>
+                        <span class="muted">"打开卡片即进入；DSH 会自动完成登录"</span>
+                    </div>
+                    <div class="agent-grid">
+                        {list
+                            .into_iter()
+                            .map(|agent| view! { <MyAgentCard agent=agent /> })
+                            .collect_view()}
+                    </div>
+                </section>
+            }
+            .into_any(),
+        )
     }
 }
 

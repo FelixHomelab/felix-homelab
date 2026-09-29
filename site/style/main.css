@@ -165,6 +165,12 @@ a:hover {
 .site-nav {
     display: flex;
     gap: 1.5rem;
+    /* 桌面：品牌 → 导航 → 主题/账号（DOM 里导航在账号之后，用 order 还原） */
+    order: 1;
+}
+
+.header-right {
+    order: 2;
 }
 
 .site-nav a {
@@ -678,13 +684,58 @@ button.btn {
 }
 
 @media (max-width: 44rem) {
-    .site-nav {
-        gap: 1rem;
-    }
-
+    /* 移动端头部：第一行品牌 + 主题/账号，第二行导航（横向滚动，不折行不溢出） */
     .header-inner {
         height: auto;
-        padding: 0.75rem 0;
+        padding: 0.625rem 0 0.5rem;
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+    }
+
+    .site-nav {
+        order: 3;
+        flex: 0 0 100%;
+        flex-wrap: nowrap;
+        gap: 1.125rem;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+        scrollbar-width: none;
+    }
+
+    .site-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    .site-nav a {
+        white-space: nowrap;
+    }
+
+    /* 移动端排版与留白收敛 */
+    .wrap {
+        padding: 0 1rem;
+    }
+
+    .hero {
+        padding: 2rem 0 1rem;
+    }
+
+    .hero-title {
+        font-size: 2rem;
+        max-width: none;
+    }
+
+    .page-header h1 {
+        font-size: 1.625rem;
+    }
+
+    .admin-nav {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .admin-nav::-webkit-scrollbar {
+        display: none;
     }
 }
 
