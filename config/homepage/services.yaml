@@ -18,6 +18,12 @@
         server: podman
         container: felix-homelab-forgejo
 
+    - OpenCloud（私有云盘）:
+        href: https://cloud.grantfelix.top/
+        description: 文件同步/分享 · 容器 felix-homelab-opencloud
+        server: podman
+        container: felix-homelab-opencloud
+
     - Forgejo Runner（CI/CD）:
         icon: /icons/forgejo.png
         description: 执行 Actions 作业 · 容器 felix-homelab-runner

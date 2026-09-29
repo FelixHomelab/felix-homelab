@@ -9,6 +9,7 @@
   注册用户可投稿社区内容，另有账号、评论与后台；源码在本仓库 `site/`，经 Caddy
   挂在入口根路径；
 - **Forgejo 系列**：Forgejo + PostgreSQL + Forgejo Actions Runner；
+- **OpenCloud**：Go 单栈私有云盘（文件同步/分享，替代 Nextcloud），经 Caddy 挂 `cloud.<域名>`；
 - **Homepage 控制台**：容器状态看板（`dash.localhost`）；
 - **AI Agent（多租户 P1 试点）**：每个授权账号一个独立 Agent 容器
   （模板镜像 + 独立数据卷 + `<用户名>.agent.<域名>` 子域，后台开通/计费授权）；
@@ -67,6 +68,9 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 | 5735     | 主站 (8090) | 仅供 Agent 网关 forward_auth 调用 |
 | 5740     | Agent 网关 (Caddy) | 仅宿主回环；<子域>.agent.<域名> 统一入口 |
 | 20001+   | AI Agent（动态分配） | 各 Agent 发布到宿主回环；经 5740 网关鉴权后访问 |
+
+> **OpenCloud** 不发布宿主端口：常驻 Pod 内网 `9200`，只经 Caddy
+> （`cloud.localhost` / `cloud.grantfelix.top`）访问。
 
 > **Host 网络的代价**：Runner 派发的作业容器使用 `container.network: host`，
 > 因此作业内的进程能访问宿主机上仅监听回环的本地服务，并能绑定宿主端口。
@@ -210,6 +214,7 @@ make install        # 生成配置、拉取镜像、构建主站镜像、启动 
 | Forgejo Web   | http://localhost:5730/（或 http://forgejo.localhost:5729/） |
 | Homepage 控制台 | http://dash.localhost:5729/（直连 http://localhost:5732/） |
 | Forgejo SSH   | `ssh -p 5731 git@localhost`                   |
+| OpenCloud     | http://cloud.localhost:5729/（公网 https://cloud.grantfelix.top/） |
 
 - 主站首次访问用 `.env` 里的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录后台 `/admin`
 - Forgejo 首次打开 http://localhost:5730/ 注册第一个账号即管理员
@@ -259,6 +264,35 @@ Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729
   保证一致性），恢复时按相同时间戳与 Forgejo 归档配对还原。
 - **更新官方内容**：改 `site/content/*.md` 后 `make build-site && make restart`；
   社区内容不需要重建，站内直接发布。
+
+## OpenCloud（文件同步/分享）
+
+Go 写的单栈私有云盘（OpenCloud，替代早期的 Nextcloud）：一个容器内置 Web、WebDAV 与
+OIDC，经 Caddy 挂到 `cloud.localhost` / `cloud.grantfelix.top`（Pod 内明文 `9200`，
+TLS 由主 Caddy 终止）。
+
+- **镜像**：`opencloudeu/opencloud:7.2.4`（固定版本；升级改
+  `quadlet/felix-homelab-opencloud.container` 后 `make install`）。
+- **管理员**：`admin`，密码在 `~/.config/felix-homelab/.env` 的 `IDM_ADMIN_PASSWORD`
+  （首次安装自动生成）。该变量只在配置卷首次初始化时生效；之后改密码走 Web 界面
+  （设置 → 密码）。
+- **数据**：`felix-homelab-opencloud-data` 卷（文件与 decomposedfs 元数据，依赖 xattr）；
+  配置与 IDM 密钥在 `felix-homelab-opencloud-config` 卷。均为命名卷，
+  查看挂载点：`podman volume inspect felix-homelab-opencloud-data`。
+- **备份**：随每日 03:00 / 后台手动备份一起执行，由宿主脚本
+  `config/backup/backup-opencloud.sh` 打包为 `felix-homelab-opencloud-<时间戳>.tar.gz`；
+  在 `podman unshare` 内用宿主 GNU tar `--xattrs` 保留 xattr（服务在线打包，
+  tar 退出码 1 的「读取期间文件变化」告警可接受），归档校验通过才落盘。
+- **恢复**：停服务后把归档解回两个卷（同样用 `podman unshare tar --xattrs`），再启动：
+  ```bash
+  systemctl --user stop felix-homelab-opencloud.service
+  podman unshare tar --xattrs -xzf <归档> \
+    -C "$(podman volume inspect -f '{{.Mountpoint}}' felix-homelab-opencloud-data)" . \
+    -C "$(podman volume inspect -f '{{.Mountpoint}}' felix-homelab-opencloud-config)" etc-opencloud
+  systemctl --user start felix-homelab-opencloud.service
+  ```
+- **客户端**：官方桌面/手机客户端或任意 WebDAV 客户端，地址填
+  `https://cloud.grantfelix.top`（OIDC issuer 由 `.env` 的 `OC_URL` 决定）。
 
 ## 后台运维（/admin）
 
@@ -685,6 +719,8 @@ hostname 作为监听地址。
 | `felix-homelab-site-data`    | 主站 SQLite 与上传图片 |
 | `felix-homelab-runner-data`  | Runner 注册与缓存    |
 | `felix-homelab-caddy-*`      | Caddy 证书与配置     |
+| `felix-homelab-opencloud-config` | OpenCloud 配置与 IDM 密钥 |
+| `felix-homelab-opencloud-data`   | OpenCloud 文件与 decomposedfs 元数据（依赖 xattr） |
 | `felix-agent-<用户名>-data`  | 各用户 Agent 运行数据（凭据/会话，每个授权账号一个） |
 
 配置目录（含 `.env`、`Caddyfile`、`homepage/`、`runner-config.yml`、`runner.secret`）

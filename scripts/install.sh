@@ -24,6 +24,7 @@ CORE_SERVICES=(
 	felix-homelab-forgejo.service
 	felix-homelab-site.service
 	felix-homelab-caddy.service
+	felix-homelab-opencloud.service
 	felix-homelab-agent-gateway.service
 	felix-homelab-homepage.service
 	felix-homelab-autoheal.service
@@ -148,6 +149,18 @@ ensure_env_default DSHDEV_RULES_REF 83c5ff329a1ecb9e8dc37da02eee17998f904dee
 # 会话 cookie 的共享父域（Agent 子域 SSO；站点按请求 Host 自适应）
 ensure_env_default COOKIE_DOMAIN grantfelix.top
 
+# OpenCloud：公网地址与内置 IDM 管理员密码（老安装补默认/补生成）
+ensure_env_default OC_URL https://cloud.grantfelix.top
+if ! grep -qE '^IDM_ADMIN_PASSWORD=.+' "$CONFIG_DIR/.env"; then
+	OPW="$(gen_secret)"
+	if grep -q '^IDM_ADMIN_PASSWORD=' "$CONFIG_DIR/.env"; then
+		sed -i "s/^IDM_ADMIN_PASSWORD=.*/IDM_ADMIN_PASSWORD=$OPW/" "$CONFIG_DIR/.env"
+	else
+		echo "IDM_ADMIN_PASSWORD=$OPW" >>"$CONFIG_DIR/.env"
+	fi
+	log "OpenCloud 管理员密码（IDM_ADMIN_PASSWORD）: $OPW"
+fi
+
 # frpc 配置（可选：经云服务器中转）。仅在首次安装时植入模板；
 # 未填写 serverAddr/token 前不会链接并启动 frpc 单元（见第 5 节）。
 mkdir -p "$CONFIG_DIR/frp"
@@ -203,7 +216,7 @@ fi
 
 # 备份脚本随仓库同步（项目托管，非用户自定义）
 mkdir -p "$CONFIG_DIR/backup" "$CONFIG_DIR/rclone" "$CONFIG_DIR/sync"
-for script in backup.sh; do
+for script in backup.sh backup-opencloud.sh; do
 	install -m 0755 "$REPO_DIR/config/backup/$script" "$CONFIG_DIR/backup/$script"
 done
 install -m 0755 "$REPO_DIR/scripts/sync-backup.sh" "$CONFIG_DIR/backup/sync-backup.sh"
@@ -238,13 +251,14 @@ install -m 0755 "$REPO_DIR/scripts/agent-ctl.sh" "$CONFIG_DIR/agents/agent-ctl.s
 # 手动：后台写 backup-request / sync-request，由 .path 单元触发
 cat >"$SYSTEMD_USER_DIR/felix-homelab-backup-run.service" <<'EOF'
 [Unit]
-Description=Felix-Homelab: 执行一次备份（Forgejo/主站）
+Description=Felix-Homelab: 执行一次备份（Forgejo/主站/OpenCloud）
 After=felix-homelab-backup.service felix-homelab-forgejo.service felix-homelab-db.service
 Requires=felix-homelab-backup.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/podman exec felix-homelab-backup sh /usr/local/bin/backup.sh once
+ExecStart=%h/.config/felix-homelab/backup/backup-opencloud.sh
 EOF
 
 cat >"$SYSTEMD_USER_DIR/felix-homelab-backup.timer" <<'EOF'
@@ -451,6 +465,7 @@ cat <<EOF
   主站(社区站)  : http://localhost:5729/   (直连 http://localhost:5733/)
   Forgejo Web   : http://localhost:5730/   (Caddy: http://forgejo.localhost:5729/)
   Forgejo SSH   : ssh -p 5731 git@localhost
+  OpenCloud     : http://cloud.localhost:5729/   (公网 https://cloud.grantfelix.top/；管理员密码见 .env)
   公网访问      : 配置 frpc 后经云域名访问（见 README「公网访问（云服务器中转）」）
   数据目录      : $CONFIG_DIR
   单元目录      : $UNIT_DIR

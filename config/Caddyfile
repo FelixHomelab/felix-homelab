@@ -32,6 +32,16 @@ http://:8080 {
 		reverse_proxy felix-homelab:3001
 	}
 
+	# OpenCloud（文件同步/分享；Pod 内明文 9200，TLS 由本 Caddy 终止。
+	# 后端按 X-Forwarded-Proto 判断是否跳 HTTPS，这里统一声明为 https，
+	# 否则 http 访问（如 cloud.localhost）会被 308 到同名 https）
+	@cloud host cloud.localhost cloud.grantfelix.top
+	handle @cloud {
+		reverse_proxy felix-homelab:9200 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
 	# 多租户 AI Agent 已迁到独立网关（felix-homelab-agent-gateway，host 网络）：
 	# Agent 各自在独立 bridge 网络里，Pod 内的 Caddy 到不了；
 	# 每用户路由仍由 scripts/agent-ctl.sh 生成，由 Agent 网关消费。

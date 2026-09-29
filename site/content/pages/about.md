@@ -19,7 +19,7 @@ SEO，浏览器只水合确实需要交互的部分。数据库只存用户产�
 投稿、评论、评价，以及每个人自己的外观偏好。
 
 整站跑在 **Felix Homelab**：一个基于 Podman + Quadlet 的 rootless 自托管工作站
-（Forgejo / Caddy / 定时备份与自愈），代码与部署细节见
+（Forgejo / OpenCloud / Caddy / 定时备份与自愈），代码与部署细节见
 [FelixHomelab/felix-homelab](https://github.com/FelixHomelab/felix-homelab)。
 
 ## 技术取舍

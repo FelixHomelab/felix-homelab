@@ -20,6 +20,7 @@ SERVICES := felix-homelab-db.service felix-homelab-forgejo.service \
 	felix-homelab-site.service \
 	felix-homelab-caddy.service felix-homelab-agent-gateway.service \
 	felix-homelab-homepage.service \
+	felix-homelab-opencloud.service \
 	felix-homelab-runner.service felix-homelab-frpc.service \
 	felix-homelab-agent-frpc.service \
 	felix-homelab-backup.service felix-homelab-autoheal.service

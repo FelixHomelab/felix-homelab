@@ -1,0 +1,38 @@
+[Unit]
+Description=Felix-Homelab: OpenCloud（文件同步/分享，Go 单栈，替代 Nextcloud）
+Documentation=https://github.com/opencloud-eu/opencloud
+After=felix-homelab-pod.service
+Requires=felix-homelab-pod.service
+
+[Container]
+ContainerName=felix-homelab-opencloud
+Image=docker.io/opencloudeu/opencloud:7.2.4
+Pod=felix-homelab.pod
+Timezone=local
+Label=autoheal=true
+EnvironmentFile=%h/.config/felix-homelab/.env
+# TLS 由主 Caddy 终止；容器内的 proxy 用明文 HTTP 监听 9200（仅 Pod 内网可见）
+Environment=PROXY_TLS=false
+Environment=PROXY_HTTP_ADDR=0.0.0.0:9200
+Environment=OC_INSECURE=false
+Environment=OC_LOG_LEVEL=info
+Environment=IDM_CREATE_DEMO_USERS=false
+# 首次启动生成含随机密钥的配置（已存在则跳过），再启动单进程全部服务
+Entrypoint=/bin/sh
+Exec=-c "opencloud init || true; opencloud server"
+# 配置（含 IDM 密钥）与数据都是命名卷；:U 让卷属主匹配镜像内 UID 1000
+Volume=felix-homelab-opencloud-config.volume:/etc/opencloud:U
+Volume=felix-homelab-opencloud-data.volume:/var/lib/opencloud:U
+HealthCmd=curl -fsS http://127.0.0.1:9200/healthz
+HealthInterval=15s
+HealthTimeout=5s
+HealthRetries=10
+HealthStartPeriod=60s
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
