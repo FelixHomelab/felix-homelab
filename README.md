@@ -596,6 +596,7 @@ make agent-setkey ARGS="<用户名> [slot] KEY=VALUE"  # 设置 DSH 密钥（写
 make migrate    # 从旧命名 Felix-Workstation 迁移到 Felix-Homelab
 make uninstall  # 停止并移除单元，保留数据
 make purge      # 连数据卷、配置一起删除（危险）
+make prune      # 清理构建残留（悬空镜像、构建工作容器、匿名卷）
 ```
 
 > 修改了 `quadlet/*`、`.env` 或 `Caddyfile` 后：

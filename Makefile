@@ -26,7 +26,7 @@ SERVICES := felix-homelab-db.service felix-homelab-forgejo.service \
 	felix-homelab-backup.service felix-homelab-autoheal.service
 
 .PHONY: install register build-images build-site status logs restart stop start \
-	backup backup-list sync-backup restore deploy uninstall purge migrate help \
+	backup backup-list sync-backup restore deploy uninstall purge prune migrate help \
 	agent-build agent-build-dsh agent-list agent-apply agent-stop agent-remove \
 	agent-setkey doctor
 
@@ -123,3 +123,8 @@ uninstall: ## 停止并移除单元（保留数据）
 
 purge: ## 停止、移除单元并删除数据卷（危险）
 	$(REPO_DIR)/scripts/uninstall.sh --purge
+
+prune: ## 清理构建残留（悬空镜像、构建工作容器、匿名卷；不动命名卷与在用镜像）
+	-buildah rm --all >/dev/null 2>&1 || true
+	-podman image prune -f
+	-podman volume prune -f

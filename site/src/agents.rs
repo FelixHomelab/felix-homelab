@@ -40,7 +40,8 @@ pub fn agent_kind_label(kind: &str) -> &'static str {
     }
 }
 
-/// 域名里的 agent 名段。
+/// 域名里的 agent 名段（仅服务端使用：域名生成与宿主请求）。
+#[cfg(feature = "ssr")]
 fn agent_name(kind: &str) -> &'static str {
     match kind {
         "dsh" => "deepseekharness",
@@ -48,7 +49,8 @@ fn agent_name(kind: &str) -> &'static str {
     }
 }
 
-/// 用户名 → 域名标签：小写、`_`→`-`（DNS 标签/证书不接受下划线）。
+/// 用户名 → 域名标签：小写、`_`→`-`（DNS 标签/证书不接受下划线；仅服务端使用）。
+#[cfg(feature = "ssr")]
 fn username_slug(username: &str) -> String {
     username.trim().to_ascii_lowercase().replace('_', "-")
 }
