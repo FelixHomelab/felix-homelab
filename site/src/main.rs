@@ -110,6 +110,25 @@ async fn main() -> anyhow::Result<()> {
         // server function 兜底挂载：本环境 leptos_routes 的自动挂载不生效，
         // 改为「显式注册（register_server_fns）+ 这里统一切到 handle_server_fns」。
         .route("/api/{*fn_name}", post(leptos_axum::handle_server_fns))
+        // 联系信息已并入「关于」：旧入口 301 过去，避免两页重复维护。
+        .route(
+            "/contact",
+            get(|| async { axum::response::Redirect::permanent("/about") }),
+        )
+        .route(
+            "/contact/",
+            get(|| async { axum::response::Redirect::permanent("/about") }),
+        )
+        // 光遇是独立板块：旧的社区光遇入口在 Axum 层直接 301 到光遇，
+        // 不经过模板层（对浏览器与爬虫都是真正的跳转）。
+        .route(
+            "/community/sky",
+            get(|| async { axum::response::Redirect::permanent("/sky") }),
+        )
+        .route(
+            "/community/sky/",
+            get(|| async { axum::response::Redirect::permanent("/sky") }),
+        )
         // SEO 三件套：产出 XML 与纯文本，直接由 Axum 提供，不过模板层
         .route("/rss.xml", get(seo::rss))
         .route("/sitemap.xml", get(seo::sitemap))

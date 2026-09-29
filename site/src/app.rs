@@ -12,7 +12,7 @@ use crate::pages::community::{
     CommunityDetailPage, CommunityIndex, CommunitySubmitPage, CommunityTagPage,
 };
 use crate::pages::{
-    AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, ContactPage, HomePage, Layout,
+    AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, HomePage, Layout,
     LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, SkyBoostingPage,
     SkyCategoryPage, SkyIndex, UserProfilePage,
 };
@@ -86,7 +86,6 @@ pub fn App() -> impl IntoView {
                         view=CommunityIndex
                         ssr=SsrMode::Async
                     />
-                    <Route path=path!("/community/sky") view=CommunityIndex ssr=SsrMode::Async />
                     <Route
                         path=path!("/community/tag/:tag")
                         view=CommunityTagPage
@@ -110,7 +109,6 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/projects") view=ProjectIndex ssr=SsrMode::Async />
                     <Route path=path!("/projects/:slug") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about") view=AboutPage ssr=SsrMode::Async />
-                    <Route path=path!("/contact") view=ContactPage ssr=SsrMode::Async />
                     <Route path=path!("/sky") view=SkyIndex ssr=SsrMode::Async />
                     // boosting 必须排在 :category 之前，否则它会被当成一个分类
                     <Route path=path!("/sky/boosting") view=SkyBoostingPage ssr=SsrMode::Async />
@@ -157,7 +155,6 @@ pub fn App() -> impl IntoView {
                         view=CommunityIndex
                         ssr=SsrMode::Async
                     />
-                    <Route path=path!("/community/sky/") view=CommunityIndex ssr=SsrMode::Async />
                     <Route
                         path=path!("/community/tag/:tag/")
                         view=CommunityTagPage
@@ -181,7 +178,6 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/projects/") view=ProjectIndex ssr=SsrMode::Async />
                     <Route path=path!("/projects/:slug/") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about/") view=AboutPage ssr=SsrMode::Async />
-                    <Route path=path!("/contact/") view=ContactPage ssr=SsrMode::Async />
                     <Route path=path!("/sky/") view=SkyIndex ssr=SsrMode::Async />
                     <Route path=path!("/sky/boosting/") view=SkyBoostingPage ssr=SsrMode::Async />
                     <Route path=path!("/sky/:category/") view=SkyCategoryPage ssr=SsrMode::Async />

@@ -7,7 +7,7 @@ use crate::auth::UserState;
 use crate::agents::{agent_kind_label, my_agents, AgentRow};
 use crate::community::list_community;
 use crate::components::comments::CommentSection;
-use crate::components::community::{CommunityCard, ContentTabs};
+use crate::components::community::CommunityCard;
 use crate::components::reviews::ReviewSection;
 use crate::components::{
     kind_label, PageHeader, PostCard, ProjectCard, SiteFooter, SiteHeader, ThemeToggle,
@@ -276,7 +276,6 @@ pub fn BlogIndex() -> impl IntoView {
                 title="博客"
                 lede="官方内容：写下来的才算想过。社区投稿在「社区」。".to_string()
             />
-            <ContentTabs active="official" official_href="/blog" community_href="/community/posts" />
 
             <Suspense fallback=loading>
                 {move || tags.get().map(|res| match res {
@@ -444,7 +443,6 @@ pub fn ProjectIndex() -> impl IntoView {
         <Meta name="description" content="我做过的东西：开源、私有与团队项目。" />
         <section class="wrap">
             <PageHeader title="项目" lede="开源、私有与团队项目都记在这里。".to_string() />
-            <ContentTabs active="official" official_href="/projects" community_href="/community/projects" />
             <Suspense fallback=loading>
                 {move || projects.get().map(|res| match res {
                     Ok(list) if list.is_empty() => view! { <p class="muted">"还没有项目。"</p> }.into_any(),
@@ -608,17 +606,6 @@ pub fn AboutPage() -> impl IntoView {
     }
 }
 
-/// 联系页。内容在 `content/pages/contact.md`。
-///
-/// 本站不发邮件（`DESIGN.md` 第十一节），所以这一页只**列出联系方式**，不做提交
-/// 表单——收不到的表单比没有表单更糟。
-#[component]
-pub fn ContactPage() -> impl IntoView {
-    view! {
-        <StaticPage slug="contact" default_title="联系" description="怎么联系我。" />
-    }
-}
-
 /// 光遇子站首页。
 ///
 /// 攻略与画廊页要等内容进 `content/sky/` 后再开，现在先只放已经能用的代跑入口，
@@ -633,7 +620,6 @@ pub fn SkyIndex() -> impl IntoView {
                 title="光遇"
                 lede="Sky: Children of the Light —— 在云端飞翔，与光相遇。".to_string()
             />
-            <ContentTabs active="official" official_href="/sky" community_href="/community/sky" />
             <div class="prose">
                 <p>"这里记录我的光遇之旅：攻略、截图，以及代跑服务的说明与评价。"</p>
             </div>

@@ -368,8 +368,9 @@ pub async fn list_community(kind: Option<String>) -> Result<Vec<CommunitySummary
             .await
         }
         None => {
+            // 光遇是独立板块：默认列表（社区/首页概览）不混入光遇内容
             sqlx::query(&format!(
-                "{base} ORDER BY c.created_at DESC, c.id DESC LIMIT ?1"
+                "{base} AND c.kind != 'sky' ORDER BY c.created_at DESC, c.id DESC LIMIT ?1"
             ))
             .bind(LIST_LIMIT)
             .fetch_all(&app.pool)

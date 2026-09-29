@@ -14,7 +14,7 @@ use crate::community::{
     list_community_tags, random_sky_teasers, submit_community, update_community, CommunityDetail,
 };
 use crate::components::comments::CommentSection;
-use crate::components::community::{CommunityCard, ContentTabs};
+use crate::components::community::CommunityCard;
 use crate::components::PageHeader;
 
 /// 发布页展示的预置分类（与迁移 `0009_community_tags.sql` 一致）。
@@ -27,8 +27,6 @@ fn kind_from_path(path: &str) -> Option<String> {
         Some("post".to_string())
     } else if path.ends_with("/projects") {
         Some("project".to_string())
-    } else if path.ends_with("/sky") {
-        Some("sky".to_string())
     } else {
         None
     }
@@ -51,7 +49,6 @@ fn KindTabs(active: Signal<Option<String>>) -> impl IntoView {
             {tab("全部", "/community", None)}
             {tab("文章", "/community/posts", Some("post"))}
             {tab("项目", "/community/projects", Some("project"))}
-            {tab("光遇", "/community/sky", Some("sky"))}
         </nav>
     }
 }
@@ -70,14 +67,13 @@ pub fn CommunityIndex() -> impl IntoView {
         <Title text="社区 — Felix Homelab" />
         <Meta
             name="description"
-            content="社区投稿：注册用户发布的文章、项目与光遇内容。"
+            content="社区投稿：注册用户发布的文章与项目。"
         />
         <section class="wrap">
             <PageHeader
                 title="社区"
                 lede="注册用户发布的内容；发布即公开，违规会被下架。".to_string()
             />
-            <ContentTabs active="community" official_href="/blog" community_href="/community" />
             <Suspense fallback=loading>
                 {move || {
                     view! {
@@ -531,7 +527,9 @@ pub fn CommunitySubmitPage() -> impl IntoView {
                                 <select on:change=move |ev| kind.set(event_target_value(&ev))>
                                     <option value="post" selected=move || kind.get() == "post">"文章"</option>
                                     <option value="project" selected=move || kind.get() == "project">"项目"</option>
-                                    <option value="sky" selected=move || kind.get() == "sky">"光遇"</option>
+                                    {(kind.get() == "sky").then(|| view! {
+                                        <option value="sky" selected>"光遇"</option>
+                                    })}
                                 </select>
                                 <small class="muted">"编辑时类型不可更改。"</small>
                             </label>

@@ -6,35 +6,6 @@ use crate::community::{kind_label, CommunitySummary};
 
 /// 「官方内容 / 社区投稿」分区切换条。
 ///
-/// 官方内容随仓库版本化（Markdown），社区投稿由注册用户发布；两类内容分区展示，
-/// 互不混淆。
-#[component]
-pub fn ContentTabs(
-    /// 当前所在分区：`official` 或 `community`。
-    active: &'static str,
-    official_href: &'static str,
-    community_href: &'static str,
-) -> impl IntoView {
-    view! {
-        <nav class="segmented content-tabs" aria-label="内容分区">
-            <a
-                class="segmented-btn"
-                class:active=active == "official"
-                href=official_href
-            >
-                "官方内容"
-            </a>
-            <a
-                class="segmented-btn"
-                class:active=active == "community"
-                href=community_href
-            >
-                "社区投稿"
-            </a>
-        </nav>
-    }
-}
-
 /// 社区内容卡片。
 #[component]
 pub fn CommunityCard(item: CommunitySummary) -> impl IntoView {
