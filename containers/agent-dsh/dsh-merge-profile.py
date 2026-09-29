@@ -46,9 +46,13 @@ def merge_package_json(src: str, dst: str) -> None:
         except Exception:
             user_pkg = {}
 
+    # 依赖来源：镜像管理的包（随镜像发布的插件，可能是 fork 的 git 固定提交）
+    # 以镜像为准；用户自己装的插件不在镜像里，照常保留。
+    # 若反过来让卷里旧的 semver 覆盖镜像的 git 来源，后续 pnpm install 会把
+    # 修复过的 fork 版装回上游旧版（实测踩到）。
     dependencies = {
-        **(image_pkg.get("dependencies") or {}),
         **(user_pkg.get("dependencies") or {}),
+        **(image_pkg.get("dependencies") or {}),
     }
     # 名册取并集：镜像自带的 bundle（顺序以镜像为准）在前，用户在插件市场自己
     # 装的插件/主题追加在后——否则镜像一升级，用户的主题就从名册里消失。
@@ -111,6 +115,14 @@ def merge_dir(image_dir: str, volume_dir: str) -> None:
         # 两边都是目录 → 递归合并（例如 profiles/web 下的 package.json 与 node_modules）
         if os.path.isdir(src) and not os.path.islink(src) and os.path.isdir(dst):
             merge_dir(src, dst)
+            continue
+
+        # 镜像管理的 lockfile 必须随镜像刷新：依赖来源（含 fork git 提交）
+        # 变化后，旧 lock 会把 pnpm install 拉回上游旧版本。
+        if name in ("pnpm-lock.yaml",):
+            if os.path.lexists(dst):
+                remove_entry(dst)
+            copy_entry(src, dst)
             continue
 
         # 用户层文件（cordis.patch.yml / cordis.yml / state.json …）：卷里已有则保留

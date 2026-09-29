@@ -366,7 +366,10 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   进程，因此启动参数带 `--patch /opt/dsh-home/agent-patch.yml` 统一禁用
   （`allowRestart: false`，重启由平台/管理员操作）；`GET /dsh-market/status`
   应显示 `restart: false`。
-- **自带插件守护 dsh-my-guardian**（`DSHGUARDIAN_VERSION`，默认 0.4.4）：
+- **第三方修改政策**：凡是修改过的第三方插件/组件，一律 fork 到
+  `FelixHomelab` 下、从 fork 固定提交部署（避免上游更新覆盖修复），详见
+  [`FORKS.md`](FORKS.md)。
+- **自带插件守护 dsh-my-guardian**（`DSHGUARDIAN_REF`，固定 fork 提交）：
   候选区 + 失败隔离，防止用户装坏插件把容器卡死。守护是看门狗，必须最先
   加载——构建期把它的 bundle 调到名册第一位（每次加新插件后都会校验）。
 - **自带费用统计 dsh-cost-meter**（`DSHCOSTMETER_VERSION`，默认 1.7.40）：
@@ -407,18 +410,16 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   `AGENT_MEMORY=2g` 下重网页场景可调大；每次启动入口脚本会补齐 wrapper
   可执行位（npm 包不保留执行位）。
 - **自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin**
-  （`OPENCODE2DSH_VERSION`，默认 0.3.3）：匿名免费通道，无需 API key，
+  （`OPENCODE2DSH_REF`，固定 fork 提交 `felix/configforms`）：匿名免费通道，无需 API key，
   在模型选择器里以 `opencode2dsh` 分组出现；需要出站 HTTPS 访问
   `opencode.ai` 与 `models.dev`（Agent 独立网络默认允许出站）。
-  **DSH 0.1.7 兼容补丁**：0.1.7 移除了客户端 `settingsScope` 服务
-  （上游 issue #20/#24，修复 PR #23 尚未发版），而插件 0.3.3 仍硬性依赖它，
-  网页会卡在 `pending (waiting for service: settingsScope)` 起不来。镜像构建期
-  由 `patch-opencode2dsh-configforms.py` 把它迁到 `configForms`（幂等，上游
-  发版后自动跳过）；启动与模型路由正常，IP 池设置卡在 0.1.7 上可能不显示
-  （该卡片槽位也改版了，随上游 0.3.4 一起恢复）。
-- **补丁自愈**：用户从插件市场装主题/插件会跑 pnpm install，可能把补丁文件
-  还原（实测复现）。两层兜底：① 容器每次启动入口脚本幂等重打；② 宿主每轮
-  tick 检查数据卷，发现还原就自动重打并重启该实例（2 分钟内自愈）。
+  **DSH 0.1.7 兼容修复随 fork 走**：0.1.7 移除了客户端 `settingsScope`
+  服务（上游 issue #20/#24，修复 PR #23 尚未发版），而插件 0.3.3 仍硬性
+  依赖它，网页会卡在 `pending (waiting for service: settingsScope)` 起不来。
+  修复做在 fork 的分支 `felix/configforms`（源码级迁到 `configForms`，构建
+  产物随库提交），**镜像直接从 fork 固定提交安装**——从插件市场装别的插件
+  触发 pnpm 重装时，也会按 lockfile 回到同一个 fork 提交，修复不会被上游
+  覆盖。同步方法见 [`FORKS.md`](FORKS.md)。
 - **用户自装插件/主题升级不丢**：镜像升级的 profile 合并对
   `dsh.profile.bundles` 取并集——镜像自带的在前、用户市场装的追加在后
   （守护 `dsh-my-guardian` 强制置顶），`dependencies` 同样并集保留。

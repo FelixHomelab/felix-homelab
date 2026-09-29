@@ -832,32 +832,6 @@ apply_requests() {
 	[ "$changed" = 1 ] && caddy_reload || true
 }
 
-# 运行期从插件市场安装/更新插件会跑 pnpm install，可能把 opencode2dsh 的
-# DSH 0.1.7 兼容补丁还原（实测装主题后复现）。每轮 tick 检查一次，发现还原
-# 就重打补丁并重启实例，让用户在 2 分钟内自愈。无补丁需求时仅一次 grep。
-heal_dsh_patch() {
-	local key="$1" slug volume mp script client
-	slug="$(state_field "$key" slug)"
-	volume="felix-agent-$slug-data"
-	mp="$(podman volume inspect "$volume" -f '{{.Mountpoint}}' 2>/dev/null)" || return 0
-	[ -n "$mp" ] || return 0
-	client="$mp/dsh/profiles/web/node_modules/@opencode2dsh/dsh-plugin/lib/client.js"
-	[ -f "$client" ] || return 0
-	grep -q settingsScope "$client" 2>/dev/null || return 0
-	script="$AGENTS_DIR/patch-opencode2dsh-configforms.py"
-	[ -f "$script" ] || script="$REPO_DIR/containers/agent-dsh/patch-opencode2dsh-configforms.py"
-	[ -f "$script" ] || return 0
-	log "检测到 opencode2dsh 兼容补丁被运行期插件管理还原，自动修复：$(state_field "$key" username) #$(state_field "$key" slot)"
-	if ! python3 "$script" "$mp/dsh/profiles/web"; then
-		warn "自动修复失败，请人工检查（$client）"
-		return 1
-	fi
-	if [ "$(container_state "$key")" = "running" ]; then
-		podman restart "$(container_of "$key")" >/dev/null 2>&1 \
-			|| warn "修复成功但重启实例失败，请手动重启 $(container_of "$key")"
-	fi
-}
-
 reconcile() {
 	ensure_layout
 	local key username slot desired state recreated age now
@@ -866,12 +840,6 @@ reconcile() {
 		[ -n "$key" ] || continue
 		desired="$(state_field "$key" desired)"
 		state="$(container_state "$key")"
-
-		# DSH 兼容补丁自愈（运行期装插件可能还原补丁；见 heal_dsh_patch）
-		if [ "$desired" != "removed" ] && [ "$(state_field "$key" kind)" = "dsh" ]; then
-			heal_dsh_patch "$key" || true
-			state="$(container_state "$key")"
-		fi
 
 		# 定期重建：可写层非持久（数据卷/工作区保留），清掉可能的持久化改动。
 		# 睡眠中的实例直接删容器，下次唤醒会按新镜像/新配置重建。

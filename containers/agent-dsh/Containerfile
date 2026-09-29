@@ -132,16 +132,14 @@ RUN dsh plugin --profile web add "dshmarket@${DSHMARKET_VERSION}" \
 
 # ---- 自带插件守护 dsh-my-guardian（候选区 + 失败隔离，防止装插件搞崩容器）----
 # https://github.com/baosfeng/my-dsh-plugins/tree/main/plugins/dsh-my-guardian
-# 官方要求：守护自己是看门狗，必须在名册里最先加载 → 装好后把它的 bundle 调到第一位
-# 守护 0.4.4 会把宿主提供的 react peer 误报为缺失（上游 main 已修未发版），
-# 构建期打精确补丁（幂等、带守卫）。
-COPY patch-guardian-host-peers.py /tmp/patch-guardian-host-peers.py
-ARG DSHGUARDIAN_VERSION=0.4.4
-RUN dsh plugin --profile web add "dsh-my-guardian@${DSHGUARDIAN_VERSION}" --trust-lockfile \
+# 上游 main 已修「宿主提供的 react peer 被误报缺失」的问题，但 npm 仍停在
+# 0.4.4（未发版）；按平台规则改从 fork 固定提交安装（见 FORKS.md）。
+# 官方要求：守护自己是看门狗，必须在名册里最先加载 → 装好后把 bundle 调到第一位。
+ARG DSHGUARDIAN_REF=1bca78ed0329fa921e447ea12eedbcf3990e1179
+RUN dsh plugin --profile web add "github:FelixHomelab/my-dsh-plugins#${DSHGUARDIAN_REF}&path:/plugins/dsh-my-guardian" --trust-lockfile \
  && test -f /opt/dsh-home/profiles/web/node_modules/dsh-my-guardian/package.json \
  && node -e "const fs=require('fs');const f='/opt/dsh-home/profiles/web/package.json';const d=JSON.parse(fs.readFileSync(f));const rest=d.dsh.profile.bundles.filter((x)=>x!=='dsh-my-guardian');d.dsh.profile.bundles=['dsh-my-guardian',...rest];fs.writeFileSync(f,JSON.stringify(d,null,2)+'\n')" \
- && node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)" \
-  && python3 /tmp/patch-guardian-host-peers.py
+ && node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)"
 
 # ---- 自带费用统计 dsh-cost-meter（会话/模型成本、预算、余额与套餐额度）----
 # https://github.com/Han-1413141/dsh-cost-meter
@@ -154,24 +152,19 @@ RUN dsh plugin --profile web add "dsh-cost-meter@${DSHCOSTMETER_VERSION}" \
 # https://github.com/FishBottle7/opencode2dsh
 # 依赖链 pi-ai 里的 @google/genai / protobufjs 构建脚本运行期不需要：先在
 # workspace 里显式拒绝，pnpm 11 才会放行（否则 ERR_PNPM_IGNORED_BUILDS）。
-ARG OPENCODE2DSH_VERSION=0.3.3
+ARG OPENCODE2DSH_REF=d5e866ae77b30d66212a7cfb87921a870a3bdc54
 RUN if ! grep -q '^allowBuilds:' /opt/dsh-home/profiles/web/pnpm-workspace.yaml; then \
 		printf '\nallowBuilds:\n  "@google/genai": false\n  protobufjs: false\n' \
 			>> /opt/dsh-home/profiles/web/pnpm-workspace.yaml; \
 	fi \
-	&& dsh plugin --profile web add "@opencode2dsh/dsh-plugin@${OPENCODE2DSH_VERSION}" \
+	&& dsh plugin --profile web add "github:FelixHomelab/opencode2dsh#${OPENCODE2DSH_REF}&path:/packages/plugin" \
 	&& test -f /opt/dsh-home/profiles/web/node_modules/@opencode2dsh/dsh-plugin/package.json \
 	&& grep -q '"@opencode2dsh/dsh-plugin"' /opt/dsh-home/profiles/web/package.json \
 	&& node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)"
 
-# DSH 0.1.7 移除了客户端 settingsScope 服务（改由 configForms 承担），而 0.3.3
-# 仍把它列为硬性注入：web boot 会卡在 pending、整个界面起不来（上游 issue #20/#24，
-# 修复 PR #23 未发版）。构建期把客户端迁到 configForms 的旧 scope 适配上；
-# 上游发版后脚本自动跳过（见 patch-opencode2dsh-configforms.py）。
-# 补丁脚本常驻镜像：运行期从插件市场安装/更新插件会跑 pnpm install，可能把
-# 官方插件还原（实测装主题后就复现了），入口脚本每次启动都会幂等重打一遍。
-COPY patch-opencode2dsh-configforms.py /usr/local/bin/patch-opencode2dsh-configforms.py
-RUN python3 /usr/local/bin/patch-opencode2dsh-configforms.py /opt/dsh-home/profiles/web
+# DSH 0.1.7 移除了客户端 settingsScope 服务：上游 0.3.3 未修（issue #20/#24，
+# PR #23 未发版），因此按平台规则从 fork 固定提交安装，修复随 fork 一起走
+# （分支 felix/configforms，见 FORKS.md）；不再构建期改包文件。
 
 # ---- 自带侧边栏工作台 dsh-better-sidebar（文件树/编辑器/文件变动/任务/侧边对话）----
 # https://github.com/omdsh-dev/DSH-better-sidebar（要求 DSH 0.1.7-rc.1+，本镜像满足）
@@ -213,8 +206,8 @@ RUN printf '%s\n' \
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=7
-RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_VERSION}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_VERSION}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_VERSION}+devrules${DSHDEV_RULES_REF}+cfpatch2+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
+ARG PROFILE_REV=9
+RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_REF:0:8}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_REF:0:8}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_VERSION}+devrules${DSHDEV_RULES_REF}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
 COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh

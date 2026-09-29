@@ -124,9 +124,9 @@ ensure_env_default AGENT_VNC_PORT_BASE 21001
 ensure_env_default OPENCODE_VERSION 2.0.18
 ensure_env_default DSH_VERSION 0.1.7-rc.2
 ensure_env_default DSHMARKET_VERSION 1.66.3
-ensure_env_default DSHGUARDIAN_VERSION 0.4.4
+ensure_env_default DSHGUARDIAN_REF 1bca78ed0329fa921e447ea12eedbcf3990e1179
 ensure_env_default DSHCOSTMETER_VERSION 1.7.40
-ensure_env_default OPENCODE2DSH_VERSION 0.3.3
+ensure_env_default OPENCODE2DSH_REF d5e866ae77b30d66212a7cfb87921a870a3bdc54
 ensure_env_default DSHBETTERSIDEBAR_VERSION 0.22.1
 ensure_env_default DSHEGOBROWSER_VERSION 0.8.5
 ensure_env_default DSHDEV_RULES_REF 83c5ff329a1ecb9e8dc37da02eee17998f904dee
@@ -213,9 +213,6 @@ if [ ! -f "$CONFIG_DIR/agents/caddy/00-empty.caddy" ]; then
 fi
 # 执行面脚本复制到配置目录（systemd 单元引用它，不依赖仓库路径）
 install -m 0755 "$REPO_DIR/scripts/agent-ctl.sh" "$CONFIG_DIR/agents/agent-ctl.sh"
-# DSH 兼容补丁脚本（tick 自愈用；与镜像内 /usr/local/bin 下的同一份）
-install -m 0755 "$REPO_DIR/containers/agent-dsh/patch-opencode2dsh-configforms.py" \
-	"$CONFIG_DIR/agents/patch-opencode2dsh-configforms.py"
 
 # 后台触发用的请求文件（Path 单元监视；必须先存在，否则会被建成目录）
 : >"$CONFIG_DIR/sync/backup-request"
