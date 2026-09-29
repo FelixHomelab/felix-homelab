@@ -159,7 +159,7 @@ fn AdminPage(
                     }
                     let children = children.clone();
                     view! {
-                        <section class="wrap">
+                        <section class="wrap admin">
                             <PageHeader title=title.clone() lede=lede.clone() />
                             <AdminNav perms=list />
                             {children()}
@@ -178,16 +178,16 @@ fn AdminPage(
 #[component]
 fn StatusFilter(only_pending: RwSignal<bool>) -> impl IntoView {
     view! {
-        <div class="field-row">
+        <div class="segmented">
             <button
-                class="btn"
+                class="segmented-btn"
                 class:active=move || only_pending.get()
                 on:click=move |_| only_pending.set(true)
             >
                 "只看待审"
             </button>
             <button
-                class="btn"
+                class="segmented-btn"
                 class:active=move || !only_pending.get()
                 on:click=move |_| only_pending.set(false)
             >
@@ -272,29 +272,57 @@ pub fn AdminDashboardPage() -> impl IntoView {
 
             <section class="admin-quick">
                 <h2 class="admin-section-title">"快捷入口"</h2>
-                <div class="field-row">
-                    <a class="btn btn-small" href="/admin/comments">"评论审核"</a>
-                    <a class="btn btn-small" href="/admin/users">"用户管理"</a>
-                    <a class="btn btn-small" href="/admin/pod">"Pod 管理"</a>
-                    <a class="btn btn-small" href="/admin/backup">"备份与同步"</a>
+                <div class="quick-grid">
+                    <a class="quick-tile" href="/admin/comments">
+                        <strong>"评论审核"</strong>
+                        <span>"待审队列，通过 / 拒绝 / 删除"</span>
+                    </a>
+                    <a class="quick-tile" href="/admin/community">
+                        <strong>"社区管理"</strong>
+                        <span>"投稿下架、恢复与删除"</span>
+                    </a>
+                    <a class="quick-tile" href="/admin/users">
+                        <strong>"用户管理"</strong>
+                        <span>"封禁、超级管理员与协作角色"</span>
+                    </a>
+                    <a class="quick-tile" href="/admin/pod">
+                        <strong>"Pod 管理"</strong>
+                        <span>"容器运行状态与重启"</span>
+                    </a>
+                    <a class="quick-tile" href="/admin/agents">
+                        <strong>"Agent 管理"</strong>
+                        <span>"开通、续费与实例状态"</span>
+                    </a>
+                    <a class="quick-tile" href="/admin/backup">
+                        <strong>"备份与同步"</strong>
+                        <span>"备份源、异地渠道与归档"</span>
+                    </a>
                     <a
-                        class="btn btn-small"
+                        class="quick-tile"
+                        href="https://cloud.grantfelix.top/"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        <strong>"OpenCloud"</strong>
+                        <span>"文件同步 / 分享（cloud.grantfelix.top）"</span>
+                    </a>
+                    <a
+                        class="quick-tile"
                         href="http://dash.localhost:5729/"
                         target="_blank"
                         rel="noreferrer"
                     >
-                        "控制台看板"
+                        <strong>"控制台看板"</strong>
+                        <span>"Homepage 服务与容器总览"</span>
                     </a>
                     <a
-                        class="btn btn-small"
+                        class="quick-tile"
                         href="http://localhost:5730/-/admin"
                         target="_blank"
                         rel="noreferrer"
                     >
-                        "Forgejo 后台"
-                    </a>
-                    <a class="btn btn-small" href="/" target="_blank" rel="noreferrer">
-                        "打开主站"
+                        <strong>"Forgejo 后台"</strong>
+                        <span>"仓库、账号与 Actions"</span>
                     </a>
                 </div>
             </section>
@@ -328,7 +356,7 @@ pub fn AdminCommentsPage() -> impl IntoView {
                     }
                     .into_any(),
                     Some(Ok(list)) if list.is_empty() => {
-                        view! { <p class="muted">"没有需要处理的评论。"</p> }.into_any()
+                        view! { <p class="admin-empty">"没有需要处理的评论。"</p> }.into_any()
                     }
                     Some(Ok(list)) => view! {
                         <div class="admin-list">
@@ -423,7 +451,7 @@ pub fn AdminCommunityPage() -> impl IntoView {
     let filter_tab = move |label: &'static str, value: &'static str| {
         view! {
             <button
-                class="btn"
+                class="segmented-btn"
                 class:active=move || filter.get() == value
                 on:click=move |_| filter.set(value.to_string())
             >
@@ -435,7 +463,7 @@ pub fn AdminCommunityPage() -> impl IntoView {
     view! {
         <Title text="社区管理 — Felix Homelab" />
         <AdminPage title="社区管理" lede="发布即公开；这里负责下架、恢复与删除。".to_string() perm="community">
-            <div class="field-row">
+            <div class="segmented">
                 {filter_tab("已发布", "published")}
                 {filter_tab("已下架", "hidden")}
                 {filter_tab("全部", "all")}
@@ -450,7 +478,7 @@ pub fn AdminCommunityPage() -> impl IntoView {
                     }
                     .into_any(),
                     Some(Ok(list)) if list.is_empty() => {
-                        view! { <p class="muted">"这个筛选下没有内容。"</p> }.into_any()
+                        view! { <p class="admin-empty">"这个筛选下没有内容。"</p> }.into_any()
                     }
                     Some(Ok(list)) => view! {
                         <div class="admin-list">
@@ -554,7 +582,7 @@ pub fn AdminReviewsPage() -> impl IntoView {
                     }
                     .into_any(),
                     Some(Ok(list)) if list.is_empty() => {
-                        view! { <p class="muted">"没有需要处理的评价。"</p> }.into_any()
+                        view! { <p class="admin-empty">"没有需要处理的评价。"</p> }.into_any()
                     }
                     Some(Ok(list)) => view! {
                         <div class="admin-list">
@@ -718,7 +746,7 @@ fn AdminUserRow(
     view! {
         <article class="admin-row">
             <p class="admin-meta">
-                <span class="status">
+                <span class=if is_admin { "status status-role-admin" } else { "status" }>
                     {if is_admin { role_label("admin") } else { role_label("user") }}
                 </span>
                 {scopes
@@ -726,7 +754,7 @@ fn AdminUserRow(
                     .map(|scope| {
                         let value = scope.clone();
                         view! {
-                            <span class="status">
+                            <span class="status status-role-admin">
                                 {role_label(&scope)}
                                 <button
                                     class="link-button"
@@ -815,7 +843,7 @@ pub fn AdminPodPage() -> impl IntoView {
         >
             <p class="notice" role="status">{move || message.get()}</p>
 
-            <div class="field-row">
+            <div class="toolbar">
                 <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
                     "刷新"
                 </button>
@@ -883,9 +911,14 @@ fn PodRow(
     };
     let restart_name = container.name.clone();
     let image = container.image.clone();
+    let row_class = if running && container.health.as_deref() != Some("unhealthy") {
+        "admin-row row-ok"
+    } else {
+        "admin-row row-bad"
+    };
 
     view! {
-        <article class="admin-row">
+        <article class=row_class>
             <p class="admin-meta">
                 <span class=state_class>{container.state.clone()}</span>
                 {container
@@ -961,73 +994,79 @@ pub fn AdminAgentPage() -> impl IntoView {
         >
             <p class="notice" role="status">{move || message.get()}</p>
 
-            <article class="channel-card">
-                <div class="channel-head">
-                    <strong>"开通新实例"</strong>
+            <section class="panel">
+                <div class="panel-head">
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"开通新实例"</h2>
+                        <p class="panel-desc">
+                            "为指定用户新建该类型的 N 个实例（新的随机域名，与现有实例互不影响）。"
+                            "0 天 = 长期有效；续费 / 复活已撤销的实例请在下方每一行操作。"
+                            "DeepSeek Harness 首次进入用卡片上的带令牌链接。"
+                        </p>
+                    </div>
                 </div>
-                <div class="field-row">
-                    <label class="field field-grow">
-                        <span>"用户名"</span>
-                        <input
-                            type="text"
-                            placeholder="站点账号（大小写不敏感）"
-                            prop:value=move || name.get()
-                            on:input=move |ev| name.set(event_target_value(&ev))
-                        />
-                    </label>
-                    <label class="field">
-                        <span>"模板"</span>
-                        <select
-                            prop:value=move || kind.get()
-                            on:change=move |ev| kind.set(event_target_value(&ev))
-                        >
-                            <option value="opencode">"OpenCode"</option>
-                            <option value="dsh">"DeepSeek Harness"</option>
-                        </select>
-                    </label>
-                    <label class="field">
-                        <span>"数量"</span>
-                        <input
-                            type="number"
-                            min="1"
-                            max="9"
-                            prop:value=move || count.get().to_string()
-                            on:input=move |ev| {
-                                count.set(event_target_value(&ev).parse::<i64>().unwrap_or(1));
-                            }
-                        />
-                    </label>
-                    <label class="field">
-                        <span>"有效天数"</span>
-                        <input
-                            type="number"
-                            min="0"
-                            max="3650"
-                            prop:value=move || days.get().to_string()
-                            on:input=move |ev| {
-                                days.set(event_target_value(&ev).parse::<i64>().unwrap_or(30));
-                            }
-                        />
-                    </label>
-                    <label class="field field-grow">
-                        <span>"备注"</span>
-                        <input
-                            type="text"
-                            placeholder="付款记录等（可选）"
-                            prop:value=move || note.get()
-                            on:input=move |ev| note.set(event_target_value(&ev))
-                        />
-                    </label>
-                    <button class="btn" on:click=submit_grant>"开通"</button>
+                <div class="panel-body">
+                    <div class="form-grid">
+                        <label class="field">
+                            <span>"用户名"</span>
+                            <input
+                                type="text"
+                                placeholder="站点账号（大小写不敏感）"
+                                prop:value=move || name.get()
+                                on:input=move |ev| name.set(event_target_value(&ev))
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"模板"</span>
+                            <select
+                                prop:value=move || kind.get()
+                                on:change=move |ev| kind.set(event_target_value(&ev))
+                            >
+                                <option value="opencode">"OpenCode"</option>
+                                <option value="dsh">"DeepSeek Harness"</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>"数量"</span>
+                            <input
+                                type="number"
+                                min="1"
+                                max="9"
+                                prop:value=move || count.get().to_string()
+                                on:input=move |ev| {
+                                    count.set(event_target_value(&ev).parse::<i64>().unwrap_or(1));
+                                }
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"有效天数"</span>
+                            <input
+                                type="number"
+                                min="0"
+                                max="3650"
+                                prop:value=move || days.get().to_string()
+                                on:input=move |ev| {
+                                    days.set(event_target_value(&ev).parse::<i64>().unwrap_or(30));
+                                }
+                            />
+                        </label>
+                        <label class="field">
+                            <span>"备注"</span>
+                            <input
+                                type="text"
+                                placeholder="付款记录等（可选）"
+                                prop:value=move || note.get()
+                                on:input=move |ev| note.set(event_target_value(&ev))
+                            />
+                        </label>
+                        <div class="field field-action">
+                            <button class="btn btn-primary" on:click=submit_grant>"开通"</button>
+                        </div>
+                    </div>
                 </div>
-                <p class="muted">
-                    "为指定用户新建该类型的 N 个实例（新的随机域名，与现有实例互不影响）。"
-                    "0 天 = 长期有效。续费 / 复活已撤销的实例请在下方每一行操作。"
-                    "用户登录后在首页能看到自己的入口；DeepSeek Harness 首次进入用卡片上的带令牌链接。"
-                </p>
-            </article>
+            </section>
 
-            <div class="field-row">
+            <div class="toolbar">
                 <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
                     "刷新状态"
                 </button>
@@ -1049,7 +1088,7 @@ pub fn AdminAgentPage() -> impl IntoView {
                     }
                     .into_any(),
                     Some(Ok(list)) if list.is_empty() => view! {
-                        <p class="muted">"还没有开通任何 Agent。"</p>
+                        <p class="admin-empty">"还没有开通任何 Agent。"</p>
                     }
                     .into_any(),
                     Some(Ok(list)) => view! {
@@ -1128,6 +1167,19 @@ fn AgentRowView(
 
     let slot = agent.slot;
     let revoked = agent.status == "revoked" && !purged;
+    let row_class = if purged {
+        "admin-row"
+    } else if revoked {
+        "admin-row row-bad"
+    } else if agent.status == "stopped"
+        || agent.runtime.as_ref().map(|r| r.desired.as_str()) == Some("sleeping")
+    {
+        "admin-row row-warn"
+    } else if agent.runtime.is_some() {
+        "admin-row row-ok"
+    } else {
+        "admin-row row-info"
+    };
     let renew_days = RwSignal::new(30i64);
     let confirming = RwSignal::new(false);
     let confirm_text = RwSignal::new(String::new());
@@ -1143,7 +1195,7 @@ fn AgentRowView(
     let username_purge = agent.username.clone();
 
     view! {
-        <article class="admin-row">
+        <article class=row_class>
             <p class="admin-meta">
                 <span class=status_class>{status_label.to_string()}</span>
                 {(!purged)
@@ -1353,17 +1405,19 @@ fn AgentRowView(
     }
 }
 
-/// 一个备份源的开关行。
+/// 一个备份源的开关行。`disabled` 用于始终开启、不由页面控制的源（如 OpenCloud）。
 #[component]
 fn SourceToggle(
     label: &'static str,
     hint: &'static str,
     checked: RwSignal<bool>,
+    #[prop(optional)] disabled: bool,
 ) -> impl IntoView {
     view! {
-        <label class="toggle-row">
+        <label class="toggle-row" class:is-disabled=disabled>
             <input
                 type="checkbox"
+                disabled=disabled
                 prop:checked=move || checked.get()
                 on:change=move |ev| checked.set(event_target_checked(&ev))
             />
@@ -1489,6 +1543,8 @@ fn BackupChannelCard(index: usize, channels: RwSignal<Vec<BackupChannel>>) -> im
 fn backup_source(name: &str) -> &'static str {
     if name.starts_with("felix-homelab-site-") || name.starts_with("felix-ws-site-") {
         "主站"
+    } else if name.starts_with("felix-homelab-opencloud-") {
+        "OpenCloud"
     } else {
         "Forgejo"
     }
@@ -1508,6 +1564,8 @@ pub fn AdminBackupPage() -> impl IntoView {
     let channels = RwSignal::new(Vec::<BackupChannel>::new());
     let sync_status = RwSignal::new(String::new());
     let loaded = RwSignal::new(false);
+    // OpenCloud 的备份由宿主脚本无条件执行，这里只是展示，不参与保存
+    let opencloud_always = RwSignal::new(true);
 
     // 读取配置后填充表单（只填一次，避免覆盖正在编辑的内容）
     Effect::new(move |_| {
@@ -1582,54 +1640,72 @@ pub fn AdminBackupPage() -> impl IntoView {
         >
             <p class="notice" role="status">{move || message.get()}</p>
 
-            <section class="admin-quick">
-                <h2 class="admin-section-title">"1. 备份内容"</h2>
-                <p class="muted">
-                    "每天 03:00 自动备份（关机/休眠错过后开机补跑）。需要哪一项就打开哪一项。"
-                </p>
-                <div class="toggle-list">
-                    <SourceToggle
-                        label="Forgejo"
-                        hint="代码仓库、账号、Issue、Actions 运行记录"
-                        checked=forgejo
-                    />
-                    <SourceToggle
-                        label="主站"
-                        hint="主站文章、社区投稿、评论与上传图片"
-                        checked=site
-                    />
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="step-badge">"1"</span>
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"备份内容"</h2>
+                        <p class="panel-desc">
+                            "每天 03:00 自动备份（关机 / 休眠错过后开机补跑）。「立即备份」按已保存的设置执行；改过开关先保存。"
+                        </p>
+                    </div>
+                    <div class="panel-actions">
+                        <button class="btn btn-small" on:click=do_backup>"立即备份"</button>
+                        <button class="btn btn-primary btn-small" on:click=save>"保存设置"</button>
+                    </div>
                 </div>
-                <label class="field field-inline">
-                    <span>"保留天数"</span>
-                    <input
-                        type="number"
-                        min="1"
-                        max="90"
-                        prop:value=move || keep_days.get()
-                        on:input=move |ev| keep_days.set(event_target_value(&ev))
-                    />
-                </label>
-                <div class="field-row">
-                    <button class="btn btn-primary btn-small" on:click=save>
-                        "保存设置"
-                    </button>
-                    <button class="btn btn-small" on:click=do_backup>
-                        "立即备份"
-                    </button>
-                    <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
-                        "刷新归档"
-                    </button>
+                <div class="panel-body">
+                    <div class="toggle-list">
+                        <SourceToggle
+                            label="Forgejo"
+                            hint="代码仓库、账号、Issue、Actions 运行记录"
+                            checked=forgejo
+                        />
+                        <SourceToggle
+                            label="主站"
+                            hint="主站文章、社区投稿、评论与上传图片"
+                            checked=site
+                        />
+                        <SourceToggle
+                            label="OpenCloud"
+                            hint="文件同步 / 分享：数据 + 配置；由宿主脚本打包（带 xattr），始终开启"
+                            checked=opencloud_always
+                            disabled=true
+                        />
+                    </div>
+                    <label class="field field-inline">
+                        <span>"保留天数"</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="90"
+                            prop:value=move || keep_days.get()
+                            on:input=move |ev| keep_days.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <div class="toolbar">
+                        <button class="btn btn-small" on:click=move |_| revision.update(|n| *n += 1)>
+                            "刷新归档"
+                        </button>
+                    </div>
                 </div>
-                <p class="muted">
-                    "「立即备份」按已保存的设置执行；刚改过开关的话先点「保存设置」。"
-                </p>
             </section>
 
-            <section class="admin-quick">
-                <h2 class="admin-section-title">"2. 备份渠道（异地）"</h2>
-                <p class="muted">
-                    "每个渠道独立开关；可同时开启多个，也可以全部关闭。全部关闭时只保留本机备份。"
-                </p>
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="step-badge">"2"</span>
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"异地备份渠道"</h2>
+                        <p class="panel-desc">
+                            "每个渠道独立开关；可同时开启多个，也可以全部关闭。全部关闭时只保留本机备份。"
+                        </p>
+                    </div>
+                    <div class="panel-actions">
+                        <button class="btn btn-small" on:click=do_sync>"立即同步"</button>
+                        <button class="btn btn-primary btn-small" on:click=save>"保存设置"</button>
+                    </div>
+                </div>
+                <div class="panel-body">
                 <div class="channel-list">
                     {move || {
                         channels
@@ -1646,9 +1722,9 @@ pub fn AdminBackupPage() -> impl IntoView {
                     channels
                         .get()
                         .is_empty()
-                        .then(|| view! { <p class="muted">"还没有渠道，点下面「添加渠道」。"</p> })
+                        .then(|| view! { <p class="admin-empty">"还没有渠道，点下面「添加渠道」。"</p> })
                 }}
-                <div class="field-row">
+                <div class="toolbar">
                     <button
                         class="btn btn-small"
                         on:click=move |_| channels
@@ -1663,12 +1739,6 @@ pub fn AdminBackupPage() -> impl IntoView {
                     >
                         "添加渠道"
                     </button>
-                    <button class="btn btn-primary btn-small" on:click=save>
-                        "保存设置"
-                    </button>
-                    <button class="btn btn-small" on:click=do_sync>
-                        "立即同步"
-                    </button>
                 </div>
                 <h3 class="admin-subsection-title">"最近同步"</h3>
                 <pre class="sync-status">
@@ -1681,7 +1751,7 @@ pub fn AdminBackupPage() -> impl IntoView {
                         }
                     }}
                 </pre>
-                <div class="field-row">
+                <div class="toolbar">
                     <button
                         class="btn btn-small"
                         on:click=move |_: leptos::ev::MouseEvent| config.refetch()
@@ -1689,56 +1759,72 @@ pub fn AdminBackupPage() -> impl IntoView {
                         "刷新状态"
                     </button>
                 </div>
+                </div>
             </section>
 
-            <section class="admin-quick">
-                <h2 class="admin-section-title">"3. 备份归档（本机）"</h2>
-                <p class="muted">
-                    "归档保存在宿主机 ~/.local/share/felix-homelab/backups/；按上面保存的保留天数自动清理。"
-                </p>
-                <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
-                    {move || match backups.get() {
-                        None => view! { <p class="muted">"载入中…"</p> }.into_any(),
-                        Some(Err(e)) => {
-                            view! { <p class="error">"读取失败："{e.to_string()}</p> }.into_any()
-                        }
-                        Some(Ok(list)) if list.is_empty() => {
-                            view! { <p class="muted">"还没有备份，点上面「立即备份」。"</p> }
-                                .into_any()
-                        }
-                        Some(Ok(list)) => {
-                            view! {
-                                <div class="admin-list">
-                                    {list
-                                        .into_iter()
-                                        .map(|f| {
-                                            let source = backup_source(&f.name);
-                                            view! {
-                                                <article class="admin-row">
-                                                    <p class="admin-meta">
-                                                        <span class="badge">{source}</span>
-                                                        <strong>{f.name.clone()}</strong>
-                                                        <span class="comment-time">{f.size.clone()}</span>
-                                                        <span class="comment-time">{f.time.clone()}</span>
-                                                    </p>
-                                                </article>
-                                            }
-                                        })
-                                        .collect_view()}
-                                </div>
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="step-badge">"3"</span>
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"本机归档"</h2>
+                        <p class="panel-desc">
+                            "归档保存在宿主机 ~/.local/share/felix-homelab/backups/；按上面保存的保留天数自动清理。"
+                        </p>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                        {move || match backups.get() {
+                            None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                            Some(Err(e)) => {
+                                view! { <p class="error">"读取失败："{e.to_string()}</p> }
+                                    .into_any()
                             }
-                                .into_any()
-                        }
-                    }}
-                </Suspense>
+                            Some(Ok(list)) if list.is_empty() => {
+                                view! {
+                                    <p class="admin-empty">"还没有备份，点上面「立即备份」。"</p>
+                                }
+                                    .into_any()
+                            }
+                            Some(Ok(list)) => {
+                                view! {
+                                    <div class="archive-list">
+                                        {list
+                                            .into_iter()
+                                            .map(|f| {
+                                                let source = backup_source(&f.name);
+                                                view! {
+                                                    <div class="archive-row">
+                                                        <span class="badge">{source}</span>
+                                                        <span class="archive-name">
+                                                            {f.name.clone()}
+                                                        </span>
+                                                        <span class="archive-meta">{f.size.clone()}</span>
+                                                        <span class="archive-meta">{f.time.clone()}</span>
+                                                    </div>
+                                                }
+                                            })
+                                            .collect_view()}
+                                    </div>
+                                }
+                                    .into_any()
+                            }
+                        }}
+                    </Suspense>
+                </div>
             </section>
 
-            <section class="admin-quick">
-                <h2 class="admin-section-title">"4. 恢复"</h2>
-                <p class="muted">
-                    "在宿主机执行 make restore（默认恢复最新归档，会先做一次安全备份再覆盖）。"
-                    " 各备份源恢复细节见 README「备份与恢复」。"
-                </p>
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="step-badge">"4"</span>
+                    <div class="panel-head-main">
+                        <h2 class="panel-title">"恢复"</h2>
+                        <p class="panel-desc">
+                            "在宿主机执行 make restore（默认恢复最新归档，会先做一次安全备份再覆盖）。"
+                            " 各备份源恢复细节见 README「备份与恢复」。"
+                        </p>
+                    </div>
+                </div>
             </section>
         </AdminPage>
     }

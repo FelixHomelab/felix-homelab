@@ -22,6 +22,11 @@
     --radius: 14px;
     --radius-sm: 8px;
     --wrap: 68rem;
+    /* 语义色：状态标签、危险按钮等统一从这里取；亮暗各一套 */
+    --ok: #15803d;
+    --warn: #b45309;
+    --bad: #b91c1c;
+    --info: #1d4ed8;
     /* 中文优先字体栈：先系统无衬线，再退回通用族，避免网页字体拖慢首屏 */
     --font-sans: system-ui, -apple-system, "Segoe UI", "Noto Sans CJK SC",
         "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -39,6 +44,10 @@
         --text-muted: #a1a1a8;
         --accent: #8b85f5;
         --accent-contrast: #101014;
+        --ok: #4ade80;
+        --warn: #fbbf24;
+        --bad: #f87171;
+        --info: #60a5fa;
         color-scheme: dark;
     }
 }
@@ -55,6 +64,10 @@ html.light {
     --text-muted: #6b6862;
     --accent: #4f46e5;
     --accent-contrast: #ffffff;
+    --ok: #15803d;
+    --warn: #b45309;
+    --bad: #b91c1c;
+    --info: #1d4ed8;
     color-scheme: light;
 }
 
@@ -67,6 +80,10 @@ html.dark {
     --text-muted: #a1a1a8;
     --accent: #8b85f5;
     --accent-contrast: #101014;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --info: #60a5fa;
     color-scheme: dark;
 }
 
@@ -858,13 +875,16 @@ input[type="file"]::file-selector-button {
 
 /* ---------- 后台 ---------- */
 
+/* 后台的整体观感：与前台同一套令牌，但更「控制台」——
+   导航胶囊 + 面板分区 + 紧凑行列表；控件在 .admin 作用域内统一外观。 */
+
 .admin-nav {
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
     width: fit-content;
     max-width: 100%;
-    margin-bottom: 2rem;
+    margin-bottom: 1.75rem;
     padding: 0.25rem;
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -878,6 +898,7 @@ input[type="file"]::file-selector-button {
     color: var(--text-muted);
     text-decoration: none;
     white-space: nowrap;
+    transition: color 0.15s ease, background 0.15s ease;
 }
 
 .admin-nav a:hover {
@@ -892,33 +913,31 @@ input[type="file"]::file-selector-button {
     box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
 }
 
-/* 概览用数字卡片，一眼看到积压了多少待审 */
+html.dark .admin-nav a.active {
+    background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+    box-shadow: none;
+}
+
+/* 概览数字卡片：一眼看到积压了多少待审 */
 .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 0.875rem;
 }
 
 .stat {
-    position: relative;
     display: grid;
-    gap: 0.25rem;
-    padding: 1.25rem 1.25rem 1.25rem 1.5rem;
+    gap: 0.125rem;
+    padding: 1.125rem 1.25rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--accent) 5%, var(--surface)),
+        var(--surface) 55%
+    );
     color: var(--text);
-    overflow: hidden;
     transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-}
-
-.stat::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 4px;
-    background: var(--accent);
-    opacity: 0.75;
 }
 
 .stat:hover {
@@ -929,24 +948,194 @@ input[type="file"]::file-selector-button {
 }
 
 .stat-value {
-    font-size: 1.875rem;
+    font-size: 1.75rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
-    line-height: 1.1;
+    line-height: 1.15;
 }
 
 .stat-label {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     color: var(--text-muted);
+}
+
+/* 面板：后台的分区容器（标题 + 说明在头，操作在右上，内容在体） */
+.panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.panel + .panel {
+    margin-top: 1.25rem;
+}
+
+.panel-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--accent) 4%, transparent),
+        transparent
+    );
+}
+
+.panel-head-main {
+    min-width: 0;
+}
+
+.panel-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+.panel-desc {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--text-muted);
+}
+
+.panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.panel-body {
+    padding: 1.25rem;
+}
+
+.panel-body > :first-child {
+    margin-top: 0;
+}
+
+.panel-body > :last-child {
+    margin-bottom: 0;
+}
+
+/* 步骤序号：流程化面板（如备份）的标题前缀 */
+.step-badge {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: 0.0625rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 工具条：页面顶部的一组筛选 / 操作 */
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.toolbar-end {
+    margin-left: auto;
+}
+
+/* 快捷入口：标题 + 一句话说明的磁贴 */
+.quick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.75rem;
+}
+
+.quick-tile {
+    display: grid;
+    gap: 0.25rem;
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.quick-tile:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.06);
+    transform: translateY(-1px);
+    text-decoration: none;
+}
+
+.quick-tile strong {
+    font-size: 0.9375rem;
+}
+
+.quick-tile span {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
+
+/* 后台内的表单控件统一外观（历史写法 .field/.text-input 等由这里兜底） */
+.admin :is(input:not([type="checkbox"]):not([type="radio"])),
+.admin select,
+.admin textarea {
+    padding: 0.4375rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+}
+
+.admin :is(input, select, textarea):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    outline-offset: 1px;
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+/* 表单网格：标签在上、控件在下，自动换行 */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.875rem 1rem;
+    align-items: end;
+}
+
+.form-grid .field {
+    margin: 0;
+}
+
+.form-grid .field > input,
+.form-grid .field > select {
+    width: 100%;
+}
+
+.form-grid .field-action {
+    align-self: end;
+    justify-self: start;
 }
 
 .admin-list {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.625rem;
 }
 
 .admin-row {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -954,16 +1143,44 @@ input[type="file"]::file-selector-button {
         "body actions";
     align-items: center;
     gap: 0.5rem 1rem;
-    padding: 0.875rem 1.125rem;
+    padding: 0.9375rem 1.125rem 0.9375rem 1.25rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface);
+    overflow: hidden;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .admin-row:hover {
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
     box-shadow: 0 6px 18px rgb(0 0 0 / 0.05);
+}
+
+/* 行左侧状态色条：运行/健康 = 绿，停止/异常 = 红，待处理 = 黄 */
+.admin-row.row-ok::before,
+.admin-row.row-warn::before,
+.admin-row.row-bad::before,
+.admin-row.row-info::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+}
+
+.admin-row.row-ok::before {
+    background: var(--ok);
+}
+
+.admin-row.row-warn::before {
+    background: var(--warn);
+}
+
+.admin-row.row-bad::before {
+    background: var(--bad);
+}
+
+.admin-row.row-info::before {
+    background: var(--info);
 }
 
 .admin-meta {
@@ -971,9 +1188,14 @@ input[type="file"]::file-selector-button {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.5rem 0.625rem;
     margin: 0;
     font-size: 0.875rem;
+}
+
+.admin-meta strong {
+    font-size: 0.9375rem;
+    letter-spacing: -0.01em;
 }
 
 .admin-body {
@@ -983,7 +1205,14 @@ input[type="file"]::file-selector-button {
     white-space: pre-wrap;
 }
 
+.admin-body a {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    word-break: break-all;
+}
+
 .renew-days {
+    flex: 0 0 4.5rem;
     width: 4.5rem;
 }
 
@@ -1005,11 +1234,12 @@ input[type="file"]::file-selector-button {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    opacity: 0.85;
 }
 
 /* 概览页的快捷入口区 */
 .admin-quick {
-    margin-top: 2rem;
+    margin-top: 1.75rem;
 }
 
 .admin-section-title {
@@ -1019,9 +1249,62 @@ input[type="file"]::file-selector-button {
     color: var(--text-muted);
 }
 
-/* 提示语与工具按钮之间留出间距（Pod 管理页用过） */
-.notice + .field-row {
-    margin-bottom: 1.25rem;
+/* 表单动作后的提示：有内容时用主色，没内容不占视觉重量 */
+.notice:not(:empty) {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+/* 空状态：虚线框，明确「这里本来就没有东西」 */
+.admin-empty {
+    margin: 0;
+    padding: 1.5rem 1.25rem;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+/* 归档列表：固定高度内滚动，避免几十条把页面拉得很长 */
+.archive-list {
+    max-height: 22rem;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.archive-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5625rem 0.875rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+}
+
+.archive-row:last-child {
+    border-bottom: 0;
+}
+
+.archive-row:nth-child(even) {
+    background: color-mix(in srgb, var(--surface-subtle) 60%, var(--surface));
+}
+
+.archive-name {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.archive-meta {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 @media (max-width: 720px) {
@@ -1039,6 +1322,14 @@ input[type="file"]::file-selector-button {
 
     .admin-image {
         max-width: 100%;
+    }
+
+    .archive-row {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .archive-meta {
+        display: none;
     }
 }
 
@@ -1089,86 +1380,60 @@ input[type="file"]::file-selector-button {
 }
 
 
-/* 状态标签：颜色区分待审 / 通过 / 拒绝，扫一眼就知道该处理什么 */
+/* 状态标签：胶囊 + 语义色；颜色全部来自 --ok/--warn/--bad/--info，暗色自动成立 */
 .status {
-    padding: 0.125rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.1875rem 0.5625rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
     background: var(--surface-subtle);
     color: var(--text-muted);
+    white-space: nowrap;
 }
 
 .status-pending {
-    background: #fef3c7;
-    color: #92400e;
+    background: color-mix(in srgb, var(--warn) 15%, var(--surface));
+    color: var(--warn);
 }
 
-.status-approved {
-    background: #d1fae5;
-    color: #065f46;
+.status-approved,
+.status-published {
+    background: color-mix(in srgb, var(--ok) 14%, var(--surface));
+    color: var(--ok);
 }
 
 .status-rejected,
-.status-banned {
-    background: #fee2e2;
-    color: #991b1b;
+.status-banned,
+.status-hidden {
+    background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+    color: var(--bad);
 }
 
 .status-active {
-    background: #dbeafe;
-    color: #1e40af;
+    background: color-mix(in srgb, var(--info) 14%, var(--surface));
+    color: var(--info);
 }
 
-/* Pod 容器状态：运行/健康用绿，退出/异常用红，一眼区分 */
+/* Pod / Agent 运行状态与评论审核共用同一套色 */
 .status-running,
 .status-healthy {
-    background: #dcfce7;
-    color: #166534;
+    background: color-mix(in srgb, var(--ok) 14%, var(--surface));
+    color: var(--ok);
 }
 
 .status-exited,
 .status-unhealthy {
-    background: #fee2e2;
-    color: #991b1b;
+    background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+    color: var(--bad);
 }
 
 .status-role-admin {
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
     color: var(--accent);
-}
-
-html.dark .status-pending {
-    background: #422006;
-    color: #fcd34d;
-}
-
-html.dark .status-approved {
-    background: #052e2b;
-    color: #6ee7b7;
-}
-
-html.dark .status-rejected,
-html.dark .status-banned {
-    background: #450a0a;
-    color: #fca5a5;
-}
-
-html.dark .status-active {
-    background: #172554;
-    color: #93c5fd;
-}
-
-html.dark .status-running,
-html.dark .status-healthy {
-    background: #052e16;
-    color: #86efac;
-}
-
-html.dark .status-exited,
-html.dark .status-unhealthy {
-    background: #450a0a;
-    color: #fca5a5;
 }
 
 .btn-small {
@@ -1176,29 +1441,26 @@ html.dark .status-unhealthy {
     font-size: 0.875rem;
 }
 
+.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .btn-danger {
-    color: #b91c1c;
-    border-color: color-mix(in srgb, #b91c1c 35%, var(--border));
+    color: var(--bad);
+    border-color: color-mix(in srgb, var(--bad) 35%, var(--border));
 }
 
 .btn-danger:hover {
     color: #ffffff;
-    background: #b91c1c;
-    border-color: #b91c1c;
+    background: var(--bad);
+    border-color: var(--bad);
 }
 
-html.dark .btn-danger {
-    color: #fca5a5;
-}
-
-html.dark .btn-danger:hover {
-    color: #ffffff;
-    background: #b91c1c;
-}
-
-/* 已选中的筛选按钮 */
+/* 已选中的筛选按钮（旧写法；新代码优先用 .segmented） */
 .btn.active {
-    border-color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
     color: var(--accent);
 }
 
@@ -1273,11 +1535,12 @@ html.dark .btn-danger:hover {
     display: flex;
     align-items: center;
     gap: 0.875rem;
-    padding: 0.75rem 1rem;
+    padding: 0.8125rem 1rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--surface);
     cursor: pointer;
+    transition: border-color 0.15s ease;
 }
 
 .toggle-row:hover {
@@ -1291,9 +1554,23 @@ html.dark .btn-danger:hover {
     flex: none;
 }
 
+/* 不可改的备份源（如 OpenCloud：始终由宿主脚本备份） */
+.toggle-row.is-disabled {
+    cursor: default;
+    background: var(--surface-subtle);
+}
+
+.toggle-row.is-disabled:hover {
+    border-color: var(--border);
+}
+
 .toggle-text {
     display: grid;
     gap: 0.125rem;
+}
+
+.toggle-text strong {
+    font-size: 0.9375rem;
 }
 
 .toggle-text small {
@@ -1304,15 +1581,15 @@ html.dark .btn-danger:hover {
 /* 渠道卡片：名称 + 开关 + 删除在上，类型与目标在下 */
 .channel-list {
     display: grid;
-    gap: 1rem;
+    gap: 0.75rem;
     margin-bottom: 1rem;
 }
 
 .channel-card {
-    padding: 1rem 1.25rem;
+    padding: 1rem 1.125rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    background: var(--surface);
+    background: var(--surface-subtle);
 }
 
 .channel-head {
@@ -1326,14 +1603,6 @@ html.dark .btn-danger:hover {
 .channel-name {
     flex: 1 1 14rem;
     min-width: 0;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9375rem;
-    font-weight: 600;
 }
 
 .channel-toggle {
@@ -1350,7 +1619,6 @@ html.dark .btn-danger:hover {
     accent-color: var(--accent);
 }
 
-/* 渠道卡片里的两栏：类型窄、目标宽 */
 .channel-card .field-row {
     align-items: end;
 }
@@ -1374,29 +1642,6 @@ html.dark .btn-danger:hover {
 
 .field-inline input[type="number"] {
     width: 6rem;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9375rem;
-}
-
-.field-inline input[type="number"]:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-}
-
-/* 渠道卡片里的下拉框与输入框风格一致 */
-.channel-card select {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9375rem;
 }
 
 .admin-subsection-title {
@@ -1414,7 +1659,7 @@ html.dark .btn-danger:hover {
     border-radius: var(--radius-sm);
     background: var(--surface-subtle);
     color: var(--text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
     white-space: pre-wrap;
@@ -1456,15 +1701,9 @@ html.dark .btn-danger:hover {
     margin: 0 0 1.5rem;
 }
 
-.badge-hidden,
-.status-hidden {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-.status-published {
-    background: #d1fae5;
-    color: #065f46;
+.badge-hidden {
+    background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+    color: var(--bad);
 }
 
 .community-form select {
