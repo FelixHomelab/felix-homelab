@@ -4,10 +4,10 @@
 # · server/container 对应 docker.yaml，状态点表示容器运行状况
 #   绿 = running/healthy，红 = 停止或异常，点击状态可看资源占用
 - 容器服务（本 Pod）:
-    - 主站（Felix Homelab 社区站）:
+    - Wraindrock（社区站）:
         icon: /icons/homepage.png
         href: https://www.wraindrock.com/
-        description: 官方内容与社区投稿 · Leptos 社区站 · 容器 felix-homelab-site
+        description: 官方内容与社区投稿 · 社区站 · 容器 felix-homelab-site
         server: podman
         container: felix-homelab-site
 

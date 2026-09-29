@@ -25,7 +25,7 @@ use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 /// 描述兜底：摘要为空时给一句站点说明，免得出现空的 `meta description`。
 fn description_or_default(text: &str) -> String {
     match text.trim() {
-        "" => "Felix Homelab 社区站：官方文章与项目、社区投稿，以及光遇记录。".to_string(),
+        "" => "Wraindrock 社区站：官方文章与项目、社区投稿，以及光遇记录。".to_string(),
         trimmed => trimmed.to_string(),
     }
 }
@@ -98,13 +98,13 @@ pub fn HomePage() -> impl IntoView {
     let projects = Resource::new(|| (), |_| list_projects());
 
     view! {
-        <Title text="Felix Homelab" />
+        <Title text="Wraindrock" />
         <Meta
             name="description"
-            content="Felix Homelab 社区站：官方文章与项目、社区投稿，以及光遇记录。"
+            content="Wraindrock 社区站：官方文章与项目、社区投稿，以及光遇记录。"
         />
         <section class="hero wrap">
-            <p class="eyebrow">"Felix Homelab"</p>
+            <p class="eyebrow">"Wraindrock"</p>
             <h1 class="hero-title">"自托管，也把过程写下来。"</h1>
             <p class="lede">
                 "官方内容由管理员维护，社区内容由注册用户投稿——都跑在自己的服务器上。"
@@ -246,7 +246,7 @@ fn MyAgentCard(agent: AgentRow) -> impl IntoView {
             </div>
             <p class="agent-card-url">{agent.url.clone()}</p>
             <p class="muted">
-                "实例 #" {agent.slot} " · " {runtime_hint} " · " {expires}
+                {agent.subdomain.clone()} " · " {runtime_hint} " · " {expires}
             </p>
             {is_dsh
                 .then(|| {
@@ -270,7 +270,7 @@ pub fn BlogIndex() -> impl IntoView {
     let projects = Resource::new(|| (), |_| list_projects());
 
     view! {
-        <Title text="博客 — Felix Homelab" />
+        <Title text="博客 — Wraindrock" />
         <Meta name="description" content="官方博客：文章、笔记与项目。社区内容在「社区」。" />
         <section class="wrap">
             <PageHeader
@@ -346,7 +346,7 @@ pub fn BlogPost() -> impl IntoView {
                         let comment_slug = detail.summary.slug.clone();
                         view! {
                             <article class="article">
-                                <Title text=format!("{} — Felix Homelab", detail.summary.title) />
+                                <Title text=format!("{} — Wraindrock", detail.summary.title) />
                                 <Meta
                                     name="description"
                                     content=description_or_default(&detail.summary.summary)
@@ -387,7 +387,7 @@ pub fn BlogPost() -> impl IntoView {
                             options.set_status(axum::http::StatusCode::NOT_FOUND);
                         }
                         view! {
-                            <Title text="找不到文章 — Felix Homelab" />
+                            <Title text="找不到文章 — Wraindrock" />
                             <PageHeader title="找不到这篇文章" lede="它可能被改名或删掉了。".to_string() />
                             <p><a href="/blog">"← 回博客列表"</a></p>
                         }.into_any()
@@ -410,7 +410,7 @@ pub fn BlogTag() -> impl IntoView {
 
     view! {
         <section class="wrap">
-            <Title text="标签 — Felix Homelab" />
+            <Title text="标签 — Wraindrock" />
             <PageHeader title="按标签浏览" />
             <p class="lede">"标签：" <strong>{tag}</strong></p>
 
@@ -440,7 +440,7 @@ pub fn ProjectIndex() -> impl IntoView {
     let projects = Resource::new(|| (), |_| list_projects());
 
     view! {
-        <Title text="项目 — Felix Homelab" />
+        <Title text="项目 — Wraindrock" />
         <Meta name="description" content="我做过的东西：开源、私有与团队项目。" />
         <section class="wrap">
             <PageHeader title="项目" lede="开源、私有与团队项目都记在这里。".to_string() />
@@ -486,7 +486,7 @@ pub fn ProjectShow() -> impl IntoView {
                         let kind = kind_label(&detail.summary.kind).to_string();
                         view! {
                             <article class="article">
-                                <Title text=format!("{} — Felix Homelab", detail.summary.name) />
+                                <Title text=format!("{} — Wraindrock", detail.summary.name) />
                                 <Meta
                                     name="description"
                                     content=description_or_default(&detail.summary.summary)
@@ -529,7 +529,7 @@ pub fn ProjectShow() -> impl IntoView {
                             options.set_status(axum::http::StatusCode::NOT_FOUND);
                         }
                         view! {
-                            <Title text="找不到项目 — Felix Homelab" />
+                            <Title text="找不到项目 — Wraindrock" />
                             <PageHeader title="找不到这个项目" lede="它可能被改名或删掉了。".to_string() />
                             <p><a href="/projects">"← 回项目列表"</a></p>
                         }.into_any()
@@ -564,7 +564,7 @@ fn StaticPage(
                 Some(Err(error)) => load_error(error.to_string()).into_any(),
                 Some(Ok(None)) => view! {
                     <section class="wrap">
-                        <Title text=format!("{default_title} — Felix Homelab") />
+                        <Title text=format!("{default_title} — Wraindrock") />
                         <Meta name="description" content=description.clone() />
                         <PageHeader title=default_title.clone() />
                         <p class="muted">
@@ -575,7 +575,7 @@ fn StaticPage(
                 .into_any(),
                 Some(Ok(Some(page))) => view! {
                     <section class="wrap">
-                        <Title text=format!("{} — Felix Homelab", page.title) />
+                        <Title text=format!("{} — Wraindrock", page.title) />
                         <Meta name="description" content=description.clone() />
                         <PageHeader title=page.title.clone() />
                         <div class="prose" inner_html=page.html></div>
@@ -616,7 +616,7 @@ pub fn SkyIndex() -> impl IntoView {
     let boosting = Resource::new(|| (), |_| sky_boosting());
 
     view! {
-        <Title text="光遇 — Felix Homelab" />
+        <Title text="光遇 — Wraindrock" />
         <Meta name="description" content="光遇的攻略、画廊、社区与代跑服务。" />
         <section class="wrap">
             <PageHeader
@@ -653,7 +653,7 @@ pub fn SkyBoostingPage() -> impl IntoView {
     let boosting = Resource::new(|| (), |_| sky_boosting());
 
     view! {
-        <Title text="光遇代跑 — Felix Homelab" />
+        <Title text="光遇代跑 — Wraindrock" />
         <Meta name="description" content="光遇代跑服务说明与用户评价。" />
         <section class="wrap">
             <PageHeader title="光遇代跑" lede="跑图、任务与献祭，按你方便的时段来。".to_string() />
@@ -704,7 +704,7 @@ pub fn SkyOfficialPage() -> impl IntoView {
                         view! {
                             <article class="article">
                                 <Title
-                                    text=format!("{} — 光遇 — Felix Homelab", detail.item.title)
+                                    text=format!("{} — 光遇 — Wraindrock", detail.item.title)
                                 />
                                 <Meta
                                     name="description"
@@ -745,7 +745,7 @@ pub fn SkyOfficialPage() -> impl IntoView {
                             options.set_status(axum::http::StatusCode::NOT_FOUND);
                         }
                         view! {
-                            <Title text="找不到内容 — Felix Homelab" />
+                            <Title text="找不到内容 — Wraindrock" />
                             <PageHeader
                                 title="找不到这篇内容"
                                 lede="它可能被撤下或删掉了。".to_string()
@@ -957,7 +957,7 @@ pub fn AppearancePage() -> impl IntoView {
     let user_state_for_profile = user_state.clone();
 
     view! {
-        <Title text="个人设置 — Felix Homelab" />
+        <Title text="个人设置 — Wraindrock" />
         <section class="wrap">
             <PageHeader
                 title="个人设置"
@@ -1146,7 +1146,7 @@ pub fn LoginPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="登录 — Felix Homelab" />
+        <Title text="登录 — Wraindrock" />
         <section class="wrap">
             <PageHeader title="登录" />
             <form class="auth-form" on:submit=on_submit>
@@ -1220,7 +1220,7 @@ pub fn RegisterPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="注册 — Felix Homelab" />
+        <Title text="注册 — Wraindrock" />
         <section class="wrap">
             <PageHeader
                 title="注册"
@@ -1290,7 +1290,7 @@ pub fn UserProfilePage() -> impl IntoView {
                             .filter(|text| !text.trim().is_empty())
                             .map(|text| view! { <p>{text}</p> });
                         view! {
-                            <Title text=format!("{} — Felix Homelab", user.display_name) />
+                            <Title text=format!("{} — Wraindrock", user.display_name) />
                             <PageHeader title=user.display_name.clone() />
                             <div class="prose">
                                 {bio}
@@ -1305,7 +1305,7 @@ pub fn UserProfilePage() -> impl IntoView {
                             options.set_status(axum::http::StatusCode::NOT_FOUND);
                         }
                         view! {
-                            <Title text="找不到这个用户 — Felix Homelab" />
+                            <Title text="找不到这个用户 — Wraindrock" />
                             <PageHeader title="找不到这个用户" lede="它可能被改名或删掉了。".to_string() />
                             <p><a href="/">"← 回首页"</a></p>
                         }
@@ -1327,7 +1327,7 @@ pub fn NotFound() -> impl IntoView {
     }
 
     view! {
-        <Title text="页面不存在 — Felix Homelab" />
+        <Title text="页面不存在 — Wraindrock" />
         <section class="wrap">
             <PageHeader title="页面不存在" lede="这个地址没有对应的页面。".to_string() />
             <p><a href="/">"← 回首页"</a></p>
@@ -1357,7 +1357,7 @@ pub fn SkyCategoryPage() -> impl IntoView {
     if !SKY_CATEGORIES.contains(&kind.as_str()) {
         set_status(404);
         return view! {
-            <Title text="页面不存在 — Felix Homelab" />
+            <Title text="页面不存在 — Wraindrock" />
             <section class="wrap">
                 <PageHeader title="页面不存在" lede="这个光遇分类没有对应的页面。".to_string() />
                 <p><a href="/sky">"← 回光遇"</a></p>
@@ -1378,7 +1378,7 @@ pub fn SkyCategoryPage() -> impl IntoView {
     };
 
     view! {
-        <Title text=format!("{label} — 光遇 — Felix Homelab") />
+        <Title text=format!("{label} — 光遇 — Wraindrock") />
         <section class="wrap">
             <PageHeader title=label lede=format!("光遇的{label}。") />
             <p class="back"><a href="/sky">"← 回光遇"</a></p>

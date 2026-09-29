@@ -30,7 +30,7 @@ pub fn SiteHeader() -> impl IntoView {
     view! {
         <header class="site-header">
             <div class="wrap header-inner">
-                <a class="brand" href="/">"Felix Homelab"</a>
+                <a class="brand" href="/">"Wraindrock"</a>
                 <div class="header-right">
                     <nav class="site-nav">
                         <a href="/blog">"博客"</a>
@@ -153,7 +153,7 @@ pub fn SiteFooter() -> impl IntoView {
     view! {
         <footer class="site-footer">
             <div class="wrap">
-                <p class="muted">"© 2026 Felix Homelab · 用 Rust 构建"</p>
+                <p class="muted">"© 2026 Wraindrock · 用 Rust 构建"</p>
             </div>
         </footer>
     }

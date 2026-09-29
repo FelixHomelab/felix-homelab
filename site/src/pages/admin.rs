@@ -58,7 +58,7 @@ where
 fn forbidden() -> impl IntoView {
     set_status(403);
     view! {
-        <Title text="无权访问 — Felix Homelab" />
+        <Title text="无权访问 — Wraindrock" />
         <section class="wrap">
             <PageHeader title="无权访问" lede="这个页面只有管理员能看。".to_string() />
             <p><a href="/">"← 回首页"</a></p>
@@ -217,7 +217,7 @@ pub fn AdminDashboardPage() -> impl IntoView {
     let pod = Resource::new_blocking(|| (), |_| admin_list_pod());
 
     view! {
-        <Title text="后台 — Felix Homelab" />
+        <Title text="后台 — Wraindrock" />
         <AdminPage title="后台" lede="审核评论、管理用户、回复评价、看护容器。".to_string() perm="staff">
             <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
                 {move || match overview.get() {
@@ -338,7 +338,7 @@ pub fn AdminCommentsPage() -> impl IntoView {
     );
 
     view! {
-        <Title text="评论审核 — Felix Homelab" />
+        <Title text="评论审核 — Wraindrock" />
         <AdminPage title="评论审核" lede="通过后才会显示在页面上。".to_string() perm="community">
             <StatusFilter only_pending=only_pending />
             <p class="notice" role="status">{move || message.get()}</p>
@@ -456,7 +456,7 @@ pub fn AdminCommunityPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="社区管理 — Felix Homelab" />
+        <Title text="社区管理 — Wraindrock" />
         <AdminPage title="社区管理" lede="发布即公开；这里负责下架、恢复与删除。".to_string() perm="community">
             <div class="segmented">
                 {filter_tab("已发布", "published")}
@@ -724,7 +724,7 @@ pub fn AdminReviewsPage() -> impl IntoView {
     );
 
     view! {
-        <Title text="评价审核 — Felix Homelab" />
+        <Title text="评价审核 — Wraindrock" />
         <AdminPage title="评价审核" lede="通过后才会显示在代跑页上。".to_string() perm="sky">
             <StatusFilter only_pending=only_pending />
             <p class="notice" role="status">{move || message.get()}</p>
@@ -851,7 +851,7 @@ pub fn AdminUsersPage() -> impl IntoView {
     let users = Resource::new_blocking(move || revision.get(), |_| admin_list_users());
 
     view! {
-        <Title text="用户管理 — Felix Homelab" />
+        <Title text="用户管理 — Wraindrock" />
         <AdminPage
             title="用户管理"
             lede="封禁后该账号立刻无法登录，已登录的会话也会立即失效；可授予细分管理角色。".to_string()
@@ -1001,7 +1001,7 @@ pub fn AdminPodPage() -> impl IntoView {
     let containers = Resource::new_blocking(move || revision.get(), |_| admin_list_pod());
 
     view! {
-        <Title text="Pod 管理 — Felix Homelab" />
+        <Title text="Pod 管理 — Wraindrock" />
         <AdminPage
             title="Pod 管理"
             lede="Felix-Homelab 内的容器状态；重启会短暂中断对应服务。".to_string()
@@ -1136,7 +1136,7 @@ pub fn AdminAgentPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="Agent 管理 — Felix Homelab" />
+        <Title text="Agent 管理 — Wraindrock" />
         <AdminPage
             title="Agent 管理"
             lede="每个授权账号一个独立容器（模板镜像 + 独立数据卷 + 独立子域）。授权/停用后由宿主脚本自动执行。".to_string()
@@ -1355,7 +1355,7 @@ fn AgentRowView(
                 {(!purged)
                     .then(|| health.map(|health| view! { <span class=health_class>{health}</span> }))}
                 <strong>{agent.username.clone()}</strong>
-                <span class="comment-time">"实例 #" {slot}</span>
+                <span class="admin-image" title="实例唯一标识">{agent.subdomain.clone()}</span>
                 <span class="admin-image">{agent_kind_label(&agent.kind)}</span>
                 {agent
                     .expires_at
@@ -1782,7 +1782,7 @@ pub fn AdminBackupPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="备份 — Felix Homelab" />
+        <Title text="备份 — Wraindrock" />
         <AdminPage
             title="备份"
             lede="选择要备份的内容；每个备份源、每个异地渠道都能单独开关。".to_string()
@@ -2055,7 +2055,7 @@ pub fn AdminSkyPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="光遇管理 — Felix Homelab" />
+        <Title text="光遇管理 — Wraindrock" />
         <AdminPage
             title="光遇管理"
             lede="官方内容（攻略/画廊）、代跑展示与光遇投稿；评价精选在「评价」页。".to_string()

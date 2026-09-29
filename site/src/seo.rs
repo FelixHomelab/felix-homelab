@@ -115,9 +115,9 @@ pub async fn rss() -> Response {
               xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" \
               xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
          <channel>\
-         <title>Felix Homelab</title>\
+         <title>Wraindrock</title>\
          <link>{base}/</link>\
-         <description>Felix Homelab 官方博客：官方内容与项目随仓库版本化。</description>\
+         <description>Wraindrock 官方博客：官方内容与项目随仓库版本化。</description>\
          <language>zh-CN</language>\
          <atom:link href=\"{base}/rss.xml\" rel=\"self\" type=\"application/rss+xml\"/>\
          <lastBuildDate>{last_build}</lastBuildDate>\

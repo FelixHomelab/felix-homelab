@@ -82,7 +82,7 @@ pub fn CommunityIndex(
     };
 
     view! {
-        <Title text=format!("{page_title} — Felix Homelab") />
+        <Title text=format!("{page_title} — Wraindrock") />
         <Meta name="description" content=page_lede.to_string() />
         <section class="wrap">
             <PageHeader title=page_title.to_string() lede=page_lede.to_string() />
@@ -189,7 +189,7 @@ pub fn CommunityTagPage() -> impl IntoView {
     let tag_label = tag.clone();
 
     view! {
-        <Title text="标签 — Felix Homelab" />
+        <Title text="标签 — Wraindrock" />
         <Meta name="description" content="按 #分类 浏览社区内容。" />
         <section class="wrap">
             <PageHeader title="标签" lede="按 #分类 浏览社区内容。".to_string() />
@@ -236,7 +236,7 @@ pub fn CommunityDetailPage() -> impl IntoView {
                             options.set_status(axum::http::StatusCode::NOT_FOUND);
                         }
                         view! {
-                            <Title text="找不到内容 — Felix Homelab" />
+                            <Title text="找不到内容 — Wraindrock" />
                             <PageHeader
                                 title="找不到这条内容"
                                 lede="它可能被删除、被下架，或者链接不对。".to_string()
@@ -304,7 +304,7 @@ fn community_detail_view(detail: CommunityDetail) -> impl IntoView {
 
     view! {
         <article class="article">
-            <Title text=format!("{title} — Felix Homelab") />
+            <Title text=format!("{title} — Wraindrock") />
             <Meta name="description" content=description_or_default(&detail.summary.summary) />
             <header class="page-header">
                 <h1>{title}</h1>
@@ -446,7 +446,7 @@ pub fn CommunitySubmitPage(
     });
 
     view! {
-        <Title text="发布内容 — Felix Homelab" />
+        <Title text="发布内容 — Wraindrock" />
         <section class="wrap">
             <PageHeader
                 title=page_title

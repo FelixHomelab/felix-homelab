@@ -1,4 +1,4 @@
-//! Felix Homelab 社区站 — 前端库入口。
+//! Wraindrock 社区站 — 前端库入口。
 //!
 //! 同一个 crate 同时编出两种产物：服务端（`ssr` feature，宿主为 Axum）
 //! 与浏览器端 wasm（`hydrate` feature）。因此本文件里凡涉及两者差异的部分
