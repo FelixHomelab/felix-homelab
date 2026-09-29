@@ -31,10 +31,27 @@ DEFAULT_RULE = {
     "enabled": True,
 }
 
+# 反爬回退规则：无头引擎（Obscura）过不了安全验证时，切到有头 Chromium
+FALLBACK_RULE = {
+    "id": "felix-default-antibot-fallback",
+    "title": "反爬/安全验证时切换浏览器引擎",
+    "content": (
+        "浏览器默认用省内存的 Obscura 引擎；如果页面标题出现「安全验证 / 验证码 / "
+        "Just a moment / 人机验证」，或 ego_snapshot 返回空内容："
+        "① 在 shell 里执行 `felix-ego-engine chromium`（切到有头真实 Chromium，"
+        "反爬页面只有它能过）；② 重新打开任务空间再访问该页；"
+        "③ 处理完这类站点后，可执行 `felix-ego-engine obscura` 切回省内存模式。"
+        "不要反复用同一引擎重试被拦的页面。"
+    ),
+    "group": "平台默认",
+    "enabled": True,
+}
+
 
 def main() -> None:
     home = pathlib.Path(os.environ.get("DSH_HOME") or "/data/dsh")
     path = home / "dev-rules.json"
+    marker = home / ".dev-rules-platform-v1"
     doc = None
     if path.exists():
         try:
@@ -45,17 +62,32 @@ def main() -> None:
     if doc is None:
         doc = {"version": 1, "enabled": True, "global": [], "projects": []}
     elif (doc.get("global") or []) or (doc.get("projects") or []):
-        # 用户已有内容，绝不改动
+        # 用户已有内容：只做一次性的平台规则迁移（用标记保证不反悔：
+        # 用户之后自行删除就不会被重新加回）
+        if not marker.exists():
+            rules = doc.setdefault("global", [])
+            if not any(isinstance(r, dict) and r.get("id") == FALLBACK_RULE["id"] for r in rules):
+                rules.insert(0, FALLBACK_RULE)
+                _write(home, path, doc)
+                marker.write_text("ok\n", encoding="utf-8")
+                print("dev-rules：已补种平台规则（反爬回退）")
         return
 
     rules = doc.setdefault("global", [])
-    if any(
-        isinstance(rule, dict) and rule.get("id") == DEFAULT_RULE["id"]
-        for rule in rules
-    ):
+    existing = {rule.get("id") for rule in rules if isinstance(rule, dict)}
+    if DEFAULT_RULE["id"] in existing and FALLBACK_RULE["id"] in existing:
         return
-    rules.insert(0, DEFAULT_RULE)
+    if FALLBACK_RULE["id"] not in existing:
+        rules.insert(0, FALLBACK_RULE)
+    if DEFAULT_RULE["id"] not in existing:
+        rules.insert(0, DEFAULT_RULE)
 
+    _write(home, path, doc)
+    marker.write_text("ok\n", encoding="utf-8")
+    print("dev-rules：已播种平台默认规则（搜索规则 + 反爬回退）")
+
+
+def _write(home: pathlib.Path, path: pathlib.Path, doc: dict) -> None:
     home.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(home), prefix=".dev-rules.", suffix=".tmp")
     try:
@@ -63,7 +95,6 @@ def main() -> None:
             json.dump(doc, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
         os.replace(tmp, path)
-        print("dev-rules：已播种平台默认规则（网络搜索走无头浏览器 + Bing）")
     except Exception:
         try:
             os.remove(tmp)

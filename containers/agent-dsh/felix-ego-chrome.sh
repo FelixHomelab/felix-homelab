@@ -57,6 +57,25 @@ if [ "$headless" != "1" ]; then
 	chromium_headed "$@"
 fi
 
+# 引擎开关（felix-ego-engine 写入）：默认 obscura；chromium = 有头 Chromium
+# （百度百科等反爬页面只有有头能过；无头 Chromium 同样会被识破）
+ENGINE="$(cat /data/.ego-engine 2>/dev/null || echo obscura)"
+if [ "$ENGINE" = "chromium" ]; then
+	# 丢掉运行时的 --headless*，以「有头」启动（虚拟显示上，noVNC 可见）。
+	# 原地位过滤：保持每个参数独立（UA 等参数带空格，不能整串拼接）。
+	_n=$#
+	while [ "$_n" -gt 0 ]; do
+		_arg="$1"
+		shift
+		case "$_arg" in
+		--headless*) ;;
+		*) set -- "$@" "$_arg" ;;
+		esac
+		_n=$((_n - 1))
+	done
+	chromium_headed "$@"
+fi
+
 if [ ! -x /opt/obscura/obscura ]; then
 	chromium_headless "$@"
 fi

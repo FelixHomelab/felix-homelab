@@ -236,9 +236,10 @@ COPY --from=novnc-build /felix-novnc /usr/local/bin/felix-novnc
 COPY --from=novnc-build /felix-llm-relay /usr/local/bin/felix-llm-relay
 COPY felix-desktop-start.sh /usr/local/bin/felix-desktop-start.sh
 COPY felix-ego-chrome.sh /usr/local/bin/felix-ego-chrome.sh
+COPY felix-ego-engine.sh /usr/local/bin/felix-ego-engine
 RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py \
 	/usr/local/bin/seed-dev-rules.py /usr/local/bin/felix-desktop-start.sh \
-	/usr/local/bin/felix-ego-chrome.sh /usr/local/bin/felix-novnc \
+	/usr/local/bin/felix-ego-chrome.sh /usr/local/bin/felix-ego-engine /usr/local/bin/felix-novnc \
 	/usr/local/bin/felix-llm-relay
 
 # 运行态统一挂到 /data（命名卷），工作目录统一 /workspace（宿主 bind mount）。

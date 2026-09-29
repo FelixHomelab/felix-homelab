@@ -412,6 +412,10 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   fork 里带一处 runtime 补丁：内部同步表达式改走 `evaluateSync()`
   （`awaitPromise:false`）——否则 Obscura 在 Bing 等重页面上 `page.info()`
   会因 awaitPromise 排队 >15s 超时（实测修复后 info 5ms）。
+  **反爬回退开关**：`felix-ego-engine chromium` 切到有头 Chromium、
+  `felix-ego-engine obscura` 切回省内存（默认）——百度百科/知乎等站点的
+  安全验证只有有头能过（无头 Chromium 同样会被识破），平台默认规则已让
+  Agent 在遇到「安全验证/快照为空」时自动执行切换并重开任务空间。
   **两套引擎存储独立**：Obscura 用 `--storage-dir` 的 `cookies.json`，
   Chromium 用自己的 Profile——想让日常无头会话带登录态，就在无头观察窗里
   登录。**镜像内置 Noto CJK / Emoji 字体**（否则观察窗里中文全是方框）；
