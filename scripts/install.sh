@@ -128,7 +128,7 @@ ensure_env_default DSHGUARDIAN_REF 1bca78ed0329fa921e447ea12eedbcf3990e1179
 ensure_env_default DSHCOSTMETER_VERSION 1.7.40
 ensure_env_default OPENCODE2DSH_REF d5e866ae77b30d66212a7cfb87921a870a3bdc54
 ensure_env_default DSHBETTERSIDEBAR_VERSION 0.22.1
-ensure_env_default DSHEGOBROWSER_VERSION 0.8.5
+ensure_env_default DSHEGOBROWSER_REF e20e90a18744a79ba19e9af3d918d5e8573dd68f
 ensure_env_default DSHDEV_RULES_REF 83c5ff329a1ecb9e8dc37da02eee17998f904dee
 # 会话 cookie 的共享父域（Agent 子域 SSO；站点按请求 Host 自适应）
 ensure_env_default COOKIE_DOMAIN grantfelix.top

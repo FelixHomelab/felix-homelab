@@ -19,6 +19,7 @@
 | --- | --- | --- | --- | --- |
 | opencode2dsh | FishBottle7/opencode2dsh | `FelixHomelab/opencode2dsh` 分支 `felix/configforms` | 客户端 `settingsScope` → `configForms`（DSH 0.1.7 移除该服务，界面卡 `pending` 起不来；上游 issue #20/#24，修复 PR #23 未发版） | `github:...#d5e866ae` + `path:/packages/plugin` |
 | dsh-my-guardian | baosfeng/my-dsh-plugins | `FelixHomelab/my-dsh-plugins`（**未改代码**） | 无：npm 0.4.4 缺「宿主提供 peer 不误报缺失」修复，上游 `main` 已修但未发版，直接固定 main 提交 | `github:...#1bca78ed` + `path:/plugins/dsh-my-guardian` |
+| dsh-ego-browser | Fisfzy/dsh-ego-browser | `FelixHomelab/dsh-ego-browser` 分支 `felix/main` | 暂未改代码：为「优化尝试」预建（观察窗帧回传/Chromium 进程树/冷启动等，见分支内 `felix/PATCHES.md`） | `github:FelixHomelab/dsh-ego-browser#e20e90a1` |
 | DeepSeek Harness | deepseek-ai/deepseek-harness | `FelixHomelab/deepseek-harness` 分支 `felix/patches`（仅跟踪） | 两处客户端门控补丁：远程（非 localhost）允许编辑设置、允许绑定 `0.0.0.0`（门控环境变量） | **例外（见下）** |
 
 ### DSH 主程序的例外
@@ -41,5 +42,5 @@ DSH 是 monorepo，发布的 `@deepseek-ai/dsh` 只是薄 CLI，真正的代码�
 
 ## 未修改的第三方插件（不建 fork）
 
-`dshmarket`、`dsh-cost-meter`、`dsh-better-sidebar`、`dsh-ego-browser`
+`dshmarket`、`dsh-cost-meter`、`dsh-better-sidebar`
 （`dsh-dev-rules` 本身就是我们维护的上游仓库）。
