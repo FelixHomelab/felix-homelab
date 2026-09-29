@@ -189,8 +189,9 @@ a:hover {
     gap: clamp(0.75rem, 1.2vw, 1.5rem);
 }
 
-/* 移动端菜单按钮：桌面隐藏；外观复用 .btn，仅控制显隐 */
-.nav-toggle {
+/* 移动端菜单按钮：桌面隐藏；外观复用 .btn，仅控制显隐。
+   用 .header-right 提高优先级，避免被后面的 .btn{display:inline-block} 覆盖 */
+.header-right .nav-toggle {
     display: none;
 }
 
@@ -714,7 +715,7 @@ button.btn {
     }
 
     /* 窄屏：导航收敛为菜单，点击展开（默认隐藏，不再挤压/溢出） */
-    .nav-toggle {
+    .header-right .nav-toggle {
         display: inline-flex;
     }
 

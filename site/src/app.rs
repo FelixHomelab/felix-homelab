@@ -60,8 +60,15 @@ pub fn App() -> impl IntoView {
     let user = Resource::new_blocking(|| (), |_| current_user());
     provide_context(UserState::new(user));
 
+    // 资源目录带构建戳（LEPTOS_SITE_PKG_DIR=pkg-<stamp>）：每次发布 URL 全新，
+    // 客户端/Cloudflare 的旧缓存自然失效，不必依赖清缓存。
+    // 关键：服务端与 wasm 端都取编译期同一个值，保证水合两端完全一致
+    // （渲染分支不同会导致水合不匹配 → wasm panic）。
+    let pkg_dir = option_env!("LEPTOS_SITE_PKG_DIR").unwrap_or("pkg");
+    let stylesheet_href = format!("/{pkg_dir}/felix-homelab-site.css");
+
     view! {
-        <Stylesheet id="leptos" href="/pkg/felix-homelab-site.css" />
+        <Stylesheet id="leptos" href=stylesheet_href />
 
         // 主题在第一帧就写进 <html>：class 决定亮暗，style 给出自定义的主色与背景图。
         // 这是「不闪烁」的全部秘密——服务端已经知道答案，不必等水合后再改样式。

@@ -104,8 +104,6 @@ panic = "abort"
 output-name = "felix-homelab-site"
 site-root = "target/site"
 site-pkg-dir = "pkg"
-# 资源文件名带内容哈希：发布后 URL 变化，浏览器/Cloudflare 再缓存也不会拿到旧 JS/CSS
-hash-files = true
 style-file = "style/main.css"
 assets-dir = "public"
 site-addr = "127.0.0.1:8080"

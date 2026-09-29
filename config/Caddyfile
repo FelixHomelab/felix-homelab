@@ -53,7 +53,7 @@ http://:8080 {
 	# 默认：主站首页
 	handle {
 		# 静态资源强制协商缓存：升级后浏览器必须回源校验，避免继续用旧 wasm/js
-		@assets path /pkg/*
+		@assets path /pkg*/*
 		header @assets Cache-Control "no-cache"
 		reverse_proxy 127.0.0.1:8090
 	}

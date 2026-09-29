@@ -51,6 +51,8 @@ WORKDIR /src
 COPY . .
 # 缓存 cargo registry 与 target：改代码后重建只重编应用本身。
 # 注意：cache 挂载的内容不会进入镜像层，因此构建后把产物拷到 /out。
+ARG ASSET_STAMP=dev
+ENV LEPTOS_SITE_PKG_DIR=pkg-${ASSET_STAMP}
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     rm -rf target/site \
@@ -72,9 +74,11 @@ COPY --from=build /out/felix-homelab-site /app/felix-homelab-site
 COPY --from=build /out/site /app/site
 COPY --from=build /src/content /app/content
 
+# 资源目录带构建戳（与 build 阶段同源），运行阶段保持一致
+ARG ASSET_STAMP=dev
 ENV LEPTOS_OUTPUT_NAME=felix-homelab-site \
     LEPTOS_SITE_ROOT=/app/site \
-    LEPTOS_SITE_PKG_DIR=pkg \
+    LEPTOS_SITE_PKG_DIR=pkg-${ASSET_STAMP} \
     LEPTOS_SITE_ADDR=0.0.0.0:8090 \
     LEPTOS_ENV=PROD \
     CONTENT_DIR=/app/content \

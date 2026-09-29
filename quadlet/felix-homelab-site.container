@@ -15,7 +15,6 @@ User=0
 EnvironmentFile=%h/.config/felix-homelab/.env
 Environment=LEPTOS_SITE_ADDR=0.0.0.0:8090
 Environment=LEPTOS_SITE_ROOT=/app/site
-Environment=LEPTOS_SITE_PKG_DIR=pkg
 Environment=LEPTOS_ENV=PROD
 Environment=CONTENT_DIR=/app/content
 Environment=DATABASE_URL=sqlite:///app/data/site.db
