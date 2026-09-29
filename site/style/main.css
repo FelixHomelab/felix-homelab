@@ -692,22 +692,21 @@ button.btn {
         row-gap: 0.5rem;
     }
 
+    /* 导航按宽度自动换行，不横向溢出 */
     .site-nav {
         order: 3;
         flex: 0 0 100%;
-        flex-wrap: nowrap;
-        gap: 1.125rem;
-        overflow-x: auto;
-        padding-bottom: 0.25rem;
-        scrollbar-width: none;
-    }
-
-    .site-nav::-webkit-scrollbar {
-        display: none;
+        flex-wrap: wrap;
+        gap: 0.125rem 0.875rem;
+        font-size: 0.875rem;
     }
 
     .site-nav a {
-        white-space: nowrap;
+        padding: 0.1875rem 0;
+    }
+
+    .header-right {
+        margin-left: auto;
     }
 
     /* 移动端排版与留白收敛 */

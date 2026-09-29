@@ -32,7 +32,6 @@ pub fn SiteHeader() -> impl IntoView {
             <div class="wrap header-inner">
                 <a class="brand" href="/">"Wraindrock"</a>
                 <div class="header-right">
-                    <ThemeToggle />
                     <UserMenu />
                 </div>
                 <nav class="site-nav">
@@ -85,32 +84,14 @@ pub fn UserMenu() -> impl IntoView {
                     }
                     .into_any(),
                     Some(Ok(Some(user))) => {
-                        let href = format!("/user/{}", user.username);
+                        // 顶栏只保留用户名（最右）；主题、后台管理、退出登录、
+                        // 改密码/昵称都在个人页面（/me）。
                         let label = if user.display_name.is_empty() {
                             user.username.clone()
                         } else {
                             user.display_name.clone()
                         };
-                        view! {
-                            <a class="user-name" href=href>{label}</a>
-                            // 后台入口只对管理员显示。藏起来只是少一个入口，
-                            // 真正的授权在 /admin 各 server function 里。
-                            {user.is_admin().then(|| view! { <a href="/admin">"后台"</a> })}
-                            <button
-                                type="button"
-                                class="link-button"
-                                on:click=move |_| {
-                                    leptos::task::spawn_local(async move {
-                                        // 登出必须在服务端删掉会话行，仅清 cookie 不够
-                                        let _ = crate::auth::logout().await;
-                                        crate::auth::reload_page();
-                                    });
-                                }
-                            >
-                                "登出"
-                            </button>
-                        }
-                        .into_any()
+                        view! { <a class="user-name" href="/me">{label}</a> }.into_any()
                     }
                 }}
             </Suspense>

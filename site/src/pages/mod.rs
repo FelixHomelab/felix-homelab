@@ -971,6 +971,7 @@ pub fn AppearancePage() -> impl IntoView {
     let user_state_for_upload = user_state.clone();
     let user_state_for_password = user_state.clone();
     let user_state_for_profile = user_state.clone();
+    let user_state_for_account = user_state.clone();
 
     view! {
         <Title text="个人设置 — Wraindrock" />
@@ -1053,6 +1054,42 @@ pub fn AppearancePage() -> impl IntoView {
                     })}
                     </Suspense>
                 </section>
+
+                // 账号入口与登录状态相关的动作（后台管理 / 退出登录）
+                <Suspense fallback=|| ()>
+                    {move || match user_state_for_account.get() {
+                        Some(Ok(Some(user))) => {
+                            let profile_href = format!("/user/{}", user.username);
+                            let is_admin = user.is_admin();
+                            Some(view! {
+                                <section class="setting">
+                                    <h2>"账号"</h2>
+                                    <p class="muted">"公开主页、后台管理与会话操作。"</p>
+                                    <div class="field-row">
+                                        <a class="btn" href=profile_href>"我的公开主页"</a>
+                                        {is_admin
+                                            .then(|| view! {
+                                                <a class="btn" href="/admin">"后台管理"</a>
+                                            })}
+                                        <button
+                                            type="button"
+                                            class="btn btn-danger"
+                                            on:click=move |_| {
+                                                leptos::task::spawn_local(async move {
+                                                    let _ = crate::auth::logout().await;
+                                                    crate::auth::reload_page();
+                                                });
+                                            }
+                                        >
+                                            "退出登录"
+                                        </button>
+                                    </div>
+                                </section>
+                            })
+                        }
+                        _ => None,
+                    }}
+                </Suspense>
 
                 // 没登录就没有密码可改
                 <Suspense fallback=|| ()>
