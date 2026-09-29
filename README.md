@@ -394,21 +394,25 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   编辑），不进 DSH 设置与凭据存储。选它的原因：插件/会话/设置这些内部契约仍在
   高速迭代（本平台本周就适配了 3 处破坏性变更），而「OpenAI HTTP + SSE +
   Bearer」是已经固化的行业协议，适合原生实现。
-- **自带 ego 浏览器 dsh-ego-browser**（`DSHEGOBROWSER_VERSION`，默认 0.8.5）：
+- **自带 ego 浏览器 dsh-ego-browser**（`DSHEGOBROWSER_REF`，固定 fork 提交）：
   30+ 个 `ego_*` 浏览器自动化工具 + 实时观察窗（装了 better-sidebar 时注册为
-  侧边栏原生 Tab，否则浮动观察球）。浏览器由镜像内置的 Fedora Chromium 提供
-  （安装约 370MB；插件自带 `--no-sandbox` wrapper 适配容器/root）。**镜像内置
-  Noto CJK / Emoji 字体**（否则观察窗里中文全是方框）。
-  **原生有头浏览器 + 跨设备网页桌面（noVNC）**：容器内自带虚拟桌面
-  （Xvfb + openbox + x11vnc + noVNC），ego 浏览器以「有头原生 Chromium」
-  跑在虚拟显示上——缺会话 D-Bus 或 mesa GL 库时有头模式起不来（实测），
-  镜像已内置 `dbus-tools`/mesa，并用 `felix-ego-chrome.sh` 包装启动。
-  任何设备打开 **`https://<你的Agent子域>/vnc/vnc.html`**（同样需要登录
-  会话）即可看到并操作容器里真实的 Chromium 窗口：登录、验证码、弹窗、
-  下载都在真实浏览器里完成，登录态随磁盘 Profile 持久化；不依赖用户
-  自己的桌面/设备，多租户下也不挂宿主桌面套接字。Chromium 吃内存，默认
-  `AGENT_MEMORY=2g` 下重网页场景可调大；每次启动入口脚本会补齐 wrapper
-  可执行位（npm 包不保留执行位）。
+  侧边栏原生 Tab，否则浮动观察球）。**双引擎**：
+  - **默认无头 → Obscura**（Rust + CDP 的轻量无头引擎，`OBSCURA_VERSION`
+    固定版本）：实测载入页面时容器内存增量约 **7MB**、引擎进程约 62MB；
+    截图 / 串流（screencast）/ DOMSnapshot / Input / Storage 等 ego 依赖的
+    CDP 域覆盖完整，观察窗在无头模式下也能看画面。
+  - **按需有头 → Chromium**（点观察窗「弹出窗口」）：跑在容器虚拟显示
+    （Xvfb + openbox + x11vnc + noVNC）上，实测容器增量约 **336MB**；
+    缺会话 D-Bus / mesa GL 时会有头起不来（实测），镜像已内置。
+    任何设备打开 **`https://<你的Agent子域>/vnc/vnc.html`** 即可操作这个
+    真实 Chromium 窗口（登录、验证码、弹窗、下载）；不依赖用户桌面，
+    多租户下也不挂宿主桌面套接字。
+  `felix-ego-chrome.sh` 负责协议适配（Obscura 是 CDP 服务形态，运行时是
+  Chrome 命令行形态）并在 Obscura 不可用时自动回退 Chromium 无头。
+  **两套引擎存储独立**：Obscura 用 `--storage-dir` 的 `cookies.json`，
+  Chromium 用自己的 Profile——想让日常无头会话带登录态，就在无头观察窗里
+  登录。**镜像内置 Noto CJK / Emoji 字体**（否则观察窗里中文全是方框）；
+  每次启动入口脚本会补齐插件 wrapper 可执行位。
 - **自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin**
   （`OPENCODE2DSH_REF`，固定 fork 提交 `felix/configforms`）：匿名免费通道，无需 API key，
   在模型选择器里以 `opencode2dsh` 分组出现；需要出站 HTTPS 访问

@@ -211,6 +211,22 @@ ARG PROFILE_REV=10
 RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_REF:0:8}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_REF:0:8}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_REF:0:8}+devrules${DSHDEV_RULES_REF}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
+# ---- Obscura：无头引擎（Rust + CDP，载入页面 ~40MB；有头仍用 Chromium）----
+# 发布物是「CDP 服务 + 客户端连接」形态；felix-ego-chrome.sh 负责把它适配成
+# ego 运行时的 Chrome 命令行协议（选端口/写 DevToolsActivePort）。
+# 晚插入这一步是为了尽量少失效前面的构建缓存。
+ARG OBSCURA_VERSION=v0.2.3
+RUN set -eux; \
+	url="https://github.com/h4ckf0r0day/obscura/releases/download/${OBSCURA_VERSION}/obscura-x86_64-linux-stealth.tar.gz"; \
+	curl -fsSL --connect-timeout 15 --retry 2 -o /tmp/obscura.tgz "$url" \
+		|| curl -fsSL --connect-timeout 15 --retry 2 -o /tmp/obscura.tgz "https://gh-proxy.com/$url"; \
+	mkdir -p /opt/obscura; \
+	tar -xzf /tmp/obscura.tgz -C /opt/obscura; \
+	chmod 0755 /opt/obscura/obscura /opt/obscura/obscura-worker; \
+	ln -sf /opt/obscura/obscura /usr/local/bin/obscura; \
+	ln -sf /opt/obscura/obscura-worker /usr/local/bin/obscura-worker; \
+	rm -f /tmp/obscura.tgz
+
 COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh
 COPY dsh-merge-profile.py /usr/local/bin/dsh-merge-profile.py
 COPY seed-dev-rules.py /usr/local/bin/seed-dev-rules.py

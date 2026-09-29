@@ -478,6 +478,9 @@ container_create() {
 		local vnc_port=$((AGENT_VNC_PORT_BASE + port - AGENT_PORT_BASE))
 		args+=(--publish "127.0.0.1:$vnc_port:$vnc_port")
 		args+=(--label "felix.agent.vnc=$vnc_port")
+		# 默认无头 → 包装脚本走 Obscura（~40MB）；DISPLAY 保留给「弹出窗口」
+		# 切到有头 Chromium（虚拟显示，noVNC 里可见）
+		args+=(--env "EGO_LINUX_HEADLESS=1")
 		args+=(--env "DISPLAY=:${FELIX_DISPLAY_NUM:-99}")
 		args+=(--env "FELIX_NOVNC_PORT=$vnc_port")
 		args+=(--env "EGO_LINUX_CHROME=/usr/local/bin/felix-ego-chrome.sh")
