@@ -165,12 +165,11 @@ a:hover {
 .site-nav {
     display: flex;
     gap: 1.5rem;
-    /* 桌面：品牌 → 导航 → 主题/账号（DOM 里导航在账号之后，用 order 还原） */
-    order: 1;
 }
 
-.header-right {
-    order: 2;
+/* 移动端菜单按钮：桌面隐藏 */
+.nav-toggle {
+    display: none;
 }
 
 .site-nav a {
@@ -692,21 +691,41 @@ button.btn {
         row-gap: 0.5rem;
     }
 
-    /* 导航按宽度自动换行，不横向溢出 */
-    .site-nav {
-        order: 3;
-        flex: 0 0 100%;
-        flex-wrap: wrap;
-        gap: 0.125rem 0.875rem;
+    /* 窄屏：导航收敛为菜单，点击展开（默认隐藏，不再挤压/溢出） */
+    .nav-toggle {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.3125rem 0.75rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
         font-size: 0.875rem;
+        cursor: pointer;
     }
 
-    .site-nav a {
-        padding: 0.1875rem 0;
+    .site-nav {
+        display: none;
+    }
+
+    .site-nav.open {
+        display: flex;
+        flex: 0 0 100%;
+        flex-direction: column;
+        gap: 0;
+        padding: 0.25rem 0 0.5rem;
+        border-top: 1px solid var(--border);
+    }
+
+    .site-nav.open a {
+        padding: 0.5rem 0.25rem;
+        font-size: 0.9375rem;
     }
 
     .header-right {
         margin-left: auto;
+        gap: 0.75rem;
     }
 
     /* 移动端排版与留白收敛 */

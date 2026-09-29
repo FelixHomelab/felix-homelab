@@ -27,14 +27,14 @@ pub fn ready_after_hydration() -> Signal<bool> {
 /// 顶部导航栏。
 #[component]
 pub fn SiteHeader() -> impl IntoView {
+    // 移动端「收敛菜单」开关：桌面端用不到（按钮与折叠样式都只在窄屏生效）
+    let nav_open = RwSignal::new(false);
+
     view! {
         <header class="site-header">
             <div class="wrap header-inner">
                 <a class="brand" href="/">"Wraindrock"</a>
-                <div class="header-right">
-                    <UserMenu />
-                </div>
-                <nav class="site-nav">
+                <nav class="site-nav" class:open=move || nav_open.get()>
                     <a href="/blog">"博客"</a>
                     <a href="/community">"社区"</a>
                     <a href="/sky">"光遇"</a>
@@ -56,6 +56,17 @@ pub fn SiteHeader() -> impl IntoView {
                     </a>
                     <a href="/about">"关于"</a>
                 </nav>
+                <div class="header-right">
+                    <button
+                        type="button"
+                        class="nav-toggle"
+                        aria-expanded=move || if nav_open.get() { "true" } else { "false" }
+                        on:click=move |_| nav_open.update(|v| *v = !*v)
+                    >
+                        {move || if nav_open.get() { "关闭" } else { "菜单" }}
+                    </button>
+                    <UserMenu />
+                </div>
             </div>
         </header>
     }
