@@ -312,12 +312,12 @@ pub fn AdminDashboardPage() -> impl IntoView {
                     </a>
                     <a
                         class="quick-tile"
-                        href="https://cloud.grantfelix.top/"
+                        href="https://opencloud.wraindrock.com/"
                         target="_blank"
                         rel="noreferrer"
                     >
                         <strong>"OpenCloud"</strong>
-                        <span>"文件同步 / 分享（cloud.grantfelix.top）"</span>
+                        <span>"文件同步 / 分享（opencloud.wraindrock.com）"</span>
                     </a>
                 </div>
             </section>

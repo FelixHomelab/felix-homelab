@@ -44,7 +44,7 @@ fi
 
 AGENT_IMAGE="${AGENT_IMAGE:-localhost/felix-agent-opencode:latest}"
 AGENT_DSH_IMAGE="${AGENT_DSH_IMAGE:-localhost/felix-agent-dsh:latest}"
-AGENT_BASE_DOMAIN="${AGENT_BASE_DOMAIN:-agent.grantfelix.top}"
+AGENT_BASE_DOMAIN="${AGENT_BASE_DOMAIN:-agent.wraindrock.com}"
 AGENT_LOCAL_DOMAIN="${AGENT_LOCAL_DOMAIN:-agent.localhost}"
 AGENT_PORT_BASE="${AGENT_PORT_BASE:-20001}"
 AGENT_PORT_MAX="${AGENT_PORT_MAX:-20099}"

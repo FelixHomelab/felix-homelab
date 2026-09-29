@@ -1,19 +1,28 @@
 # Felix-Homelab 云侧 Caddy 配置（模板）
 #
 # 部署位置：云服务器 /etc/caddy/Caddyfile（仓库内仅作模板与备份）。
-# 前提：
-#   · frps 把 20080 隧道反代到本地 Caddy（见仓库 README「公网访问」）；
-#   · 多租户 Agent 的域名形如
-#     <随机>.<用户名>.<agent名>.agent.grantfelix.top（多级子域）。
 #
-# 设计要点：
-#   · 通配符只能匹配一级，多级子域用 catch-all `:443` + on-demand TLS：
-#     首次访问某子域时，Caddy 先问主站 /api/agent/tls-ask（经 20080 隧道），
-#     只有订阅表中存在的域名才签发证书——新增用户/实例无需改云侧配置；
-#   · 证书按子域逐个签发（TLS-ALPN-01），不需要 DNS API/通配证书。
+# 域名方案（Cloudflare 托管，混合模式）：
+#   · **橙云代理**：wraindrock.com（301 → www）、www、forgejo、dash、opencloud
+#     回源用 Cloudflare Origin CA 证书（SSL/TLS 模式 = Full (strict)）；
+#   · **灰云（DNS only）**：泛解析 `*` → 云服务器。Agent 多级子域
+#     （<随机>.<用户名>.<agent名>.agent.wraindrock.com）必须走灰云：
+#     Cloudflare 免费版通用证书不覆盖深层子域，灰云下由本 Caddy
+#     on-demand TLS 逐个子域签 Let's Encrypt。
+#   · 旧域名 grantfelix.top 的 5 个入口 301 到新域名；
+#     `*.agent.grantfelix.top` 不重定向，继续直供（既有 Agent 实例保留到重建）。
+#
+# 前提：
+#   · frps 把 20080 隧道反代到本地 Caddy（见 README「公网访问」）；
+#   · Cloudflare Origin CA 证书（含 `wraindrock.com` 与 `*.wraindrock.com`，15 年）
+#     放到 /etc/caddy/certs/origin.pem 与 origin.key（权限 600，属主 caddy）。
+#     生成：Cloudflare 控制台 → SSL/TLS → Origin Server → Create Certificate。
 
 {
-	email admin@grantfelix.top
+	email admin@wraindrock.com
+
+	# 橙云回源后拿到真实客户端 IP（Caddy ≥ 2.7 支持；旧版换 static 段）
+	trusted_proxies cloudflare
 
 	on_demand_tls {
 		# 云侧 20080 是 frp 隧道口，转发到本机 Caddy → 主站
@@ -21,12 +30,42 @@
 	}
 }
 
-grantfelix.top, home.grantfelix.top, forgejo.grantfelix.top, dash.grantfelix.top, cloud.grantfelix.top {
+# 橙云主机的回源证书（Origin CA）
+(origin_cert) {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+}
+
+# —— 橙云代理：主入口 ——
+www.wraindrock.com, forgejo.wraindrock.com, dash.wraindrock.com, opencloud.wraindrock.com {
+	import origin_cert
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:20080
 }
 
-# 多租户 Agent 子域：<随机>.<用户名>.<agent名>.agent.grantfelix.top
+# 顶点留给邮箱：只做 301 到 www
+wraindrock.com {
+	import origin_cert
+	redir https://www.wraindrock.com{uri} permanent
+}
+
+# —— 旧域名：入口 301 到新域名（Agent 子域走下面的 catch-all，不在此列）——
+grantfelix.top {
+	redir https://www.wraindrock.com{uri} permanent
+}
+home.grantfelix.top {
+	redir https://www.wraindrock.com{uri} permanent
+}
+forgejo.grantfelix.top {
+	redir https://forgejo.wraindrock.com{uri} permanent
+}
+dash.grantfelix.top {
+	redir https://dash.wraindrock.com{uri} permanent
+}
+cloud.grantfelix.top {
+	redir https://opencloud.wraindrock.com{uri} permanent
+}
+
+# —— Agent 多级子域（新旧域名都在此）：灰云直连，on-demand 证书 ——
 # 通配符只能匹配一级，多级子域用 catch-all + on-demand TLS：
 # ask 只放行订阅表里存在的域名，其余 SNI 一律拒绝签发。
 # 回源走 **第二隧道 20081** → 本地 Agent 网关（Agent 已迁到独立 bridge 网络，

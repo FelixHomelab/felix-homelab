@@ -995,8 +995,8 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
 - P2：Tuwunel 部署（**完全关闭联邦**），Element 接入；数据卷纳入备份。
 - P3：OpenCloud 外接 IdP PoC。
 
-**动手前必须先定的不可逆项**：Kanidm 的 SPN 域名（拟 `id.grantfelix.top`）、
-Tuwunel `server_name`（拟 `grantfelix.top`，一旦初始化不可改）。
+**动手前必须先定的不可逆项**：Kanidm 的 SPN 域名（拟 `id.wraindrock.com`）、
+Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 
 **必须一并补进方案**：Kanidm 数据库与 Tuwunel 数据卷纳入 backup-run/`KEEP_DAYS`
 及恢复流程；Kanidm 组 → 站点 roles（super/communitymaster/skymaster/agentmaster）

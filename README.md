@@ -13,7 +13,7 @@
 - **Homepage 控制台**：容器状态看板（`dash.localhost`）；
 - **AI Agent（多租户 P1 试点）**：每个授权账号一个独立 Agent 容器
   （模板镜像 + 独立数据卷 + `<用户名>.agent.<域名>` 子域，后台开通/计费授权）；
-- **公网入口（可选）**：云服务器 frp 中转 + 云侧 Caddy HTTPS（示例域名 `grantfelix.top`）；
+- **公网入口（可选）**：云服务器 frp 中转 + 云侧 Caddy HTTPS（示例域名 `wraindrock.com`）；
 - **运维**：Caddy 统一入口、定时备份/异地同步/一键恢复、autoheal 自愈。
 
 部署方式选用 **Podman Quadlet**（声明式 systemd 单元），无需 docker-compose，
@@ -70,7 +70,7 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 | 20001+   | AI Agent（动态分配） | 各 Agent 发布到宿主回环；经 5740 网关鉴权后访问 |
 
 > **OpenCloud** 不发布宿主端口：常驻 Pod 内网 `9200`，只经 Caddy
-> （`cloud.localhost` / `cloud.grantfelix.top`）访问。
+> （`cloud.localhost` / `opencloud.wraindrock.com`）访问。
 
 > **Host 网络的代价**：Runner 派发的作业容器使用 `container.network: host`，
 > 因此作业内的进程能访问宿主机上仅监听回环的本地服务，并能绑定宿主端口。
@@ -81,7 +81,7 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 ## 公网访问（云服务器中转）
 
 本机端口只绑回环；需要公网访问时，推荐用一台云服务器做 **frp 中转 + 云侧 Caddy HTTPS**
-（本仓库在阿里云 + `grantfelix.top` 实测通过）：
+（本仓库在阿里云 + `wraindrock.com` 实测通过）：
 
 ```
 访客 ──HTTPS──▶ 云 Caddy :443（Let's Encrypt，Host 原样透传）
@@ -128,7 +128,7 @@ example.com, forgejo.example.com, cloud.example.com, dash.example.com {
 切换真实域名时需同步修改：`config/Caddyfile` 的 host 匹配、`.env` 的
 `FORGEJO__server__{DOMAIN,ROOT_URL,SSH_DOMAIN,SSH_PORT}`，
 以及 homepage / site 单元中的 `HOMEPAGE_ALLOWED_HOSTS` / `SITE_URL`
-（本仓库已按 `grantfelix.top` 配好）。
+（本仓库已按 `wraindrock.com` 配好）。
 
 ## 目录结构
 
@@ -214,7 +214,7 @@ make install        # 生成配置、拉取镜像、构建主站镜像、启动 
 | Forgejo Web   | http://localhost:5730/（或 http://forgejo.localhost:5729/） |
 | Homepage 控制台 | http://dash.localhost:5729/（直连 http://localhost:5732/） |
 | Forgejo SSH   | `ssh -p 5731 git@localhost`                   |
-| OpenCloud     | http://cloud.localhost:5729/（公网 https://cloud.grantfelix.top/） |
+| OpenCloud     | http://cloud.localhost:5729/（公网 https://opencloud.wraindrock.com/） |
 
 - 主站首次访问用 `.env` 里的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录后台 `/admin`
 - Forgejo 首次打开 http://localhost:5730/ 注册第一个账号即管理员
@@ -268,7 +268,7 @@ Felix-Homelab 的主站，经 Caddy 挂在入口根路径 `http://localhost:5729
 ## OpenCloud（文件同步/分享）
 
 Go 写的单栈私有云盘（OpenCloud，替代早期的 Nextcloud）：一个容器内置 Web、WebDAV 与
-OIDC，经 Caddy 挂到 `cloud.localhost` / `cloud.grantfelix.top`（Pod 内明文 `9200`，
+OIDC，经 Caddy 挂到 `cloud.localhost` / `opencloud.wraindrock.com`（Pod 内明文 `9200`，
 TLS 由主 Caddy 终止）。
 
 - **镜像**：`opencloudeu/opencloud:7.2.4`（固定版本；升级改
@@ -292,7 +292,7 @@ TLS 由主 Caddy 终止）。
   systemctl --user start felix-homelab-opencloud.service
   ```
 - **客户端**：官方桌面/手机客户端或任意 WebDAV 客户端，地址填
-  `https://cloud.grantfelix.top`（OIDC issuer 由 `.env` 的 `OC_URL` 决定）。
+  `https://opencloud.wraindrock.com`（OIDC issuer 由 `.env` 的 `OC_URL` 决定）。
 
 ## 后台运维（/admin）
 
@@ -323,7 +323,7 @@ TLS 由主 Caddy 终止）。
 入口**，后台只负责指定用户、指定类型（OpenCode / DeepSeek Harness）、数量与备注。
 
 ```
-用户首屏「我的 Agent」 ─▶ <随机>.<用户名>.<agent名>.agent.grantfelix.top
+用户首屏「我的 Agent」 ─▶ <随机>.<用户名>.<agent名>.agent.wraindrock.com
       ─▶ 云 Caddy（按需证书；ask 只放行订阅表里的域名）
       ─▶ frp 第二隧道 20081 ─▶ Agent 网关（独立容器，host 网络，只监听 127.0.0.1:5740）
             ├─ forward_auth ─▶ 127.0.0.1:5735（主站 /api/agent/auth：会话 + 订阅校验；
@@ -507,9 +507,9 @@ make install            # 装 agents 目录、systemd 触发单元与 Caddy 路�
 
 生产公网访问需两步：
 
-1. **会话 cookie 跨子域**：`COOKIE_DOMAIN=grantfelix.top` 已默认写入 `.env`，
+1. **会话 cookie 跨子域**：`COOKIE_DOMAIN=wraindrock.com` 已默认写入 `.env`，
    主站按请求 Host 自适应——`localhost` 不加 Domain（本地登录照常），
-   `*.grantfelix.top` 才加，非回环 Host 自动带 `Secure`。无需额外配置。
+   `*.wraindrock.com` 才加，非回环 Host 自动带 `Secure`。无需额外配置。
 2. **云侧 Caddy（一次性，之后全自动）**：套用
    [`config/cloud/Caddyfile.example`](config/cloud/Caddyfile.example)：
 

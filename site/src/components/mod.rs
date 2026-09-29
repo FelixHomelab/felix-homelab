@@ -38,7 +38,7 @@ pub fn SiteHeader() -> impl IntoView {
                         <a href="/sky">"光遇"</a>
                         <a
                             class="nav-service"
-                            href="https://cloud.grantfelix.top/"
+                            href="https://opencloud.wraindrock.com/"
                             target="_blank"
                             rel="noreferrer"
                         >
@@ -46,7 +46,7 @@ pub fn SiteHeader() -> impl IntoView {
                         </a>
                         <a
                             class="nav-service"
-                            href="https://forgejo.grantfelix.top/"
+                            href="https://forgejo.wraindrock.com/"
                             target="_blank"
                             rel="noreferrer"
                         >

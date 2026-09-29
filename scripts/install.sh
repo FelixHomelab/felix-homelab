@@ -110,7 +110,7 @@ ensure_env_default() {
 }
 ensure_env_default AGENT_IMAGE localhost/felix-agent-opencode:latest
 ensure_env_default AGENT_DSH_IMAGE localhost/felix-agent-dsh:latest
-ensure_env_default AGENT_BASE_DOMAIN agent.grantfelix.top
+ensure_env_default AGENT_BASE_DOMAIN agent.wraindrock.com
 ensure_env_default AGENT_LOCAL_DOMAIN agent.localhost
 ensure_env_default AGENT_PORT_BASE 20001
 ensure_env_default AGENT_PORT_MAX 20099
@@ -147,10 +147,10 @@ ensure_env_default DSHEGOBROWSER_REF 3fc4245d9b95b1eb2cfe540e32d04c363ba9ca31
 ensure_env_default OBSCURA_VERSION v0.2.3
 ensure_env_default DSHDEV_RULES_REF 83c5ff329a1ecb9e8dc37da02eee17998f904dee
 # 会话 cookie 的共享父域（Agent 子域 SSO；站点按请求 Host 自适应）
-ensure_env_default COOKIE_DOMAIN grantfelix.top
+ensure_env_default COOKIE_DOMAIN wraindrock.com
 
 # OpenCloud：公网地址与内置 IDM 管理员密码（老安装补默认/补生成）
-ensure_env_default OC_URL https://cloud.grantfelix.top
+ensure_env_default OC_URL https://opencloud.wraindrock.com
 if ! grep -qE '^IDM_ADMIN_PASSWORD=.+' "$CONFIG_DIR/.env"; then
 	OPW="$(gen_secret)"
 	if grep -q '^IDM_ADMIN_PASSWORD=' "$CONFIG_DIR/.env"; then
@@ -465,7 +465,7 @@ cat <<EOF
   主站(社区站)  : http://localhost:5729/   (直连 http://localhost:5733/)
   Forgejo Web   : http://localhost:5730/   (Caddy: http://forgejo.localhost:5729/)
   Forgejo SSH   : ssh -p 5731 git@localhost
-  OpenCloud     : http://cloud.localhost:5729/   (公网 https://cloud.grantfelix.top/；管理员密码见 .env)
+  OpenCloud     : http://cloud.localhost:5729/   (公网 https://opencloud.wraindrock.com/；管理员密码见 .env)
   公网访问      : 配置 frpc 后经云域名访问（见 README「公网访问（云服务器中转）」）
   数据目录      : $CONFIG_DIR
   单元目录      : $UNIT_DIR

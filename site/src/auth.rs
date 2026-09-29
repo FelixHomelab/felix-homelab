@@ -247,7 +247,7 @@ mod cookies {
     /// 会话 cookie 的共享父域。
     ///
     /// 只有请求 Host 属于 `COOKIE_DOMAIN`（本身或其子域）时才加 `Domain=`：
-    /// - `https://grantfelix.top` / `*.grantfelix.top` → `Domain=grantfelix.top`，
+    /// - `https://www.wraindrock.com` / `*.wraindrock.com` → `Domain=wraindrock.com`，
     ///   多租户 Agent 子域才能带上会话；
     /// - `http://localhost:5729` → 不加 Domain，本地开发照常登录
     ///   （否则浏览器会直接拒绝该 cookie）。
