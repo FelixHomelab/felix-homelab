@@ -11,6 +11,10 @@
 ARG OPENCODE_VERSION=2.0.18
 FROM ghcr.io/anomalyco/opencode:${OPENCODE_VERSION}
 
+# 默认内置的 OpenCode 插件 agent-cache-optimizer：按平台规则从 fork 固定提交安装
+# （felix/opencode-v2 分支带 v2 适配器；见 Felix-Homelab/FORKS.md）
+ARG AGENT_CACHE_OPTIMIZER_REF=3939b3de69dbbb66a022164e9d061e91722008e1
+
 USER root
 # bash/git/ssh：仓库操作与 Git over SSH；curl/wget/healthcheck：健康检查；
 # nodejs/npm/python3/pip/make：Agent 常用工具链；jq：脚本与 JSON。
@@ -34,5 +38,24 @@ RUN apk add --no-cache \
 ENV HOME=/data \
     XDG_DATA_HOME=/data/.local/share \
     XDG_CONFIG_HOME=/data/.config \
-    XDG_CACHE_HOME=/data/.cache
+    XDG_CACHE_HOME=/data/.cache \
+    # 首次自动安装其它插件时走国内镜像（bun/npm 均读取该变量；不可用时自动忽略）
+    NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
 WORKDIR /workspace
+
+# 把 fork 的插件源码落进镜像（OpenCode 支持绝对路径插件，无需 npm 安装、离线可用）
+RUN set -eux; \
+	url="https://github.com/FelixHomelab/agent-cache-optimizer/archive/${AGENT_CACHE_OPTIMIZER_REF}.tar.gz"; \
+	curl -fsSL --connect-timeout 15 --retry 2 -o /tmp/aco.tgz "$url" \
+		|| curl -fsSL --connect-timeout 15 --retry 2 -o /tmp/aco.tgz "https://gh-proxy.com/$url"; \
+	mkdir -p /opt/agent-cache-optimizer; \
+	tar -xzf /tmp/aco.tgz -C /opt/agent-cache-optimizer --strip-components=1; \
+	rm -f /tmp/aco.tgz; \
+	test -f /opt/agent-cache-optimizer/src/index.ts; \
+	test -f /opt/agent-cache-optimizer/index.ts; \
+	printf '%s\n' "${AGENT_CACHE_OPTIMIZER_REF}" > /opt/agent-cache-optimizer/.felix-rev
+
+# 入口包装：播种默认插件配置（幂等、不覆盖用户配置）后 exec opencode
+COPY felix-opencode-entry.sh /usr/local/bin/felix-opencode-entry.sh
+RUN chmod 0755 /usr/local/bin/felix-opencode-entry.sh
+ENTRYPOINT ["/usr/local/bin/felix-opencode-entry.sh"]

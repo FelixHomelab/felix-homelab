@@ -369,6 +369,15 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
 - **第三方修改政策**：凡是修改过的第三方插件/组件，一律 fork 到
   `FelixHomelab` 下、从 fork 固定提交部署（避免上游更新覆盖修复），详见
   [`FORKS.md`](FORKS.md)。
+- **OpenCode 模板镜像默认内置 agent-cache-optimizer**
+  （`AGENT_CACHE_OPTIMIZER_REF`，固定 fork `felix/opencode-v2` 提交）：上游 0.6.1
+  只支持 OpenCode 1.x 插件 API，2.0.18 上会 “Plugin must export a default
+  definition…”，**核心重排完全失效**。按平台规则在 fork 里加了 v2 适配器
+  （`ctx.session.hook("context")` 重排 `output.system` 后再写回，复用原有分类/
+  重排核心；Anthropic 的 chat.headers 在 v2 暂无对应注册点）。镜像把插件源码
+  烤进 `/opt/agent-cache-optimizer`，入口脚本在 `opencode.json` 里以**绝对路径**
+  幂等注入（不覆盖用户配置），无需 npm 安装、离线可用。作用：稳定系统提示块
+  前置，保住 provider 的前缀 KV 缓存，提升命中率、降低使用成本。
 - **自带插件守护 dsh-my-guardian**（`DSHGUARDIAN_REF`，固定 fork 提交）：
   候选区 + 失败隔离，防止用户装坏插件把容器卡死。守护是看门狗，必须最先
   加载——构建期把它的 bundle 调到名册第一位（每次加新插件后都会校验）。

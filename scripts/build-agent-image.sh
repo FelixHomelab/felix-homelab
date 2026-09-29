@@ -24,9 +24,23 @@ log() { printf '\033[1;36m[agent]\033[0m %s\n' "$*"; }
 case "$KIND" in
 opencode)
 	VERSION="${OPENCODE_VERSION:-2.0.18}"
+	CACHE_OPT_REF="${AGENT_CACHE_OPTIMIZER_REF:-CFG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json"
+# 插件源码随镜像烤在 /opt（fork 固定提交）；但 OpenCode 的路径插件只加载
+# 项目/家目录下的目录（/opt 会被静默跳过），因此按镜像版本戳种子到 $HOME 再引用。
+SRC="/opt/agent-cache-optimizer"
+PLUGIN="$HOME/.local/share/opencode-plugins/agent-cache-optimizer"
+if [ -d "$SRC" ]; then
+	want="$(cat "$SRC/.felix-rev" 2>/dev/null || echo unknown)"
+	have="$(cat "$PLUGIN/.felix-rev" 2>/dev/null || echo none)"
+	if [ "$want" != "$have" ] || [ ! -f "$PLUGIN/index.ts" ]; then
+		rm -rf "$PLUGIN"
+		mkdir -p "$(dirname "$PLUGIN")"
+		cp -r "$SRC" "$PLUGIN"
+	fi
+fi}"
 	IMAGE="${AGENT_IMAGE:-localhost/felix-agent-opencode:latest}"
 	DIR="$REPO_DIR/containers/agent-opencode"
-	BUILD_ARGS=(--build-arg "OPENCODE_VERSION=$VERSION")
+	BUILD_ARGS=(--build-arg "OPENCODE_VERSION=$VERSION" --build-arg "AGENT_CACHE_OPTIMIZER_REF=$CACHE_OPT_REF")
 	;;
 dsh)
 	VERSION="${DSH_VERSION:-0.1.7-rc.2}"
@@ -72,7 +86,7 @@ prune_old_versions() {
 		| awk -F'|' -v r="$repo" 'index($2, r ":") == 1 { print $2 }')
 }
 
-log "构建模板镜像 $IMAGE（$KIND $VERSION${MARKET_VERSION:+ / market $MARKET_VERSION}${GUARDIAN_REF:+ / guardian ${GUARDIAN_REF:0:8}}${COSTMETER_VERSION:+ / cost-meter $COSTMETER_VERSION}${OC2DSH_REF:+ / opencode2dsh ${OC2DSH_REF:0:8}}${SIDEBAR_VERSION:+ / better-sidebar $SIDEBAR_VERSION}${EGOBROWSER_REF:+ / ego-browser ${EGOBROWSER_REF:0:8}}${DEV_RULES_REF:+ / dev-rules ${DEV_RULES_REF:0:8}}）"
+log "构建模板镜像 $IMAGE（$KIND $VERSION${CACHE_OPT_REF:+ / cache-optimizer ${CACHE_OPT_REF:0:8}}${MARKET_VERSION:+ / market $MARKET_VERSION}${GUARDIAN_REF:+ / guardian ${GUARDIAN_REF:0:8}}${COSTMETER_VERSION:+ / cost-meter $COSTMETER_VERSION}${OC2DSH_REF:+ / opencode2dsh ${OC2DSH_REF:0:8}}${SIDEBAR_VERSION:+ / better-sidebar $SIDEBAR_VERSION}${EGOBROWSER_REF:+ / ego-browser ${EGOBROWSER_REF:0:8}}${DEV_RULES_REF:+ / dev-rules ${DEV_RULES_REF:0:8}}）"
 podman build "${BUILD_ARGS[@]}" -t "$IMAGE" -f "$DIR/Containerfile" "$DIR"
 REPO="${IMAGE%:*}"
 podman tag "$IMAGE" "$REPO:$VERSION"

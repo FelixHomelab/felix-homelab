@@ -19,6 +19,7 @@
 | --- | --- | --- | --- | --- |
 | opencode2dsh | FishBottle7/opencode2dsh | `FelixHomelab/opencode2dsh` 分支 `felix/configforms` | 客户端 `settingsScope` → `configForms`（DSH 0.1.7 移除该服务，界面卡 `pending` 起不来；上游 issue #20/#24，修复 PR #23 未发版） | `github:...#d5e866ae` + `path:/packages/plugin` |
 | dsh-my-guardian | baosfeng/my-dsh-plugins | `FelixHomelab/my-dsh-plugins`（**未改代码**） | 无：npm 0.4.4 缺「宿主提供 peer 不误报缺失」修复，上游 `main` 已修但未发版，直接固定 main 提交 | `github:...#1bca78ed` + `path:/plugins/dsh-my-guardian` |
+| agent-cache-optimizer | uuie/agent-cache-optimizer | `FelixHomelab/agent-cache-optimizer` 分支 `felix/opencode-v2` | OpenCode 2.x 只认 v2 插件形状（`default {id, setup}`）且原插件 0.6.1 的 v1 hooks 不再触发：新增 v2 适配器（`ctx.session.hook("context")` 在 `input.system` 上重排，复用原分类/重排核心；`chat.headers` 暂无 v2 注册点）+ 包根 `index.ts`（路径插件只加载包根入口） | 镜像内置 `/opt/agent-cache-optimizer`，入口按版本戳种子到 `$HOME/.local/share/opencode-plugins/agent-cache-optimizer` 并以路径插件注入 |
 | dsh-ego-browser | Fisfzy/dsh-ego-browser | `FelixHomelab/dsh-ego-browser` 分支 `felix/main` | ① 平台侧包装层把无头切到 Obscura、有头保留 Chromium；② **runtime 补丁**：内部 5 处同步表达式改走 `evaluateSync()`（`awaitPromise:false`）——Obscura 上 Bing 等重页面带 awaitPromise 会 >15s 超时（实测改后 info 5ms），详见分支 `felix/PATCHES.md` | `github:FelixHomelab/dsh-ego-browser#3fc4245d` |
 | DeepSeek Harness | deepseek-ai/deepseek-harness | `FelixHomelab/deepseek-harness` 分支 `felix/patches`（仅跟踪） | 两处客户端门控补丁：远程（非 localhost）允许编辑设置、允许绑定 `0.0.0.0`（门控环境变量） | **例外（见下）** |
 

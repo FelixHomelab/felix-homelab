@@ -122,6 +122,20 @@ ensure_env_default AGENT_RECREATE_DAYS 7
 ensure_env_default AGENT_IMAGE_KEEP 3
 ensure_env_default AGENT_VNC_PORT_BASE 21001
 ensure_env_default OPENCODE_VERSION 2.0.18
+ensure_env_default AGENT_CACHE_OPTIMIZER_REF CFG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json"
+# 插件源码随镜像烤在 /opt（fork 固定提交）；但 OpenCode 的路径插件只加载
+# 项目/家目录下的目录（/opt 会被静默跳过），因此按镜像版本戳种子到 $HOME 再引用。
+SRC="/opt/agent-cache-optimizer"
+PLUGIN="$HOME/.local/share/opencode-plugins/agent-cache-optimizer"
+if [ -d "$SRC" ]; then
+	want="$(cat "$SRC/.felix-rev" 2>/dev/null || echo unknown)"
+	have="$(cat "$PLUGIN/.felix-rev" 2>/dev/null || echo none)"
+	if [ "$want" != "$have" ] || [ ! -f "$PLUGIN/index.ts" ]; then
+		rm -rf "$PLUGIN"
+		mkdir -p "$(dirname "$PLUGIN")"
+		cp -r "$SRC" "$PLUGIN"
+	fi
+fi
 ensure_env_default DSH_VERSION 0.1.7-rc.2
 ensure_env_default DSHMARKET_VERSION 1.66.3
 ensure_env_default DSHGUARDIAN_REF 1bca78ed0329fa921e447ea12eedbcf3990e1179
