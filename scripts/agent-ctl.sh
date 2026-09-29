@@ -539,9 +539,14 @@ do_create() {
 			podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
 			state_set_kind "$key" "$kind"
 		fi
-		# 站点是域名的权威来源：续期/回填时同步过来（无则本地生成兜底）
-		if [ -n "$subdomain" ]; then
-			[ "$subdomain" = "$(state_field "$key" subdomain)" ] || state_set_subdomain "$key" "$subdomain"
+		# 站点是域名的权威来源：续期/迁移时同步过来（无则本地生成兜底）
+		if [ -n "$subdomain" ] && [ "$subdomain" != "$(state_field "$key" subdomain)" ]; then
+			state_set_subdomain "$key" "$subdomain"
+			# DSH 的 --trusted-host 固化在启动参数里，域名变更必须重建容器才生效
+			if [ "$kind" = "dsh" ]; then
+				log "$username #$slot 域名变更 → 重建容器以应用 --trusted-host"
+				podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
+			fi
 		elif [ -z "$(state_field "$key" subdomain)" ]; then
 			state_set_subdomain "$key" "$(gen_subdomain "$username" "$kind")"
 		fi

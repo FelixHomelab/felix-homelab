@@ -154,6 +154,12 @@ fn agent_url(subdomain: &str) -> String {
     format!("{scheme}://{subdomain}.{domain}")
 }
 
+/// 是否已是新版子域格式（18 位小写字母/数字）。
+#[cfg(feature = "ssr")]
+fn is_new_subdomain(sub: &str) -> bool {
+    sub.len() == 18 && sub.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
 /// 生成一个全表唯一的子域：18 位随机码（一级标签，公开形态为 `<码>.wraindrock.com`；
 /// 本地开发为 `<码>.agent.localhost`）。
 ///
@@ -176,28 +182,30 @@ async fn unique_subdomain(pool: &sqlx::SqlitePool) -> Result<String, String> {
     Err("生成唯一域名失败，请重试。".to_string())
 }
 
-/// 启动回填：老数据（无 subdomain）生成域名；未撤销的实例补一个 grant 请求，
-/// 让宿主把状态与 Caddy 路由迁移到新域名。
+/// 启动迁移/回填：无子域或旧格式（旧的三段式 `<随机>.<用户名>.<类型>`）一律升级为
+/// 18 位随机码；未撤销的实例补一个 grant 请求，让宿主更新状态、重建容器
+/// （DSH 的 --trusted-host 在启动参数里）并刷新 Caddy 路由。
 #[cfg(feature = "ssr")]
 pub async fn ensure_subdomains(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
     use sqlx::Row;
 
     let rows = sqlx::query(
-        "SELECT s.id, s.slot, s.subdomain, s.status, u.username FROM agent_subscriptions s \
-         JOIN users u ON u.id = s.user_id WHERE s.subdomain IS NULL ORDER BY s.id ASC",
+        "SELECT s.id, s.slot, s.subdomain, s.status, s.kind, u.username \
+         FROM agent_subscriptions s JOIN users u ON u.id = s.user_id ORDER BY s.id ASC",
     )
     .fetch_all(pool)
     .await?;
 
     for row in rows {
+        let old: Option<String> = row.get("subdomain");
+        if old.as_deref().is_some_and(is_new_subdomain) {
+            continue;
+        }
         let id: i64 = row.get("id");
         let slot: i64 = row.get("slot");
         let status: String = row.get("status");
+        let kind: String = row.get("kind");
         let username: String = row.get("username");
-        let kind: String = sqlx::query_scalar("SELECT kind FROM agent_subscriptions WHERE id = ?1")
-            .bind(id)
-            .fetch_one(pool)
-            .await?;
         let subdomain = unique_subdomain(pool)
             .await
             .map_err(anyhow::Error::msg)?;
@@ -206,9 +214,12 @@ pub async fn ensure_subdomains(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
             .bind(id)
             .execute(pool)
             .await?;
-        tracing::info!("Agent 子域回填：{username} #{slot} -> {subdomain}");
+        tracing::info!(
+            "Agent 子域迁移：{username} #{slot} {} -> {subdomain}",
+            old.unwrap_or_default()
+        );
         if status != "revoked" {
-            // 让宿主刷新 state/route（失败也不阻塞启动；下次授权/唤醒会再补）
+            // 让宿主重建容器并刷新路由（失败不阻塞启动；下次唤醒/续期会再补）
             if let Err(error) = write_agent_request(
                 "grant",
                 &username,
@@ -217,7 +228,7 @@ pub async fn ensure_subdomains(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
                 Some(&subdomain),
                 None,
             ) {
-                tracing::warn!("Agent 子域回填请求失败：{error}");
+                tracing::warn!("Agent 子域迁移请求失败：{error}");
             }
         }
     }
