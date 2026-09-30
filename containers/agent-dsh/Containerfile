@@ -148,19 +148,14 @@ RUN dsh plugin --profile web add "dsh-cost-meter@${DSHCOSTMETER_VERSION}" \
 	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-cost-meter/package.json \
 	&& grep -q '"dsh-cost-meter"' /opt/dsh-home/profiles/web/package.json
 
-# ---- 自带 OpenCode Zen 免费模型 @opencode2dsh/dsh-plugin（无需 API key）----
-# https://github.com/FishBottle7/opencode2dsh
-# 依赖链 pi-ai 里的 @google/genai / protobufjs 构建脚本运行期不需要：先在
-# workspace 里显式拒绝，pnpm 11 才会放行（否则 ERR_PNPM_IGNORED_BUILDS）。
-ARG OPENCODE2DSH_REF=d5e866ae77b30d66212a7cfb87921a870a3bdc54
+# ---- 免费模型插件的依赖开关（kilo-zen2dsh 的 pi-ai 链也一样需要）----
+# @google/genai / protobufjs 的 install 脚本运行期不需要：先在 workspace 里
+# 显式拒绝，pnpm 11 才会放行（否则 ERR_PNPM_IGNORED_BUILDS）。
+# 原版 @opencode2dsh/dsh-plugin 已移除：其功能并入 kilo-zen2dsh（双供应商）。
 RUN if ! grep -q '^allowBuilds:' /opt/dsh-home/profiles/web/pnpm-workspace.yaml; then \
 		printf '\nallowBuilds:\n  "@google/genai": false\n  protobufjs: false\n' \
 			>> /opt/dsh-home/profiles/web/pnpm-workspace.yaml; \
-	fi \
-	&& dsh plugin --profile web add "github:FelixHomelab/opencode2dsh#${OPENCODE2DSH_REF}&path:/packages/plugin" \
-	&& test -f /opt/dsh-home/profiles/web/node_modules/@opencode2dsh/dsh-plugin/package.json \
-	&& grep -q '"@opencode2dsh/dsh-plugin"' /opt/dsh-home/profiles/web/package.json \
-	&& node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)"
+	fi
 
 # DSH 0.1.7 移除了客户端 settingsScope 服务：上游 0.3.3 未修（issue #20/#24，
 # PR #23 未发版），因此按平台规则从 fork 固定提交安装，修复随 fork 一起走
@@ -210,22 +205,15 @@ RUN dsh plugin --profile web add "github:FelixHomelab/dsh-ego-browser#${DSHEGOBR
 	&& chmod 0755 /opt/dsh-home/profiles/web/node_modules/dsh-ego-browser/bin/*.sh \
 	&& node -e "const d=require('/opt/dsh-home/profiles/web/package.json');if(d.dsh.profile.bundles[0]!=='dsh-my-guardian')process.exit(1)"
 
-# 容器化下市场的一键重启会替换容器主进程：用 --patch 覆盖层统一禁用（所有宿主版本都有效）
-# kilo-zen2dsh 与原版 @opencode2dsh/dsh-plugin 会抢注册同一个 provider
-# （an adapter for provider "opencode2dsh" is already registered）；按插件官方
-# 注释把 kilo-zen2dsh 的 Zen 路线关掉、只留 Kilo 免费模型，Zen 由原版插件提供，
-# 两个插件即可同时保留且各司其职。
+# 容器化下市场的一键重启会替换容器主进程：用 --patch 覆盖层统一禁用（所有宿主版本都有效）。
+# kilo-zen2dsh 保持默认（Kilo + OpenCode Zen 双供应商）；原版 @opencode2dsh/dsh-plugin
+# 已移除，不再有 provider 抢注册问题（老数据卷由 dsh-entry.sh 清理）。
 RUN printf '%s\n' \
 	'# 容器内禁用市场的一键重启（重启由平台/管理员操作）' \
 	'- id: dsh-market' \
 	'  name: dshmarket' \
 	'  config:' \
 	'    allowRestart: false' \
-	'# Zen 由 @opencode2dsh/dsh-plugin 提供，避免 provider 冲突（插件官方支持此项）' \
-	'- id: kilo2dsh' \
-	'  name: "@huanx/kilo-zen2dsh"' \
-	'  config:' \
-	'    zenEnabled: false' \
 	> /opt/dsh-home/agent-patch.yml
 
 # ---- 客户端内嵌大图瘦身（首屏体积优化）----
@@ -245,8 +233,8 @@ RUN npm install -g esbuild@0.25.10 --silent --no-fund --no-audit \
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=13
-RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_REF:0:8}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_REF:0:8}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_REF:0:8}+devrules${DSHDEV_RULES_REF}+webchat${DSHWEBCHAT_REF:0:8}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
+ARG PROFILE_REV=14
+RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_REF:0:8}+costmeter${DSHCOSTMETER_VERSION}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_REF:0:8}+devrules${DSHDEV_RULES_REF}+webchat${DSHWEBCHAT_REF:0:8}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
 # ---- Obscura：无头引擎（Rust + CDP，载入页面 ~40MB；有头仍用 Chromium）----

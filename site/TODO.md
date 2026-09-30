@@ -1327,13 +1327,11 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 
 ## DSH 插件共存与 webchat 修复（2026-09-30 补记）
 
-- **kilo-zen2dsh 与原版 opencode2dsh 并存**：两者都会注册 provider
-  `opencode2dsh`（kilo-zen2dsh 实为 Kilo + OpenCode Zen 双供应商），后者先注册
-  导致前者报 `an adapter ... already registered`。按 kilo-zen2dsh 官方配置项
-  `zenEnabled: false` 让它只提供 Kilo 免费模型；Zen 路线继续由原版
-  `@opencode2dsh/dsh-plugin` 提供 —— 两个插件同时保留、各司其职。
-  配置经镜像内 `/opt/dsh-home/agent-patch.yml`（运行时 `--patch` 覆盖层）下发，
-  老数据卷无需重建 profile。
+- **免费模型插件收敛（站长决策终稿）**：移除原版 `@opencode2dsh/dsh-plugin`，
+  由 `kilo-zen2dsh` 以官方默认形态提供 **Kilo + OpenCode Zen 双供应商**
+  （修复了两者抢注册同一 provider 的冲突）。`dsh-entry.sh` 会在启动时清理
+  老数据卷里残留的 `@opencode2dsh/dsh-plugin`（含离线兜底：直接改清单 +
+  删除 node_modules）；镜像 bake 已不再安装它。
 - **第三方插件静态 import DSH 内部包**（dsh-webchat → dsh-settings/dsh-llm 等）：
   pnpm 只把这些包装在全局 dsh 包自己的 node_modules 下，profile 侧解析不到，
   表现为 `failed to import`。`dsh-entry.sh` 每次启动把全局 `@deepseek-ai/*`

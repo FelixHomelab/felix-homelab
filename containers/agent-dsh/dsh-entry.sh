@@ -18,6 +18,26 @@ if [ "$IMAGE_VERSION" != "$VOLUME_VERSION" ] || [ ! -e "$DSH_HOME/profiles" ]; t
 	cp -a /opt/dsh-home/.dsh-image-version "$DSH_HOME/.dsh-image-version"
 fi
 
+# 已废弃插件清理：@opencode2dsh/dsh-plugin 的功能已并入 kilo-zen2dsh，老数据卷
+# 可能仍装着它——留着会与新插件抢注册 provider "opencode2dsh"。
+PROFILE_PKG="$DSH_HOME/profiles/web/package.json"
+if grep -q '"@opencode2dsh/dsh-plugin"' "$PROFILE_PKG" 2>/dev/null; then
+	echo "[dsh-entry] 移除已废弃插件 @opencode2dsh/dsh-plugin（功能并入 kilo-zen2dsh）" >&2
+	if ! dsh plugin --profile web remove "@opencode2dsh/dsh-plugin" >/dev/null 2>&1; then
+		# 离线兜底：直接从清单剔除（lockfile 会在下次安装时自愈）
+		node -e '
+			const fs = require("fs");
+			const p = process.argv[1];
+			const d = JSON.parse(fs.readFileSync(p, "utf8"));
+			if (d.dependencies) delete d.dependencies["@opencode2dsh/dsh-plugin"];
+			const b = d.dsh && d.dsh.profile && d.dsh.profile.bundles;
+			if (Array.isArray(b)) d.dsh.profile.bundles = b.filter((x) => x !== "@opencode2dsh/dsh-plugin");
+			fs.writeFileSync(p, JSON.stringify(d, null, 2) + "\n");
+		' "$PROFILE_PKG" || true
+		rm -rf "$DSH_HOME/profiles/web/node_modules/@opencode2dsh" 2>/dev/null || true
+	fi
+fi
+
 # npm/pnpm 不会保留包内脚本的可执行位，而 dsh-ego-browser 依赖自带 wrapper
 # （root/容器下加 --no-sandbox）去拉起 Chromium；缺位会 EACCES 起不了浏览器。
 # 每次启动补齐；插件重装后同样自动恢复。
