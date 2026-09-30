@@ -9,9 +9,17 @@ FROM docker.io/library/node:${NODE_VERSION}
 ARG AGENT_PKG
 ARG AGENT_VERSION
 ARG AGENT_BIN
+# 可选：烘焙 Pi 扩展（空格分隔的 npm: 规格），首启由入口脚本复制到运行时 HOME
+ARG PI_PACKAGES=""
 
 RUN apk add --no-cache bash git curl ca-certificates ttyd tzdata \
  && npm install -g --ignore-scripts "${AGENT_PKG}@${AGENT_VERSION}"
+
+RUN if [ -n "${PI_PACKAGES}" ] && [ "${AGENT_BIN}" = "pi" ]; then \
+		mkdir -p /opt/pi-home \
+		&& for pkg in ${PI_PACKAGES}; do HOME=/opt/pi-home pi install "$pkg"; done \
+		&& rm -rf /opt/pi-home/.npm; \
+	fi
 
 ENV HOME=/data \
     XDG_DATA_HOME=/data/.local/share \

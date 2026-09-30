@@ -166,6 +166,18 @@ RUN if ! grep -q '^allowBuilds:' /opt/dsh-home/profiles/web/pnpm-workspace.yaml;
 # PR #23 未发版），因此按平台规则从 fork 固定提交安装，修复随 fork 一起走
 # （分支 felix/configforms，见 FORKS.md）；不再构建期改包文件。
 
+# ---- Kilo 网关/OpenCode Zen 免费模型（@huanx/kilo-zen2dsh，官方 npm）----
+ARG KILOZEN_VERSION=0.4.0
+RUN dsh plugin --profile web add "@huanx/kilo-zen2dsh@${KILOZEN_VERSION}" \
+	&& test -f /opt/dsh-home/profiles/web/node_modules/@huanx/kilo-zen2dsh/package.json \
+	&& grep -q '"@huanx/kilo-zen2dsh"' /opt/dsh-home/profiles/web/package.json
+
+# ---- Web 聊天页 dsh-webchat（dsh-web-chat，官方 npm）----
+ARG DSHWEBCHAT_VERSION=0.2.0
+RUN dsh plugin --profile web add "dsh-webchat@${DSHWEBCHAT_VERSION}" \
+	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-webchat/package.json \
+	&& grep -q '"dsh-webchat"' /opt/dsh-home/profiles/web/package.json
+
 # ---- 自带侧边栏工作台 dsh-better-sidebar（文件树/编辑器/文件变动/任务/侧边对话）----
 # https://github.com/omdsh-dev/DSH-better-sidebar（要求 DSH 0.1.7-rc.1+，本镜像满足）
 ARG DSHBETTERSIDEBAR_VERSION=0.22.1

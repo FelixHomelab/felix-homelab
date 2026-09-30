@@ -321,6 +321,12 @@ route_write() {
 	b64="$(printf 'opencode:%s' "$password" | base64 | tr -d '\n')"
 	local kind vnc_block=""
 	kind="$(state_field "$key" kind)"
+	# OpenClaw 要求「代理归属」：XFF 链里必须含真实客户端 IP（非受信跳）；
+	# Cloudflare Tunnel 仅提供 CF-Connecting-IP（XFF 里没有客户端）→ 网关这层注入。
+	local xff_line=""
+	if [ "$kind" = "openclaw" ]; then
+		xff_line=$'\n\t\theader_up X-Forwarded-For {http.request.header.CF-Connecting-IP}'
+	fi
 	if [ "$kind" = "dsh" ]; then
 		local vnc_port=$((AGENT_VNC_PORT_BASE + port - AGENT_PORT_BASE))
 		vnc_block="
@@ -348,7 +354,7 @@ handle @agent_$slug {
 		uri /api/agent/auth?user=$username&slot=$slot&orig={http.request.uri}
 	}
 	reverse_proxy 127.0.0.1:$port {
-		header_up Authorization "Basic $b64"
+		header_up Authorization "Basic $b64"$xff_line
 	}
 }$vnc_block
 EOF
@@ -566,6 +572,18 @@ do_create() {
 			fi
 		elif [ -z "$(state_field "$key" subdomain)" ]; then
 			state_set_subdomain "$key" "$(gen_subdomain "$username" "$kind")"
+		fi
+	fi
+
+	# 镜像一致性：state 的 kind 对但实际容器可能跑着旧/错误镜像（例如升级
+	# agent-ctl 后新增类型未重建）——比对实际镜像，不一致就重建。
+	if podman container exists "$(container_of "$key")" 2>/dev/null; then
+		local want_image actual_image
+		want_image="$(image_of "$kind")"
+		actual_image="$(podman inspect -f '{{.ImageName}}' "$(container_of "$key")" 2>/dev/null || true)"
+		if [ -n "$actual_image" ] && [ "$actual_image" != "$want_image" ]; then
+			log "$username #$slot 镜像不一致（$actual_image → $want_image），重建容器"
+			podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
 		fi
 	fi
 
