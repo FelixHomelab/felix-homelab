@@ -986,6 +986,19 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
    `PROXY_USER_OIDC_CLAIM` 等自动供应，内部 IDM 仍是空间/共享事实源），放到 P3；
    失败则接受 OpenCloud 是一个例外。
 
+**P0 验证结果（已完成，本地实测通过）**：
+- Kanidm **1.11.2** 临时实例跑通（卷 `kanidm-p0-data`，`127.0.0.1:8443` 自签 TLS，容器 `kanidm-p0`）
+- 命令核对：`system oauth2 update-claim-map <client> <claim> <group> [values…]` **存在**；
+  合并策略 `update-claim-map-join <client> <claim> csv|ssv|array`（本项目选 `array`）
+- 超级管理员是 **`idm_admin`**（不是 `admin`）；`kanidmd recover-account idm_admin`
+  **直接输出新随机密码**（无需浏览器）；已写入宿主 `.env` 的 `KANIDM_ADMIN_PASSWORD`
+- OIDC discovery 是**按客户端**的：
+  `https://id.wraindrock.com/oauth2/openid/<client>/.well-known/openid-configuration`
+- 本地已实测：建组 `felix-admins`、public 客户端 `web`、scope 映射、
+  claim 映射（`groups`，join=array）+ discovery 200
+- 待办：CF Tunnel 增加 `id.wraindrock.com → https://localhost:8443`（开启 No TLS Verify）；
+  P2 再验 Tuwunel 的 discovery 连通性
+
 **落地阶段（未开始）**：
 - P0 验证（不动现有登录）：Kanidm 试实例，确认 claim 命令、Caddy TLS 回源
   （`reverse_proxy https://kanidm:8443 { transport http { tls_insecure_skip_verify } }`）、
