@@ -371,7 +371,11 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
   ② 给客户端 `warning-insecure-client-disable-pkce`（Forgejo 早期不发送 PKCE）；
   ③ `groups` 作用域产出的是组 SPN/UUID 列表，`--admin-group` 用 `felix-admins@id.wraindrock.com`；
   ④ 账号绑定：先本地登录 Forgejo，再访问 `/user/oauth2/kanidm` 完成关联（`external_login_user` 记 sub=Kanidm UUID）。
-  本地密码登录保留为并行后备；站点右上角「使用kanidm登录」已可一键进入。
+  **统一账号终态（已落地）**：Felix 的本地密码已清空（本地登录提示“用户名或密码不正确”），
+  本地注册关闭（`ALLOW_ONLY_EXTERNAL_REGISTRATION=true`）——Forgejo 只认 Kanidm。
+  新用户首次经 Kanidm 登录会进入 `/user/link_account` 确认用户名/邮箱（预填）后自动建号
+  （实测 `login_type=6` OAuth2）；scope map 必须覆盖普通用户组 `felix-users`，
+  否则普通用户会 `Access Denied`（available_scopes 为空）。
 - **账户策略（实测结论）**：内置 `idm_all_persons` 的 `credential-type-minimum` 已从 `mfa` 放宽为 `any`
   （口令最短 10 位），**普通用户仅密码即可**；`felix-admins` 组保持 `mfa`（多组并存取最严，
   实测管理员仍强制 TOTP/Passkey）。注意 zxcvbn 4/4 口令质量始终强制（与 MFA 独立），

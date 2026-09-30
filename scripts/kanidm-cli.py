@@ -1,27 +1,26 @@
-#!/usr/bin/env python3
-"""非交互执行 Kanidm CLI 的小助手（登录密码经 pty 自动应答）。
+#!/home/felix/.cache/felix-homelab-tools/cdpvenv/bin/python
+"""非交互执行 Kanidm CLI 的小助手（动态应答登录/reauth 密码，输出实时流式打印）。
 
-Kanidm CLI 只从 TTY 读密码，无法直接管道喂入；本脚本在 pty 里运行
-kanidm/tools 容器，登录会话缓存在命名卷 `kanidm-cli-home`。
+Kanidm CLI 只从 TTY 读密码；高特权操作在特权窗口过期后会再次要求 reauth。
+本脚本在 pty 里运行 kanidm/tools 容器，凡是遇到密码类提示就自动输入 PW。
+登录会话缓存在命名卷 `kanidm-cli-home`。
 
 用法：
   PW=$(grep -E '^KANIDM_ADMIN_PASSWORD=' ~/.config/felix-homelab/.env | cut -d= -f2-) \
     scripts/kanidm-cli.py 'kanidm system oauth2 list'
-
-  PW=... scripts/kanidm-cli.py        # 不带参数则进入交互式 shell
 """
 import os
-import pty
-import select
 import sys
+
+import pexpect
 
 PW = os.environ["PW"]
 if len(sys.argv) > 1:
-    script = "kanidm login >/dev/null 2>&1; " + sys.argv[1]
+    script = "kanidm logout >/dev/null 2>&1; kanidm login >/dev/null 2>&1; " + sys.argv[1]
 else:
-    script = "kanidm login && exec sh"
+    script = "kanidm logout >/dev/null 2>&1; kanidm login && exec sh"
 
-cmd = [
+args = [
     "podman", "run", "--rm", "-i", "-t", "--network", "host",
     "--add-host", "id.wraindrock.com:127.0.0.1",
     "-v", "kanidm-cli-home:/tmp/k",
@@ -34,28 +33,32 @@ cmd = [
     "-c", script,
 ]
 
-pid, fd = pty.fork()
-if pid == 0:
-    os.execvp(cmd[0], cmd)
+class _Redactor:
+    """过滤输出中的密码回显（pty 在某些提示下会回显输入）。"""
 
-os.write(fd, (PW + "\n").encode())
-out = []
+    def __init__(self, stream, secret):
+        self.stream = stream
+        self.secret = secret
+
+    def write(self, text):
+        self.stream.write(text.replace(self.secret, "***"))
+        return len(text)
+
+    def flush(self):
+        self.stream.flush()
+
+
+child = pexpect.spawn(args[0], args[1:], encoding="utf-8", timeout=30, dimensions=(50, 200))
+child.logfile_read = _Redactor(sys.stdout, PW)  # 实时流式输出（已脱敏）
 while True:
-    r, _, _ = select.select([fd], [], [], 60)
-    if not r:
+    idx = child.expect(
+        [r"(?i)password for", r"(?i)password:", r"(?i)reauthenticate", r"(?i)enter\s",
+         r"\[Y/n\]", r"\[y/N\]", pexpect.EOF, pexpect.TIMEOUT]
+    )
+    if idx <= 5:
+        child.sendline(PW if idx <= 3 else "y")
+    elif idx == 6:  # EOF
         break
-    try:
-        data = os.read(fd, 4096)
-    except OSError:
-        break
-    if not data:
-        break
-    out.append(data.decode(errors="replace"))
-
-_, status = os.waitpid(pid, 0)
-text = "".join(out).replace("\r", "")
-for line in text.splitlines():
-    if "verify_ca" in line or line.strip() == PW:
-        continue
-    print(line)
-sys.exit(os.waitstatus_to_exitcode(status))
+    # timeout：命令仍在跑，继续等
+child.close()
+sys.exit(child.exitstatus or 0)

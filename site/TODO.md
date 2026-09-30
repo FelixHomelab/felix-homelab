@@ -1015,7 +1015,9 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
     2) 需 `warning-insecure-client-disable-pkce`（Forgejo 早期不带 PKCE）；
     3) `groups` 作用域输出组 SPN/UUID，Forgejo `--admin-group felix-admins@id.wraindrock.com`；
     4) 绑定：本地登录后访问 `/user/oauth2/kanidm`，`external_login_user` 记录 sub=Kanidm UUID；
-    5) 本地密码登录保留并联
+    5) **终态**：本地密码已清空、本地注册关闭（`ALLOW_ONLY_EXTERNAL_REGISTRATION=true`）、
+   新用户首次 OIDC 登录经 `/user/link_account` 确认后自动建号（`login_type=6`，已实测）；
+   scope map 必须覆盖 `felix-users` 组，否则普通用户 Access Denied
   - ✅ 分组账户策略（实测）：`idm_all_persons` 放宽为 any + 最短 10 位（普通用户密码-only），
     `felix-admins`=mfa（多组取最严）；zxcvbn 4/4 仍强制。开户：`scripts/kanidm-adduser.sh`
     （建号→入组→7 天 onboarding 链接，私发即可，无需邮件）
