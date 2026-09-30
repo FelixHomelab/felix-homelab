@@ -317,7 +317,10 @@ fn format_seconds(seconds: i64) -> String {
     }
 }
 
-/// 订阅卡片：标题 + 运行状态点 + 主机名 + 打开动作（尽量少的文字）。
+/// 订阅卡片（三行）：
+/// 1. 用户自定义备注（可点击铅笔修改）
+/// 2. Agent 类型 + 运行状态
+/// 3. 链接（打开）
 #[component]
 pub(crate) fn MyAgentCard(agent: AgentRow) -> impl IntoView {
     // 运行状态优先于配置状态：用户关心“现在能不能直接打开”
@@ -335,39 +338,126 @@ pub(crate) fn MyAgentCard(agent: AgentRow) -> impl IntoView {
             "dot dot-muted",
         ),
     };
-    // 只展示主机名，去掉协议前缀；整卡都是链接，不再堆说明文字
+    let kind_label = agent_kind_label(&agent.kind);
     let host = agent
         .url
         .trim_start_matches("https://")
         .trim_end_matches('/')
         .to_string();
-    let note = agent.note.trim().to_string();
-    let is_dsh = agent.kind == "dsh";
-    // DSH 首次进入需要带令牌链接；OpenCode 直接打开即可
     let href = agent.login_url.clone().unwrap_or_else(|| agent.url.clone());
+    let agent_id = agent.id;
+
+    let note = RwSignal::new(agent.note.trim().to_string());
+    let editing = RwSignal::new(false);
+    let draft = RwSignal::new(String::new());
+    let error = RwSignal::new(String::new());
+    let input_ref = NodeRef::<leptos::html::Input>::new();
+
+    let start_edit = move |_| {
+        draft.set(note.get_untracked());
+        error.set(String::new());
+        editing.set(true);
+    };
+    let save = move || {
+        if !editing.get_untracked() {
+            return;
+        }
+        let value = draft.get_untracked();
+        if value.chars().count() > 40 {
+            error.set("备注最多 40 个字。".to_string());
+            return;
+        }
+        let previous = note.get_untracked();
+        note.set(value.clone());
+        editing.set(false);
+        leptos::task::spawn_local(async move {
+            match crate::agents::update_agent_note(agent_id, value).await {
+                Ok(Ok(())) => {}
+                Ok(Err(message)) => {
+                    note.set(previous);
+                    error.set(message);
+                }
+                Err(e) => {
+                    note.set(previous);
+                    error.set(format!("保存失败：{e}"));
+                }
+            }
+        });
+    };
+
+    // 进入编辑态后自动聚焦输入框
+    Effect::new(move |_| {
+        if editing.get() {
+            #[cfg(feature = "hydrate")]
+            if let Some(input) = input_ref.get() {
+                let _ = input.focus();
+            }
+        }
+    });
 
     view! {
-        <a class="agent-card" href=href target="_blank" rel="noreferrer" title=agent.url.clone()>
-            <div class="agent-card-head">
-                <strong>{agent_kind_label(&agent.kind)}</strong>
+        <div class="agent-card">
+            <div class="agent-card-top">
+                {move || {
+                    if editing.get() {
+                        view! {
+                            <input
+                                node_ref=input_ref
+                                class="agent-note-input"
+                                maxlength="40"
+                                prop:value=move || draft.get()
+                                on:input=move |ev| draft.set(event_target_value(&ev))
+                                on:keydown=move |ev| match ev.key().as_str() {
+                                    "Enter" => save(),
+                                    "Escape" => editing.set(false),
+                                    _ => {}
+                                }
+                                on:blur=move |_| save()
+                            />
+                        }
+                            .into_any()
+                    } else {
+                        let text = note.get();
+                        let empty = text.is_empty();
+                        view! {
+                            <span class=if empty {
+                                "agent-note agent-note-empty"
+                            } else {
+                                "agent-note"
+                            }>
+                                {if empty { "未命名".to_string() } else { text }}
+                            </span>
+                        }
+                            .into_any()
+                    }
+                }}
+                <button
+                    class="icon-btn"
+                    type="button"
+                    title="编辑备注"
+                    aria-label="编辑备注"
+                    on:click=start_edit
+                >
+                    "✎"
+                </button>
+            </div>
+            <div class="agent-card-meta">
+                <span class="agent-kind">{kind_label}</span>
+                <span class="agent-sep">"·"</span>
                 <span class="agent-state">
                     <i class=dot_class></i>
                     {runtime_label}
                 </span>
             </div>
-            <div class="agent-card-foot">
+            <a class="agent-card-link" href=href target="_blank" rel="noreferrer" title=agent.url.clone()>
                 <span class="agent-host">{host}</span>
-                <span class="agent-open">
-                    {if is_dsh { "自动登录 · 打开" } else { "打开" }} " ↗"
-                </span>
-            </div>
-            {(!note.is_empty())
-                .then(|| {
-                    view! {
-                        <p class="agent-card-note">{note.clone()}</p>
-                    }
-                })}
-        </a>
+                <span class="agent-open">"打开 ↗"</span>
+            </a>
+            {move || {
+                let message = error.get();
+                (!message.is_empty()).then(|| view! { <p class="agent-card-err">{message}</p> })
+            }}
+        </div>
     }
 }
 

@@ -782,6 +782,40 @@ pub async fn admin_list_agents(include_deleted: bool) -> Result<Vec<AgentRow>, S
 }
 
 /// 用户首屏：当前登录账号自己的 Agent 入口（未登录返回空表）。
+/// 修改自己某个 Agent 的备注（卡片第一行的自定义名称）。
+#[server]
+pub async fn update_agent_note(agent_id: i64, note: String) -> crate::auth::ActionResult {
+    use crate::state::AppState;
+
+    let Some(identity) = crate::auth::current_identity().await else {
+        return Ok(Err("请先登录。".to_string()));
+    };
+    let note = note.trim().to_string();
+    if note.chars().count() > 40 {
+        return Ok(Err("备注最多 40 个字。".to_string()));
+    }
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+
+    let result = sqlx::query(
+        "UPDATE agent_subscriptions SET note = ?1, updated_at = datetime('now') \
+         WHERE id = ?2 AND user_id = ?3 AND status != 'revoked' AND purged_at IS NULL",
+    )
+    .bind(&note)
+    .bind(agent_id)
+    .bind(identity.id)
+    .execute(&app.pool)
+    .await;
+
+    match result {
+        Ok(done) if done.rows_affected() > 0 => Ok(Ok(())),
+        Ok(_) => Ok(Err("没有找到这个 Agent。".to_string())),
+        Err(e) => {
+            leptos::logging::error!("更新 Agent 备注失败: {e}");
+            Ok(Err("保存失败，稍后再试。".to_string()))
+        }
+    }
+}
+
 /// 时长池视图：某统计窗口内的总时长与剩余时长（秒）。
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimePool {
