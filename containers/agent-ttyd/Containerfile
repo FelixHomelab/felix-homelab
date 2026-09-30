@@ -1,0 +1,25 @@
+# Felix-Homelab 多租户 Agent 模板镜像（终端型：Kilo Code / Pi）
+#
+# 终端型编码代理（TUI）没有自带 Web UI；用 ttyd 提供浏览器终端，
+# 由 agent 网关（前置于站长会话鉴权）反代到子域。
+# 构建：scripts/build-agent-image.sh kilocode|pi（AGENT_PKG/AGENT_BIN/AGENT_VERSION 传入）
+ARG NODE_VERSION=22-alpine
+FROM docker.io/library/node:${NODE_VERSION}
+
+ARG AGENT_PKG
+ARG AGENT_VERSION
+ARG AGENT_BIN
+
+RUN apk add --no-cache bash git curl ca-certificates ttyd tzdata \
+ && npm install -g --ignore-scripts "${AGENT_PKG}@${AGENT_VERSION}"
+
+ENV HOME=/data \
+    XDG_DATA_HOME=/data/.local/share \
+    XDG_CONFIG_HOME=/data/.config \
+    AGENT_BIN=${AGENT_BIN}
+
+COPY entrypoint.sh /usr/local/bin/felix-agent-entrypoint.sh
+RUN chmod +x /usr/local/bin/felix-agent-entrypoint.sh
+
+EXPOSE 7681
+ENTRYPOINT ["/usr/local/bin/felix-agent-entrypoint.sh"]

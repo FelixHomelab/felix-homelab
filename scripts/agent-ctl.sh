@@ -9,7 +9,7 @@
 #     通过 Caddy 子域 + 主站会话鉴权访问。
 #
 # 用法：
-#   agent-ctl.sh build [kind]              构建模板镜像（默认 opencode；kind=dsh）
+#   agent-ctl.sh build [kind]              构建模板镜像（opencode/dsh/openclaw/kilocode/pi）
 #   agent-ctl.sh grant <user> [kind] [slot] 创建并启动（授权仍以站点后台为准）
 #   agent-ctl.sh start|stop|remove <user> [slot]
 #   agent-ctl.sh setkey <user> [slot] [KEY=VALUE ...]  写 DSH 密钥（只写不读值）
@@ -44,6 +44,9 @@ fi
 
 AGENT_IMAGE="${AGENT_IMAGE:-localhost/felix-agent-opencode:latest}"
 AGENT_DSH_IMAGE="${AGENT_DSH_IMAGE:-localhost/felix-agent-dsh:latest}"
+AGENT_OPENCLAW_IMAGE="${AGENT_OPENCLAW_IMAGE:-localhost/felix-agent-openclaw:latest}"
+AGENT_KILOCODE_IMAGE="${AGENT_KILOCODE_IMAGE:-localhost/felix-agent-kilocode:latest}"
+AGENT_PI_IMAGE="${AGENT_PI_IMAGE:-localhost/felix-agent-pi:latest}"
 AGENT_BASE_DOMAIN="${AGENT_BASE_DOMAIN:-wraindrock.com}"
 AGENT_LOCAL_DOMAIN="${AGENT_LOCAL_DOMAIN:-agent.localhost}"
 AGENT_PORT_BASE="${AGENT_PORT_BASE:-20001}"
@@ -381,6 +384,9 @@ caddy_reload() {
 image_of() {
 	case "$1" in
 	dsh) printf '%s' "$AGENT_DSH_IMAGE" ;;
+	openclaw) printf '%s' "$AGENT_OPENCLAW_IMAGE" ;;
+	kilocode) printf '%s' "$AGENT_KILOCODE_IMAGE" ;;
+	pi) printf '%s' "$AGENT_PI_IMAGE" ;;
 	*) printf '%s' "$AGENT_IMAGE" ;;
 	esac
 }
@@ -389,7 +395,7 @@ require_image() {
 	local image
 	image="$(image_of "$1")"
 	if ! podman image exists "$image"; then
-		die "模板镜像不存在：$image（先执行 make agent-build 或 make agent-build-dsh）"
+		die "模板镜像不存在：$image（先执行 make agent-build-<kind>，可用 opencode/dsh/openclaw/kilocode/pi）"
 	fi
 }
 
@@ -485,6 +491,17 @@ container_create() {
 			--host 0.0.0.0 --port "$port" --no-open
 			--trusted-host "$dsh_host.$AGENT_LOCAL_DOMAIN"
 			--trusted-host "$dsh_host.$AGENT_BASE_DOMAIN")
+		;;
+	openclaw)
+		# OpenClaw Gateway：控制台与网关同端口；token（实例密码）由入口脚本写入配置
+		args+=(--env "AGENT_PORT=$port")
+		args+=(--env "AGENT_TOKEN=$password")
+		args+=("$(image_of "$kind")")
+		;;
+	kilocode | pi)
+		# 终端型 Agent：容器内 ttyd 提供 Web 终端（AGENT_PORT 注入端口）
+		args+=(--env "AGENT_PORT=$port")
+		args+=("$(image_of "$kind")")
 		;;
 	*)
 		args+=(--env "OPENCODE_SERVER_PASSWORD=$password")
@@ -892,7 +909,7 @@ changed = False
 for key, entry in data.get("agents", {}).items():
     if entry.get("desired") != "started":
         continue
-    if entry.get("kind") != "dsh" and entry.get("kind") != "opencode":
+    if entry.get("kind") not in ("dsh", "opencode", "openclaw", "kilocode", "pi"):
         pass
     name = f"felix-agent-{entry.get('slug', '')}"
     try:
@@ -1123,11 +1140,14 @@ list_versions() {
 		current=""
 		[ "$image" = "$AGENT_IMAGE" ] && current="opencode"
 		[ "$image" = "$AGENT_DSH_IMAGE" ] && current="${current:+$current,}dsh"
+		[ "$image" = "$AGENT_OPENCLAW_IMAGE" ] && current="${current:+$current,}openclaw"
+		[ "$image" = "$AGENT_KILOCODE_IMAGE" ] && current="${current:+$current,}kilocode"
+		[ "$image" = "$AGENT_PI_IMAGE" ] && current="${current:+$current,}pi"
 		printf '%-46s %-17s %-9s %-24s %s\n' \
 			"$image" "$(printf '%s' "$created" | cut -d' ' -f1-2)" "$size" "${used:-—}" "${current:-—}"
 	done < <(podman images \
 		--format '{{.CreatedAt}}|{{.Repository}}:{{.Tag}}|{{.Size}}' 2>/dev/null \
-		| grep -E '(^|/)felix-agent-(opencode|dsh):' | sort -r)
+		| grep -E '(^|/)felix-agent-(opencode|dsh|openclaw|kilocode|pi):' | sort -r)
 }
 
 # 固定模板镜像版本：把 AGENT_IMAGE / AGENT_DSH_IMAGE 写回 .env（版本标签由
@@ -1137,9 +1157,12 @@ pin_image() {
 	case "$kind" in
 	opencode) var=AGENT_IMAGE ;;
 	dsh) var=AGENT_DSH_IMAGE ;;
-	*) die "用法：agent-ctl.sh pin <opencode|dsh> <版本|latest>" ;;
+	openclaw) var=AGENT_OPENCLAW_IMAGE ;;
+	kilocode) var=AGENT_KILOCODE_IMAGE ;;
+	pi) var=AGENT_PI_IMAGE ;;
+	*) die "用法：agent-ctl.sh pin <opencode|dsh|openclaw|kilocode|pi> <版本|latest>" ;;
 	esac
-	[ -n "$ref" ] || die "用法：agent-ctl.sh pin <opencode|dsh> <版本|latest>"
+	[ -n "$ref" ] || die "用法：agent-ctl.sh pin <opencode|dsh|openclaw|kilocode|pi> <版本|latest>"
 	repo="${!var%:*}"
 	if [ "$ref" = "latest" ]; then
 		target="$repo:latest"

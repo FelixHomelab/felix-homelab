@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 /// 支持的模板类型（仅服务端校验用）。
 #[cfg(feature = "ssr")]
-const AGENT_KINDS: [&str; 2] = ["opencode", "dsh"];
+const AGENT_KINDS: [&str; 5] = ["opencode", "dsh", "openclaw", "kilocode", "pi"];
 
 /// 单个用户可开通的实例数上限（P1 保护宿主资源）。
 #[cfg(feature = "ssr")]
@@ -36,6 +36,9 @@ pub fn agent_kind_label(kind: &str) -> &'static str {
     match kind {
         "opencode" => "OpenCode",
         "dsh" => "DeepSeek Harness",
+        "openclaw" => "OpenClaw",
+        "kilocode" => "Kilo Code",
+        "pi" => "Pi",
         _ => "Agent",
     }
 }

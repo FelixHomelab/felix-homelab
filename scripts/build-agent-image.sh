@@ -56,8 +56,26 @@ dsh)
 	DIR="$REPO_DIR/containers/agent-dsh"
 	BUILD_ARGS=(--build-arg "DSH_VERSION=$VERSION" --build-arg "DSHMARKET_VERSION=$MARKET_VERSION" --build-arg "DSHGUARDIAN_REF=$GUARDIAN_REF" --build-arg "DSHCOSTMETER_VERSION=$COSTMETER_VERSION" --build-arg "OPENCODE2DSH_REF=$OC2DSH_REF" --build-arg "DSHBETTERSIDEBAR_VERSION=$SIDEBAR_VERSION" --build-arg "DSHEGOBROWSER_REF=$EGOBROWSER_REF" --build-arg "DSHDEV_RULES_REF=$DEV_RULES_REF" --build-arg "OBSCURA_VERSION=$OBSCURA_VER")
 	;;
+openclaw)
+	VERSION="${OPENCLAW_VERSION:-2026.9.7}"
+	IMAGE="${AGENT_OPENCLAW_IMAGE:-localhost/felix-agent-openclaw:latest}"
+	DIR="$REPO_DIR/containers/agent-openclaw"
+	BUILD_ARGS=(--build-arg "OPENCLAW_VERSION=$VERSION")
+	;;
+kilocode)
+	VERSION="${KILOCODE_VERSION:-7.8.1}"
+	IMAGE="${AGENT_KILOCODE_IMAGE:-localhost/felix-agent-kilocode:latest}"
+	DIR="$REPO_DIR/containers/agent-ttyd"
+	BUILD_ARGS=(--build-arg "AGENT_PKG=@kilocode/cli" --build-arg "AGENT_VERSION=$VERSION" --build-arg "AGENT_BIN=kilo")
+	;;
+pi)
+	VERSION="${PI_VERSION:-0.99.1}"
+	IMAGE="${AGENT_PI_IMAGE:-localhost/felix-agent-pi:latest}"
+	DIR="$REPO_DIR/containers/agent-ttyd"
+	BUILD_ARGS=(--build-arg "AGENT_PKG=@earendil-works/pi-coding-agent" --build-arg "AGENT_VERSION=$VERSION" --build-arg "AGENT_BIN=pi")
+	;;
 *)
-	printf '未知模板：%s（可选 opencode / dsh）\n' "$KIND" >&2
+	printf '未知模板：%s（可选 opencode / dsh / openclaw / kilocode / pi）\n' "$KIND" >&2
 	exit 1
 	;;
 esac

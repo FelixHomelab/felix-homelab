@@ -1242,3 +1242,20 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 
 **可选深挖**：wasm-opt -Oz（再减 10–20%）、Service Worker 离线缓存、
 静态资产迁 Cloudflare Pages/R2（彻底绕开隧道回源）、CF Argo（付费）。
+
+---
+
+## Agent 类型扩展（2026-09-30 完成）
+
+新增 **OpenClaw / Kilo Code / Pi**（临时任务），端到端接通：
+- DB：迁移 `0018_agent_kinds.sql`（CHECK 扩到 5 种）；站点白名单/标签/后台下拉同步。
+- 镜像：
+  - `agent-openclaw`：node:24-slim + `openclaw@2026.9.7`；入口生成
+    `~/.openclaw/openclaw.json`（`gateway.mode=local`、`bind=lan`、`auth=token`、`controlUi.enabled`），
+    前台 `openclaw gateway run`（官方文档：网关与控制台同端口，默认 18789）。
+  - `agent-ttyd`（共用）：node:22-alpine + ttyd + 官方 npm 包；
+    Kilo Code = `@kilocode/cli@7.8.1`（bin `kilo`）、Pi = `@earendil-works/pi-coding-agent@0.99.1`（bin `pi`）。
+- agent-ctl：镜像映射/创建分支（openclaw 注入 `AGENT_PORT/AGENT_TOKEN`；ttyd 注入 `AGENT_PORT`）、
+  升级检测、pin、白名单校验。
+- 实测（本地链路）：ttyd 200 / 无会话 401 / 停机唤醒 502→自动拉起→200；OpenClaw 网关 ready（200）。
+- 备注：公网验证受隧道瞬时抖动影响（cloudflared QUIC 偶发不可达，自动恢复）。
