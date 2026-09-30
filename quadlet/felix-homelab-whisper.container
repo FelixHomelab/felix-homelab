@@ -1,0 +1,34 @@
+[Unit]
+Description=Felix-Homelab: 语音转文字（faster-whisper + NVIDIA GPU）
+Documentation=https://github.com/SYSTRAN/faster-whisper
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=felix-homelab-whisper
+Image=localhost/felix-whisper:latest
+# 只发布到宿主回环；站点后端经 /api/stt 代理调用
+PublishPort=127.0.0.1:8085:8080
+# NVIDIA CDI 透传（宿主需有 nvidia-container-toolkit 生成的 /var/run/cdi/nvidia.yaml）
+AddDevice=nvidia.com/gpu=all
+SecurityLabelDisable=true
+Environment=WHISPER_MODEL=large-v3
+Environment=WHISPER_DEVICE=cuda
+# 首次启动从 hf-mirror 拉模型（约 3GB，缓存在命名卷；之后启动直接加载）
+Environment=HF_ENDPOINT=https://hf-mirror.com
+Volume=felix-homelab-whisper-models.volume:/models
+Label=autoheal=true
+# 健康检查用 python（镜像里没有 curl）；首次下载模型较久，StartPeriod 给足
+HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz').read()"
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=5
+HealthStartPeriod=20m
+HealthOnFailure=kill
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

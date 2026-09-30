@@ -67,6 +67,7 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 | 3000     | Forgejo (3000) | 仅供 host 网络的作业容器经 `127.0.0.1:3000` 访问 |
 | 5735     | 主站 (8090) | 仅供 Agent 网关 forward_auth 调用 |
 | 8443     | Kanidm (8443) | 统一账户 IdP 直连（仅回环；公网经 Tunnel） |
+| 8085     | STT (8080) | 语音转文字（仅回环；站点经 /api/stt 代理） |
 | 5740     | Agent 网关 (Caddy) | 仅宿主回环；<子域>.agent.<域名> 统一入口 |
 | 20001+   | AI Agent（动态分配） | 各 Agent 发布到宿主回环；经 5740 网关鉴权后访问 |
 
@@ -399,6 +400,23 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
 - **我的订阅**：展示已订阅的 AI Agent（卡片：打开即用、有效期、状态）与容量订阅
   （OpenCloud / Forgejo 共用容量；订单系统上线后显示已购/已用/剩余/到期）。
   原先放在首页的「我的 Agent」区块已并入此页。
+
+## 语音转文字（STT）
+
+站内自托管、GPU 加速的语音识别服务（faster-whisper / CTranslate2，OpenAI 兼容）：
+
+- **服务**：`quadlet/felix-homelab-whisper.container`（镜像 `localhost/felix-whisper:latest`，
+  `scripts/build-whisper.sh` 构建），只发布 `127.0.0.1:8085`；
+  经 NVIDIA CDI（`AddDevice=nvidia.com/gpu=all` + `SecurityLabelDisable=true`）使用 GPU，
+  无 GPU 时应用自动回退 CPU。
+- **模型**：`large-v3`（float16，约 3.8G 显存；中文/多语种），缓存在命名卷
+  `felix-homelab-whisper-models`，首次启动从 `HF_ENDPOINT=https://hf-mirror.com` 下载（约 3-4GB）。
+  模型缓存**不纳入备份**（可重新下载）。
+- **接口**：`GET /healthz`；`POST /v1/audio/transcriptions`（multipart `file`，可选 `language`、`response_format`）。
+  实测：11 秒英文 1.23s、5 秒中文 0.77s。
+- **选型备注**：不用官方 whisper.cpp 镜像——其二进制按构建机 AVX512 编译，本机
+  （i7-13650HX）加载模型即 SIGILL；选用 faster-whisper 后无编译、CUDA 开箱即用。
+- **安装**：`make install` 在检测到 NVIDIA CDI 时自动构建镜像并启用本服务，否则跳过。
 
 ## 后台运维（/admin）
 

@@ -26,6 +26,7 @@ CORE_SERVICES=(
 	felix-homelab-caddy.service
 	felix-homelab-opencloud.service
 	felix-homelab-kanidm.service
+	felix-homelab-whisper.service
 	felix-homelab-agent-gateway.service
 	felix-homelab-homepage.service
 	felix-homelab-autoheal.service
@@ -432,6 +433,16 @@ if [ -L "$UNIT_DIR/felix-homelab-cloudflared.container" ]; then
 	CORE_SERVICES+=(felix-homelab-cloudflared.service)
 fi
 
+# 语音转文字：需要 NVIDIA CDI（无 GPU 的机器跳过，站点会显示“转写不可用”）
+if [ -L "$UNIT_DIR/felix-homelab-whisper.container" ]; then
+	if [ -e /var/run/cdi/nvidia.yaml ] || [ -e /etc/cdi/nvidia.yaml ]; then
+		CORE_SERVICES+=(felix-homelab-whisper.service)
+	else
+		CORE_SERVICES=("${CORE_SERVICES[@]/felix-homelab-whisper.service}")
+		warn "未检测到 NVIDIA CDI（/var/run/cdi/nvidia.yaml），跳过语音转文字服务"
+	fi
+fi
+
 # ---------------------------------------------------------------------------
 # 6. 预拉取镜像（走镜像加速）
 # ---------------------------------------------------------------------------
@@ -452,6 +463,12 @@ fi
 if ! podman image exists localhost/felix-homelab-site:latest; then
 	log "构建主站镜像（首次需要编译 Rust，可能较久）"
 	"$REPO_DIR/scripts/build-site.sh"
+	if [ -e /var/run/cdi/nvidia.yaml ] || [ -e /etc/cdi/nvidia.yaml ]; then
+		if ! podman image exists localhost/felix-whisper:latest; then
+			log "构建语音转文字镜像（首次约 1-2 分钟）..."
+			"$REPO_DIR/scripts/build-whisper.sh"
+		fi
+	fi
 fi
 
 # ---------------------------------------------------------------------------

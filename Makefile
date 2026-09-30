@@ -22,6 +22,7 @@ SERVICES := felix-homelab-db.service felix-homelab-forgejo.service \
 	felix-homelab-homepage.service \
 	felix-homelab-opencloud.service \
 	felix-homelab-kanidm.service \
+	felix-homelab-whisper.service \
 	felix-homelab-runner.service felix-homelab-frpc.service \
 	felix-homelab-agent-frpc.service \
 	felix-homelab-backup.service felix-homelab-autoheal.service
@@ -46,6 +47,9 @@ build-images: ## 构建修复版 Runner 作业镜像（make register 会自动�
 
 build-site: ## 构建主站（Felix Homelab 社区站）镜像
 	$(REPO_DIR)/scripts/build-site.sh
+
+build-whisper: ## 构建语音转文字（STT）镜像
+	$(REPO_DIR)/scripts/build-whisper.sh
 
 agent-build: ## 构建多租户 Agent 模板镜像（OpenCode）
 	$(REPO_DIR)/scripts/build-agent-image.sh opencode

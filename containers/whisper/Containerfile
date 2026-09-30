@@ -1,0 +1,31 @@
+# 站内语音转文字（STT）服务镜像
+#
+# 选型：faster-whisper（CTranslate2）——无需本地编译，CUDA 加速开箱即用，
+# 自带 CPU 回退。对外提供 OpenAI 兼容的 /v1/audio/transcriptions。
+#
+# GPU 运行（rootless podman + NVIDIA CDI）：
+#   podman run --device nvidia.com/gpu=all --security-opt=label=disable ...
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_ENDPOINT=https://hf-mirror.com
+
+RUN pip install --no-cache-dir \
+        "faster-whisper>=1.1" \
+        # PyAV 16+ 移除了 metadata_errors（faster-whisper 仍在用），钉住 14.x
+        "av==14.2.0" \
+        fastapi \
+        "uvicorn[standard]" \
+        python-multipart \
+        nvidia-cublas-cu12 \
+        nvidia-cudnn-cu12
+
+# ctranslate2 通过 LD_LIBRARY_PATH 找 cuBLAS / cuDNN（来自 pip 轮子）
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.12/site-packages/nvidia/cudnn/lib
+
+WORKDIR /srv
+COPY server.py /srv/server.py
+
+EXPOSE 8080
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]

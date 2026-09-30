@@ -1107,10 +1107,18 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 - **M2 文件**：任意文件附件（类型/大小白名单），下载统计。
 - **M3 语音消息**：浏览器 MediaRecorder 录音（webm/opus；iOS 兼容 mp4/aac）→ 上传 →
   站内播放条（时长、波形可选）。
-- **M4 语音转文字（STT）**：服务端转写，结果可编辑后再发送，
-  交互形态参考 DeepSeek 官方 App 的语音输入（DSH 镜像内未发现可复用的语音实现）。
-  渠道待定：本地 whisper.cpp（隐私、零边际成本）或云 API（效果稳、需 key，语音外发）。
+- **M4 语音转文字（STT）**：✅ 服务已常驻（faster-whisper large-v3 + NVIDIA GPU，
+  `felix-homelab-whisper`，OpenAI 兼容 `/v1/audio/transcriptions`，实测中文 0.77s/5s）。
+  站点侧待做：`/api/stt` 代理 + 录音组件（录音→转写→可编辑后发送）。
 - **M5 视频**：直传 + 播放（限制大小/时长），转码与封面帧后置。
 
-**待定项**：媒体容量计入 OpenCloud/Forgejo 容量池，或站内独立配额；STT 渠道；
-首发落点（社区帖子/评论 → 私信或全站）。
+**已定决策（用户确认）**：
+- **STT：站内自托管 + GPU 加速**。方案：whisper.cpp server（OpenAI 兼容
+  `/v1/audio/transcriptions`），Podman + NVIDIA CDI（宿主 RTX 4060 8GB，驱动 615/ CUDA 13.4，
+  `/var/run/cdi/nvidia.yaml` 已就绪）。模型优先 large-v3-turbo（8GB 可跑、快且质量高），
+  备选 medium；模型卷入备份策略；站点通过 `/api/stt` 代理调用。
+- **媒体容量：计入现有容量池**（OpenCloud/Forgejo 共用），与订阅体系自然打通。
+- **外置云存储（新需求）**：可购买开通「个人外置云存储」——用户绑定自己的 WebDAV（后续可扩 S3 等），
+  上传的媒体**优先写入其个人外置存储**，站内保存索引（缩略图可选本地缓存）。需要：
+  凭据加密存储、可用性探测、不可用时回退本地并提示、外置容量不计入站内容量池。
+- **内容面：全部一起做**——社区帖子、评论、私信（待做）统一走同一套媒体组件。
