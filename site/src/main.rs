@@ -50,6 +50,9 @@ async fn main() -> anyhow::Result<()> {
     // Agent 子域回填：老数据生成新样式域名，并让宿主刷新路由
     agents::ensure_subdomains(&pool).await?;
 
+    // 旧 Agent 有效期结转时长池（幂等；见 site/TODO.md 的 AI Agent 计费规则）
+    agents::convert_legacy_agent_time(&pool).await?;
+
     // --- 内容 ---
     let content_dir = std::env::var("CONTENT_DIR").unwrap_or_else(|_| "content".to_string());
     content::store::load(&content_dir)

@@ -341,11 +341,16 @@ pub(crate) fn MyAgentCard(agent: AgentRow) -> impl IntoView {
         Some(_) => "准备中",
         None => "部署中",
     };
-    let expires = agent
-        .expires_at
-        .clone()
-        .map(|value| format!("有效期至 {value}"))
-        .unwrap_or_else(|| "长期有效".to_string());
+    // 旧有效期已折算进时长池后，不再展示逐实例到期时间（计费以池为准）
+    let expires = if agent.pooled_at.is_some() {
+        "时间已计入时长池".to_string()
+    } else {
+        agent
+            .expires_at
+            .clone()
+            .map(|value| format!("有效期至 {value}"))
+            .unwrap_or_else(|| "长期有效".to_string())
+    };
     let note = agent.note.trim().to_string();
     let is_dsh = agent.kind == "dsh";
     // DSH 首次进入需要带令牌链接；OpenCode 直接打开即可

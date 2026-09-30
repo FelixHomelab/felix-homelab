@@ -87,6 +87,8 @@ pub struct AgentRow {
     pub status: String,
     pub subdomain: String,
     pub expires_at: Option<String>,
+    /// 旧有效期折算进时长池的时间（非空即已结转）
+    pub pooled_at: Option<String>,
     /// 撤销时间（宽限期内可续期复活）
     pub revoked_at: Option<String>,
     /// 彻底删除时间（非空即「彻底删除记录」，行保留 30 天供回溯）
@@ -707,6 +709,7 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> AgentRow {
         kind: row.get("kind"),
         status: row.get("status"),
         expires_at: row.get("expires_at"),
+        pooled_at: row.get("pooled_at"),
         revoked_at: row.get("revoked_at"),
         purged_at: row.get("purged_at"),
         note: row.get("note"),
@@ -719,7 +722,7 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> AgentRow {
 /// 订阅行查询的公共 SELECT 段。
 #[cfg(feature = "ssr")]
 const AGENT_SELECT: &str = "SELECT s.id, s.slot, s.subdomain, u.username, u.display_name, s.kind, s.status, \
-     s.expires_at, s.revoked_at, s.purged_at, s.note, s.created_at, s.updated_at \
+     s.expires_at, s.pooled_at, s.revoked_at, s.purged_at, s.note, s.created_at, s.updated_at \
      FROM agent_subscriptions s JOIN users u ON u.id = s.user_id";
 
 // ---------------------------------------------------------------------------
@@ -788,17 +791,112 @@ pub struct TimePool {
     pub remaining_seconds: i64,
 }
 
-/// 查询账号时长池（充值入账与剩余）。
+/// 查询账号时长池（窗口内入账 + 当前余额）。
 ///
-/// 计量/充值系统尚未落地：当前统一返回 0，前端显示空态进度条；
-/// 落地后按 `window`（全部/本月/本周/今天）从时间池流水聚合。
+/// - `total_seconds`：统计窗口内的入账合计（充值/旧有效期结转/人工调整）
+/// - `remaining_seconds`：当前池余额（时长可流转，余额与窗口无关）
 #[server]
 pub async fn agent_time_pool(window: String) -> Result<TimePool, ServerFnError> {
+    use crate::state::AppState;
+
+    let Some(identity) = crate::auth::current_identity().await else {
+        return Ok(TimePool {
+            window,
+            total_seconds: 0,
+            remaining_seconds: 0,
+        });
+    };
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+
+    let window = match window.as_str() {
+        "month" | "week" | "day" => window,
+        _ => "all".to_string(),
+    };
+
+    let total_sql = match window.as_str() {
+        "month" => {
+            "SELECT COALESCE(SUM(seconds),0) FROM time_pool_entries \
+             WHERE user_id = ?1 AND seconds > 0 AND created_at >= datetime('now','start of month')"
+        }
+        "week" => {
+            "SELECT COALESCE(SUM(seconds),0) FROM time_pool_entries \
+             WHERE user_id = ?1 AND seconds > 0 \
+               AND created_at >= datetime(date('now','weekday 0','-6 days'))"
+        }
+        "day" => {
+            "SELECT COALESCE(SUM(seconds),0) FROM time_pool_entries \
+             WHERE user_id = ?1 AND seconds > 0 AND created_at >= datetime('now','start of day')"
+        }
+        _ => {
+            "SELECT COALESCE(SUM(seconds),0) FROM time_pool_entries \
+             WHERE user_id = ?1 AND seconds > 0"
+        }
+    };
+
+    let total_seconds: i64 = sqlx::query_scalar(total_sql)
+        .bind(identity.id)
+        .fetch_one(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("查询时长池入账失败: {e}")))?;
+    let remaining_seconds: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(seconds),0) FROM time_pool_entries WHERE user_id = ?1")
+            .bind(identity.id)
+            .fetch_one(&app.pool)
+            .await
+            .map_err(|e| ServerFnError::new(format!("查询时长池余额失败: {e}")))?;
+
     Ok(TimePool {
         window,
-        total_seconds: 0,
-        remaining_seconds: 0,
+        total_seconds,
+        remaining_seconds,
     })
+}
+
+/// 旧 Agent 有效期 → 时长池结转（启动时执行，幂等）。
+///
+/// 折算规则：每个实例的**剩余有效期**按 1:1 计入池内秒数；已有 `pooled_at`
+/// 标记的不再重复结转。结转后实例卡片显示「时间已计入时长池」。
+#[cfg(feature = "ssr")]
+pub async fn convert_legacy_agent_time(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT id, user_id, CAST(strftime('%s', expires_at) - strftime('%s','now') AS INTEGER) AS remaining \
+         FROM agent_subscriptions \
+         WHERE pooled_at IS NULL AND purged_at IS NULL AND status != 'revoked' \
+           AND expires_at IS NOT NULL AND expires_at > datetime('now')",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut converted = 0usize;
+    for row in &rows {
+        let agent_id: i64 = row.get("id");
+        let user_id: i64 = row.get("user_id");
+        let remaining: i64 = row.get("remaining");
+        if remaining <= 0 {
+            continue;
+        }
+        sqlx::query(
+            "INSERT INTO time_pool_entries (user_id, seconds, kind, note, agent_id) \
+             VALUES (?1, ?2, 'migrate', '旧 Agent 有效期结转时长池', ?3)",
+        )
+        .bind(user_id)
+        .bind(remaining)
+        .bind(agent_id)
+        .execute(pool)
+        .await?;
+        sqlx::query("UPDATE agent_subscriptions SET pooled_at = datetime('now') WHERE id = ?1")
+            .bind(agent_id)
+            .execute(pool)
+            .await?;
+        converted += 1;
+    }
+
+    if converted > 0 {
+        tracing::info!("旧 Agent 有效期已结转时长池：{converted} 个实例");
+    }
+    Ok(())
 }
 
 #[server]
