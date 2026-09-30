@@ -4,6 +4,7 @@ use leptos::prelude::*;
 
 use crate::auth::UserState;
 use crate::comments::{load_comment_thread, submit_comment, CommentView};
+use super::media_tools::MediaTools;
 
 /// 某篇文章（或光遇页面）下的评论区。
 ///
@@ -183,6 +184,7 @@ pub fn CommentSection(
                             prop:value=move || draft.get()
                             on:input=move |ev| draft.set(event_target_value(&ev))
                         ></textarea>
+                        <MediaTools text=draft />
                         {move || {
                             let text = message.get();
                             (!text.is_empty())

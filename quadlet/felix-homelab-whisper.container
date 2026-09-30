@@ -1,14 +1,17 @@
 [Unit]
 Description=Felix-Homelab: 语音转文字（faster-whisper + NVIDIA GPU）
 Documentation=https://github.com/SYSTRAN/faster-whisper
-After=network-online.target
+After=network-online.target felix-homelab-pod.service
 Wants=network-online.target
+Requires=felix-homelab-pod.service
 
 [Container]
 ContainerName=felix-homelab-whisper
 Image=localhost/felix-whisper:latest
-# 只发布到宿主回环；站点后端经 /api/stt 代理调用
-PublishPort=127.0.0.1:8085:8080
+# 加入主 Pod：站点后端经 /api/stt 代理调用（pod 内 localhost:8095；
+# 端口避开 pod 内的 Caddy 8080 与站点 8090）
+Pod=felix-homelab.pod
+Exec=uvicorn server:app --host 0.0.0.0 --port 8095
 # NVIDIA CDI 透传（宿主需有 nvidia-container-toolkit 生成的 /var/run/cdi/nvidia.yaml）
 AddDevice=nvidia.com/gpu=all
 SecurityLabelDisable=true
@@ -19,7 +22,7 @@ Environment=HF_ENDPOINT=https://hf-mirror.com
 Volume=felix-homelab-whisper-models.volume:/models
 Label=autoheal=true
 # 健康检查用 python（镜像里没有 curl）；首次下载模型较久，StartPeriod 给足
-HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz').read()"
+HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/healthz').read()"
 HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=5

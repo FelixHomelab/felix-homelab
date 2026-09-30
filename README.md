@@ -418,6 +418,18 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
   （i7-13650HX）加载模型即 SIGILL；选用 faster-whisper 后无编译、CUDA 开箱即用。
 - **安装**：`make install` 在检测到 NVIDIA CDI 时自动构建镜像并启用本服务，否则跳过。
 
+## 富媒体与语音
+
+- **媒体接口**：`POST /api/media`（登录上传，内容寻址 + zstd 策略）、`GET /media/{id}/{name}`
+  （Range/按需解压/immutable 缓存）；详见上文「语音转文字」与 `site/TODO.md` 的存储压缩策略。
+- **媒体工具条**（社区发布页与评论框）：`图片` 选择上传并按 Markdown 插入正文；
+  `语音` 录音（MediaRecorder）→ 上传为语音消息 + 调 `/api/stt` 转写，
+  识别文字与 `[🎤 语音](/media/…)` 一并插入正文，发送前可编辑。
+- **语音消息渲染**：正文里指向本站 `/media/` 的音频链接会渲染成 `<audio controls>` 播放条
+  （`content.rs` 的 Markdown 事件改写；URL 白名单 + 转义，用户内容同样安全）。
+- 实测：图片上传→正文插入→发布→详情页渲染（1 图 1 音频）；假麦克风录音转写
+  “Thanks for watching!”。
+
 ## 后台运维（/admin）
 
 登录主站后点顶栏「后台」，包含：

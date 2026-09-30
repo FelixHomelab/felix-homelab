@@ -16,6 +16,7 @@ use crate::community::{
 use crate::components::comments::CommentSection;
 use crate::components::community::CommunityCard;
 use crate::components::PageHeader;
+use crate::components::MediaTools;
 use crate::sky::list_sky_community;
 
 /// 发布页展示的预置分类（与迁移 `0009_community_tags.sql` 一致）。
@@ -689,6 +690,7 @@ pub fn CommunitySubmitPage(
                                     prop:value=move || body.get()
                                     on:input=move |ev| body.set(event_target_value(&ev))
                                 ></textarea>
+                                <MediaTools text=body />
                             </label>
 
                             {move || {

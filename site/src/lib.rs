@@ -36,6 +36,8 @@ pub mod seo;
 #[cfg(feature = "ssr")]
 pub mod state;
 #[cfg(feature = "ssr")]
+pub mod stt;
+#[cfg(feature = "ssr")]
 pub mod uploads;
 
 /// 浏览器端水合入口：只在 `hydrate` 构建里存在。

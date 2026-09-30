@@ -6,7 +6,10 @@
 
 pub mod comments;
 pub mod community;
+pub mod media_tools;
 pub mod reviews;
+
+pub use media_tools::MediaTools;
 
 use crate::auth::UserState;
 use crate::theme::{ThemeMode, ThemeState};

@@ -2176,3 +2176,61 @@ html.splash-pending .site-footer {
     margin: 0.75rem 0 0;
     font-size: 0.8125rem;
 }
+
+
+/* ---------- 富媒体（正文中的音频/图注） ---------- */
+
+.prose audio {
+    display: block;
+    width: 100%;
+    max-width: 26rem;
+    margin: 0.6rem 0;
+}
+
+.prose .media-caption {
+    margin: 0.25rem 0 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
+
+
+/* ---------- 媒体工具条（图片/语音） ---------- */
+
+.media-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.hidden-file {
+    display: none;
+}
+
+.media-tools .btn.recording {
+    border-color: var(--bad);
+    color: var(--bad);
+}
+
+.recording-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--bad);
+    animation: rec-pulse 1s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.25;
+    }
+}
+
+.media-tools-msg {
+    font-size: 0.8125rem;
+}

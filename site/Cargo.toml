@@ -48,7 +48,7 @@ tokio-util = { version = "0.7", features = ["io"], optional = true }
 # 媒体存储：zstd 压缩（绑定 libzstd；构建镜像里已有 C 工具链）
 zstd = { version = "0.13", optional = true }
 # 统一账号 HTTP 校验（对用户不可见——本站登录就是它的登录；rustls，不依赖 openssl）
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"], optional = true }
 
 # 仅客户端（hydrate）依赖
 #
@@ -61,10 +61,33 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # 当前对齐的是 flake.lock 里那版 nixpkgs 的 wasm-bindgen-cli。
 # 升级这三个版本前，先确认目标 nixpkgs 里有对应的 CLI。
 wasm-bindgen = { version = "=0.2.127", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 # 读写 cookie 用；leptos 自带的 document() 不一定开着 set_cookie 所需的 feature，
 # 这里显式声明，feature 会与依赖图取并集，不会重复。
-web-sys = { version = "=0.3.104", features = ["Document", "Window", "Location"], optional = true }
+web-sys = { version = "=0.3.104", features = [
+    "Document",
+    "Window",
+    "Location",
+    # 媒体工具条：图片上传 / 录音（MediaRecorder）/ fetch 上传
+    "Blob",
+    "BlobEvent",
+    "BlobPropertyBag",
+    "File",
+    "FileList",
+    "FormData",
+    "HtmlInputElement",
+    "MediaDevices",
+    "MediaRecorder",
+    "MediaStream",
+    "MediaStreamConstraints",
+    "MediaStreamTrack",
+    "Navigator",
+    "Request",
+    "RequestCredentials",
+    "RequestInit",
+    "Response",
+], optional = true }
 # web-sys 0.3 把 document.cookie 只挂在已废弃的 HtmlDocument 上，
 # 这里改用 Reflect 直接读写该属性，避免依赖 instanceof 强制转换。
 js-sys = { version = "=0.3.104", optional = true }
@@ -74,6 +97,7 @@ hydrate = [
     "leptos/hydrate",
     "dep:console_error_panic_hook",
     "dep:wasm-bindgen",
+    "dep:wasm-bindgen-futures",
     "dep:web-sys",
     "dep:js-sys",
 ]

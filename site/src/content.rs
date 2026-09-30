@@ -117,7 +117,7 @@ pub struct SkyItem {
 /// pulldown-cmark 默认会原样透传裸 HTML，所以这里的过滤是必须的，不是可选加固。
 #[cfg(feature = "ssr")]
 pub fn render_markdown(md: &str, allow_html: bool) -> String {
-    use pulldown_cmark::{html, Event, Options, Parser};
+    use pulldown_cmark::{html, Event, Options, Parser, Tag, TagEnd};
 
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -129,9 +129,84 @@ pub fn render_markdown(md: &str, allow_html: bool) -> String {
         other => other,
     });
 
+    // 媒体链接改写：指向本站 /media/ 的音频链接渲染成 <audio> 播放条
+    // （语音消息）。URL 白名单 + 转义，用户内容（allow_html=false）同样安全。
+    let events: Vec<Event> = parser.collect();
+    let mut rewritten: Vec<Event> = Vec::with_capacity(events.len());
+    let mut index = 0;
+    while index < events.len() {
+        if let Event::Start(Tag::Link {
+            dest_url,
+            title: _,
+            id: _,
+            ..
+        }) = &events[index]
+        {
+            if is_audio_media_url(dest_url) {
+                let mut label = String::new();
+                let mut depth = 1usize;
+                let mut cursor = index + 1;
+                while cursor < events.len() && depth > 0 {
+                    match &events[cursor] {
+                        Event::Start(_) => depth += 1,
+                        Event::End(TagEnd::Link) => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        Event::Text(text) | Event::Code(text) => label.push_str(text),
+                        _ => {}
+                    }
+                    cursor += 1;
+                }
+                let url = escape_attr(dest_url);
+                rewritten.push(Event::Html(
+                    format!("<audio controls preload=\"metadata\" src=\"{url}\"></audio>").into(),
+                ));
+                let caption = label.trim();
+                if !caption.is_empty() && caption != "🎤 语音" {
+                    rewritten
+                        .push(Event::Html(format!("<p class=\"media-caption\">{}</p>", escape_text(caption)).into()));
+                }
+                index = cursor + 1;
+                continue;
+            }
+        }
+        rewritten.push(events[index].clone());
+        index += 1;
+    }
+
     let mut out = String::new();
-    html::push_html(&mut out, parser);
+    html::push_html(&mut out, rewritten.into_iter());
     out
+}
+
+/// 是否为本站媒体里的音频（语音消息）：`/media/{id}/{name}.{ext}`。
+#[cfg(feature = "ssr")]
+fn is_audio_media_url(url: &str) -> bool {
+    if !url.starts_with("/media/") {
+        return false;
+    }
+    let lower = url.to_ascii_lowercase();
+    [".webm", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+}
+
+#[cfg(feature = "ssr")]
+fn escape_attr(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+#[cfg(feature = "ssr")]
+fn escape_text(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// 服务端的内容索引与载入逻辑。
