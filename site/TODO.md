@@ -1259,3 +1259,17 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
   升级检测、pin、白名单校验。
 - 实测（本地链路）：ttyd 200 / 无会话 401 / 停机唤醒 502→自动拉起→200；OpenClaw 网关 ready（200）。
 - 备注：公网验证受隧道瞬时抖动影响（cloudflared QUIC 偶发不可达，自动恢复）。
+
+### Agent 扩展踩坑记录（2026-09-30）
+
+- **改了 agent-ctl 必须同步安装副本**：systemd 触发的是
+  `~/.config/felix-homelab/agents/agent-ctl.sh`；只改仓库版会导致新类型按旧逻辑创建
+  （表现为「三种新 Agent 打开都是 OpenCode」）。已加**镜像一致性检查**：state 的 kind 正确但
+  容器实际镜像与期望不一致时自动重建。
+- **OpenClaw 代理归属**：要求 `gateway.trustedProxies` 且 XFF 链含非受信的真实客户端 IP。
+  容器内动态计算 trustedProxies（自身 IP/网关/网段 + 回环）；网关路由对 openclaw 注入
+  `X-Forwarded-For: {CF-Connecting-IP}`（Tunnel 场景 XFF 不含客户端）。本地 curl 因客户端是回环
+  会被判不可归属（403），用公网验证。
+- **默认插件**：DSH 增加 `@huanx/kilo-zen2dsh@0.4.0`、`dsh-webchat@0.2.0`；
+  OpenClaw 增加 FreeRide（官方仓库固定提交 + `pip install -e`，首启注册技能）；
+  Pi 增加 `pi-freerouter@0.1.17`（构建期烘焙，首启复制到 HOME）。
