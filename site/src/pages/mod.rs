@@ -6,7 +6,7 @@ pub mod services;
 pub mod subscriptions;
 
 pub use services::ServicesPage;
-pub use subscriptions::SubscriptionsPage;
+pub use subscriptions::{SubscriptionSuccessPage, SubscriptionsPage};
 
 use crate::auth::UserState;
 use crate::agents::{agent_kind_label, agent_time_pool, my_agents, AgentRow};

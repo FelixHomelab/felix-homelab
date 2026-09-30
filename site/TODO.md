@@ -1166,3 +1166,26 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 - **管理员扩容语义（更正）**：管理员可用自有外置存储**扩容本站全站最大可用容量**
   （提升全站上限，而非只给某个服务），以缓解本机硬盘容量限制。
 - **私信系统：滞后**，需要审慎设计（身份、隐私、审核、媒体复用），暂不做。
+
+---
+
+## 订单与收款（本轮实现）
+
+- **订单核心**（`orders` + `entitlements`）：三类商品——AI Agent 时间池充值（金额→秒，
+  ¥19=30 天）、容量池订阅（GB+周期，价格表服务端校验）、个人外置云存储（¥9/月、¥29/季、¥119/年）。
+- **人工通道**（当前默认）：后台「服务订单」页确认收款 → 幂等发放权益
+  （时间池写 `time_pool_entries`；容量/外置写 `entitlements` 带到期）。
+  实测：¥19 → 时长池 +30 天；5GB/月 → 容量池 5GB；外置存储开通至 +30 天。
+- **Creem 通道**（已接入代码，未配置 Key 时自动回退人工）：
+  - 官方依据（docs.creem.io，2026-09-30 拉取）：
+    - 创建结账 `POST https://api.creem.io/v1/checkouts`，头 `x-api-key`，
+      体 `{product_id, success_url, metadata}`，返回 `checkout_url`（跳转收款页）；
+    - 回调头 `creem-signature` = **HMAC-SHA256(webhook_secret, 原始请求体)**；
+      事件 `checkout.completed` / `subscription.paid`（官方建议后者用于开通）；
+    - 金额为整数分；`metadata.order_id` 用于回联订单（失败时回退 checkout.id 匹配）。
+  - 需要配置：`CREEM_API_KEY`、`CREEM_WEBHOOK_SECRET`、
+    `CREEM_PRODUCT_AGENT_TIME` / `CREEM_PRODUCT_CAPACITY` / `CREEM_PRODUCT_EXTERNAL_STORAGE`，
+    并在 Creem 后台把回调指向 `https://www.wraindrock.com/api/payments/creem/webhook`。
+  - 开通后建议在测试模式（test-api.creem.io）先跑一笔验证验签与发放。
+- **待做**：容量过期后的超额处理提示、外置存储的 WebDAV 绑定界面、订单退款/对账、
+  Creem 订阅生命周期（取消/逾期）同步、管理员全站容量扩容核算。

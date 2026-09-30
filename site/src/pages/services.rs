@@ -3,6 +3,7 @@
 //! 下单与支付流程待接入（随注册/审核完成后实现）；本页先承接导航入口。
 
 use crate::components::PageHeader;
+use crate::orders::{capacity_price_cents, create_order, format_cents};
 use leptos::prelude::*;
 use leptos_meta::{Meta, Title};
 
@@ -87,16 +88,19 @@ pub fn ServicesPage() -> impl IntoView {
                     <h3>"充值 ¥6"</h3>
                     <p class="plan-price">"≈ 9.5 天" <span>"运行时间"</span></p>
                     <p class="plan-note">"适合短期试用"</p>
+                    <OrderButton product="agent_time".to_string() option="600".to_string() label="充值 ¥6".to_string() />
                 </div>
                 <div class="plan-card">
                     <h3>"充值 ¥19"</h3>
                     <p class="plan-price">"= 30 天" <span>"运行时间"</span></p>
                     <p class="plan-note">"基准费率：¥0.63 / 天"</p>
+                    <OrderButton product="agent_time".to_string() option="1900".to_string() label="充值 ¥19".to_string() />
                 </div>
                 <div class="plan-card">
                     <h3>"充值 ¥99"</h3>
                     <p class="plan-price">"≈ 156 天" <span>"运行时间"</span></p>
                     <p class="plan-note">"也可充值任意金额，按费率折算"</p>
+                    <OrderButton product="agent_time".to_string() option="9900".to_string() label="充值 ¥99".to_string() />
                 </div>
             </div>
             <div class="prose">
@@ -129,6 +133,7 @@ pub fn ServicesPage() -> impl IntoView {
                 <p>
                     "5GB 起步；每增加 5GB，增加部分按 9 折计（月付 ¥4.5、年付 ¥44.1）。"
                 </p>
+                <CapacityOrderCard />
                 {capacity_table()}
                 <p class="muted">
                     "单用户最高 30GB；全站容量上限 200GB，售完即止。"
@@ -162,16 +167,19 @@ pub fn ServicesPage() -> impl IntoView {
                     <h3>"按月"</h3>
                     <p class="plan-price">"¥9" <span>"/ 月"</span></p>
                     <p class="plan-note">"随时可停"</p>
+                    <OrderButton product="external_storage".to_string() option="month".to_string() label="订阅".to_string() />
                 </div>
                 <div class="plan-card">
                     <h3>"按季"</h3>
                     <p class="plan-price">"¥29" <span>"/ 季"</span></p>
                     <p class="plan-note">"≈ ¥9.7 / 月"</p>
+                    <OrderButton product="external_storage".to_string() option="quarter".to_string() label="订阅".to_string() />
                 </div>
                 <div class="plan-card">
                     <h3>"按年"</h3>
                     <p class="plan-price">"¥119" <span>"/ 年"</span></p>
                     <p class="plan-note">"≈ ¥9.9 / 月（暂定）"</p>
+                    <OrderButton product="external_storage".to_string() option="year".to_string() label="订阅".to_string() />
                 </div>
             </div>
             <div class="prose">
@@ -200,5 +208,120 @@ pub fn ServicesPage() -> impl IntoView {
                 </ul>
             </div>
         </section>
+    }
+}
+
+
+/// 下单按钮：调用 `create_order`；有在线收款地址则跳转，否则显示人工通道说明。
+#[component]
+fn OrderButton(product: String, option: String, label: String) -> impl IntoView {
+    let busy = RwSignal::new(false);
+    let message = RwSignal::new(String::new());
+
+    let onclick = move |_| {
+        #[cfg(feature = "hydrate")]
+        {
+            let product = product.clone();
+            let option = option.clone();
+            busy.set(true);
+            message.set(String::new());
+            leptos::task::spawn_local(async move {
+                match create_order(product, option).await {
+                    Ok(result) => match result.checkout_url {
+                        Some(url) => {
+                            if let Some(window) = web_sys::window() {
+                                let _ = window.location().set_href(&url);
+                            }
+                        }
+                        None => message.set(result.message),
+                    },
+                    Err(error) => message.set(format!("请求失败：{error}")),
+                }
+                busy.set(false);
+            });
+        }
+    };
+
+    view! {
+        <div class="order-cta">
+            <button class="btn btn-small" type="button" on:click=onclick disabled=move || busy.get()>
+                {move || if busy.get() { "下单中…".to_string() } else { label.clone() }}
+            </button>
+            {move || {
+                let text = message.get();
+                (!text.is_empty()).then(|| view! { <span class="muted media-tools-msg">{text}</span> })
+            }}
+        </div>
+    }
+}
+
+/// 容量下单：选容量（5-30GB，步进 5）+ 周期（月/年），实时显示价格。
+#[component]
+fn CapacityOrderCard() -> impl IntoView {
+    let gb = RwSignal::new(5_i64);
+    let period = RwSignal::new("month".to_string());
+    let busy = RwSignal::new(false);
+    let message = RwSignal::new(String::new());
+
+    let price_text = move || {
+        capacity_price_cents(gb.get(), &period.get())
+            .map(format_cents)
+            .unwrap_or_else(|| "—".to_string())
+    };
+
+    let submit = move |_| {
+        #[cfg(feature = "hydrate")]
+        {
+            let option = format!("{}:{}", gb.get_untracked(), period.get_untracked());
+            busy.set(true);
+            message.set(String::new());
+            leptos::task::spawn_local(async move {
+                match create_order("capacity".to_string(), option).await {
+                    Ok(result) => match result.checkout_url {
+                        Some(url) => {
+                            if let Some(window) = web_sys::window() {
+                                let _ = window.location().set_href(&url);
+                            }
+                        }
+                        None => message.set(result.message),
+                    },
+                    Err(error) => message.set(format!("请求失败：{error}")),
+                }
+                busy.set(false);
+            });
+        }
+    };
+
+    view! {
+        <div class="order-row">
+            <label class="order-field">
+                <span>"容量"</span>
+                <select on:change=move |ev| {
+                    gb.set(event_target_value(&ev).parse().unwrap_or(5))
+                }>
+                    {(1..=6)
+                        .map(|n| {
+                            let value = n * 5;
+                            view! { <option value=value.to_string()>{format!("{value}GB")}</option> }
+                        })
+                        .collect_view()}
+                </select>
+            </label>
+            <label class="order-field">
+                <span>"周期"</span>
+                <select on:change=move |ev| period.set(event_target_value(&ev))>
+                    <option value="month">"按月"</option>
+                    <option value="year">"按年"</option>
+                </select>
+            </label>
+            <span class="order-price">{move || format!("价格 {}", price_text())}</span>
+            <button class="btn btn-small" type="button" on:click=submit disabled=move || busy.get()>
+                {move || if busy.get() { "下单中…" } else { "订阅容量" }}
+            </button>
+            {move || {
+                let text = message.get();
+                (!text.is_empty()).then(|| view! { <span class="muted media-tools-msg">{text}</span> })
+            }}
+        </div>
     }
 }

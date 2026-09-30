@@ -6,7 +6,8 @@
 use crate::auth::{current_user, UserState};
 use crate::pages::admin::{
     AdminAgentPage, AdminBackupPage, AdminCommentsPage, AdminCommunityPage,
-    AdminDashboardPage, AdminPodPage, AdminReviewsPage, AdminSkyPage, AdminUsersPage,
+    AdminDashboardPage, AdminOrdersPage, AdminPodPage, AdminReviewsPage, AdminSkyPage,
+    AdminUsersPage,
 };
 use crate::pages::community::{
     CommunityDetailPage, CommunityIndex, CommunitySubmitPage, CommunityTagPage,
@@ -15,8 +16,8 @@ use crate::pages::community::{
 use crate::pages::{
     AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, HomePage, Layout,
     LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, ServicesPage,
-    SkyBoostingPage, SkyCategoryPage, SkyIndex, SkyOfficialPage, SubscriptionsPage,
-    UserProfilePage,
+    SkyBoostingPage, SkyCategoryPage, SkyIndex, SkyOfficialPage, SubscriptionSuccessPage,
+    SubscriptionsPage, UserProfilePage,
 };
 use crate::theme::{ThemePrefs, ThemeState};
 use leptos::prelude::*;
@@ -202,6 +203,11 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/about") view=AboutPage ssr=SsrMode::Async />
                     <Route path=path!("/services") view=ServicesPage ssr=SsrMode::Async />
                     <Route path=path!("/subscriptions") view=SubscriptionsPage ssr=SsrMode::Async />
+                    <Route
+                        path=path!("/subscription/success")
+                        view=SubscriptionSuccessPage
+                        ssr=SsrMode::Async
+                    />
                     <Route path=path!("/sky") view=SkyIndex ssr=SsrMode::Async />
                     // boosting 必须排在 :category 之前，否则它会被当成一个分类
                     <Route path=path!("/sky/boosting") view=SkyBoostingPage ssr=SsrMode::Async />
@@ -253,6 +259,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/admin/pod") view=AdminPodPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/agents") view=AdminAgentPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/backup") view=AdminBackupPage ssr=SsrMode::Async />
+                    <Route path=path!("/admin/orders") view=AdminOrdersPage ssr=SsrMode::Async />
 
                     // 兼容尾斜杠：leptos_router 0.8 不做尾斜杠归一，`/admin/` 会落到
                     // NotFound。给每个页面补一条带尾斜杠的别名，避免手输/复制多一个

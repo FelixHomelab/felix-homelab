@@ -434,6 +434,15 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
 - **容量池**：媒体配额按原始大小计入容量池；「我的订阅」显示容量池进度条；
   已开通后超额上传会被拒绝（过渡期不限）。
 
+## 订单与订阅
+
+- **商品**：AI Agent 时间池充值、容量池订阅、个人外置云存储（独立于本站容量池）。
+- **通道**：默认人工（后台「服务订单」确认收款即自动发放，幂等）；配置 Creem 后走在线收款
+  （`POST /api/payments/creem/webhook`，HMAC-SHA256 验签，事件 `checkout.completed` /
+  `subscription.paid`）。官方文档依据见 `site/TODO.md`。
+- **页面**：「购买订阅」下单（登录后）；「我的订阅」显示时长池/容量池进度、外置存储状态与订单列表；
+  支付回跳 `/subscription/success`。
+
 ## 后台运维（/admin）
 
 登录主站后点顶栏「后台」，包含：

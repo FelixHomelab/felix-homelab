@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     use felix_homelab_site::app::{shell, App};
     use felix_homelab_site::state::AppState;
     use felix_homelab_site::{
-        agents, auth, content, db, media, register_server_fns, seo, stt, uploads,
+        agents, auth, content, db, media, orders, register_server_fns, seo, stt, uploads,
     };
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
@@ -115,6 +115,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/media/{id}", get(media::serve))
         .route("/media/{id}/{*name}", get(media::serve_named))
+        // Creem 支付回调（验签后幂等发放权益；原始字节体用于 HMAC 校验）
+        .route("/api/payments/creem/webhook", post(orders::creem_webhook))
         // 语音转文字：登录后可用，转发给站内 STT 服务
         .route(
             "/api/stt",

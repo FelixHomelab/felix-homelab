@@ -56,11 +56,39 @@ pub async fn capacity_pool(window: String) -> Result<CapacityPoolView, ServerFnE
         }
     };
 
-    let total_bytes: i64 = sqlx::query_scalar(total_sql)
+    let manual_total: i64 = sqlx::query_scalar(total_sql)
         .bind(identity.id)
         .fetch_one(&app.pool)
         .await
         .map_err(|e| ServerFnError::new(format!("查询容量池失败: {e}")))?;
+    // 窗口内发放的容量权益（购买记录）
+    let ent_sql = match window.as_str() {
+        "month" => {
+            "SELECT COALESCE(SUM(amount),0) FROM entitlements \
+             WHERE user_id = ?1 AND kind = 'capacity' AND amount > 0 \
+               AND created_at >= datetime('now','start of month')"
+        }
+        "week" => {
+            "SELECT COALESCE(SUM(amount),0) FROM entitlements \
+             WHERE user_id = ?1 AND kind = 'capacity' AND amount > 0 \
+               AND created_at >= datetime(date('now','weekday 0','-6 days'))"
+        }
+        "day" => {
+            "SELECT COALESCE(SUM(amount),0) FROM entitlements \
+             WHERE user_id = ?1 AND kind = 'capacity' AND amount > 0 \
+               AND created_at >= datetime('now','start of day')"
+        }
+        _ => {
+            "SELECT COALESCE(SUM(amount),0) FROM entitlements \
+             WHERE user_id = ?1 AND kind = 'capacity' AND amount > 0"
+        }
+    };
+    let ent_total: i64 = sqlx::query_scalar(ent_sql)
+        .bind(identity.id)
+        .fetch_one(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("查询容量权益失败: {e}")))?;
+    let total_bytes = manual_total + ent_total;
     let used_bytes = user_capacity_used(&app.pool, identity.id).await;
 
     Ok(CapacityPoolView {
@@ -80,14 +108,26 @@ pub async fn user_capacity_used(pool: &sqlx::SqlitePool, user_id: i64) -> i64 {
         .unwrap_or(0)
 }
 
-/// 容量池总额（字节，全部入账）。0 表示尚未开通——过渡期不限制上传。
+/// 容量池总额（字节）：人工调整账（`capacity_pool_entries`，无到期）
+/// + 订阅权益（`entitlements`，仅计仍在有效期内的）。
+/// 0 表示尚未开通——过渡期不限制上传。
 #[cfg(feature = "ssr")]
 pub async fn user_capacity_total(pool: &sqlx::SqlitePool, user_id: i64) -> i64 {
-    sqlx::query_scalar(
+    let manual: i64 = sqlx::query_scalar(
         "SELECT COALESCE(SUM(bytes),0) FROM capacity_pool_entries WHERE user_id = ?1",
     )
     .bind(user_id)
     .fetch_one(pool)
     .await
-    .unwrap_or(0)
+    .unwrap_or(0);
+    let subscribed: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(amount),0) FROM entitlements \
+         WHERE user_id = ?1 AND kind = 'capacity' \
+           AND (expires_at IS NULL OR expires_at > datetime('now'))",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    manual + subscribed
 }

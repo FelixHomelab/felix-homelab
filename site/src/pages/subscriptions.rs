@@ -4,6 +4,7 @@
 //! 容量订阅的订单/用量数据随购买系统上线后补全，这里先给出清晰空态。
 
 use crate::components::PageHeader;
+use crate::orders::{format_cents, my_orders, my_subscription_state, order_status_label, product_label};
 use crate::storage::capacity_pool;
 use leptos::prelude::*;
 use leptos_meta::{Meta, Title};
@@ -37,6 +38,104 @@ pub fn SubscriptionsPage() -> impl IntoView {
             <p>
                 <a class="btn" href="/services">
                     "去购买订阅"
+                </a>
+            </p>
+        </section>
+
+        <SubscriptionStatusSection />
+    }
+}
+
+/// 订阅状态与外置存储 + 最近订单。
+#[component]
+fn SubscriptionStatusSection() -> impl IntoView {
+    let state = Resource::new(|| (), |_| my_subscription_state());
+    let orders = Resource::new(|| (), |_| my_orders());
+
+    view! {
+        <section class="wrap section">
+            <div class="section-head">
+                <h2>"外置云存储与订单"</h2>
+                <span class="muted">"独立订阅；订单确认后自动发放"</span>
+            </div>
+            <div class="card">
+                <Suspense fallback=move || view! { <p class="muted">"载入中…"</p> }>
+                    {move || match state.get().and_then(|result| result.ok()) {
+                        Some(state) => match state.external_storage_until {
+                            Some(until) => view! {
+                                <p>
+                                    "个人外置云存储：" <strong>"已开通"</strong>
+                                    "（有效期至 " {until} "）"
+                                </p>
+                            }
+                            .into_any(),
+                            None => view! {
+                                <p class="muted">
+                                    "个人外置云存储：未开通（订阅后可绑定你的 WebDAV，默认加密、独立存储池）"
+                                </p>
+                            }
+                            .into_any(),
+                        },
+                        None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    }}
+                </Suspense>
+                <Suspense fallback=move || ()>
+                    {move || match orders.get().and_then(|result| result.ok()) {
+                        Some(list) if list.is_empty() => view! {
+                            <p class="muted">"还没有订单。"</p>
+                        }
+                        .into_any(),
+                        Some(list) => view! {
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>"订单"</th>
+                                        <th>"内容"</th>
+                                        <th>"金额"</th>
+                                        <th>"状态"</th>
+                                        <th>"时间"</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {list
+                                        .into_iter()
+                                        .map(|order| {
+                                            view! {
+                                                <tr>
+                                                    <td>{format!("#{}", order.id)}</td>
+                                                    <td>{product_label(&order.product, &order.option)}</td>
+                                                    <td>{format_cents(order.amount_cents)}</td>
+                                                    <td>{order_status_label(&order.status)}</td>
+                                                    <td>{order.created_at}</td>
+                                                </tr>
+                                            }
+                                        })
+                                        .collect_view()}
+                                </tbody>
+                            </table>
+                        }
+                        .into_any(),
+                        None => ().into_any(),
+                    }}
+                </Suspense>
+            </div>
+        </section>
+    }
+}
+
+/// 支付成功回跳页（Creem `success_url` 指向这里）。
+#[component]
+pub fn SubscriptionSuccessPage() -> impl IntoView {
+    view! {
+        <Title text="支付完成 — Wraindrock" />
+        <section class="wrap section">
+            <PageHeader
+                title="支付完成"
+                lede="已收到支付结果；权益会在回调确认后自动发放（人工通道需管理员确认收款）。"
+            />
+            <p>
+                <a class="btn" href="/subscriptions">
+                    "查看我的订阅"
                 </a>
             </p>
         </section>

@@ -30,6 +30,10 @@ use crate::sky::{
     admin_list_sky_posts, admin_pin_review, admin_save_sky_boosting, admin_save_sky_official,
     sky_boosting,
 };
+use crate::orders::{
+    admin_cancel_order, admin_confirm_order, admin_orders, format_cents, order_status_label,
+    product_label,
+};
 use crate::components::PageHeader;
 
 use super::set_status;
@@ -305,6 +309,10 @@ pub fn AdminDashboardPage() -> impl IntoView {
                     <a class="quick-tile" href="/admin/agents">
                         <strong>"Agent 管理"</strong>
                         <span>"开通、续费与实例状态"</span>
+                    </a>
+                    <a class="quick-tile" href="/admin/orders">
+                        <strong>"服务订单"</strong>
+                        <span>"时间池/容量池/外置存储，人工确认收款"</span>
                     </a>
                     <a class="quick-tile" href="/admin/backup">
                         <strong>"备份与同步"</strong>
@@ -2407,6 +2415,119 @@ pub fn AdminSkyPage() -> impl IntoView {
                     </Suspense>
                 </div>
             </section>
+        </AdminPage>
+    }
+}
+
+
+/// 后台：服务订单（时间池充值 / 容量池 / 外置云存储）。
+#[component]
+pub fn AdminOrdersPage() -> impl IntoView {
+    let revision = RwSignal::new(0_u32);
+    let message = RwSignal::new(String::new());
+    let orders = Resource::new(move || revision.get(), |_| admin_orders());
+
+    view! {
+        <Title text="服务订单 — Wraindrock" />
+        <AdminPage
+            title="服务订单"
+            lede="人工通道在此确认收款；Creem 在线支付由回调自动确认。".to_string()
+            perm="admin"
+        >
+            {move || {
+                let text = message.get();
+                (!text.is_empty()).then(|| view! { <p class="notice" role="status">{text}</p> })
+            }}
+            <Suspense fallback=move || view! { <p class="muted">"载入中…"</p> }>
+                {move || match orders.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => view! {
+                        <p class="error">"载入订单失败："{error.to_string()}</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) if list.is_empty() => view! {
+                        <p class="muted">"还没有订单。"</p>
+                    }
+                    .into_any(),
+                    Some(Ok(list)) => view! {
+                        <div class="panel">
+                            <div class="panel-body">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>"订单"</th>
+                                            <th>"内容"</th>
+                                            <th>"金额"</th>
+                                            <th>"通道"</th>
+                                            <th>"状态"</th>
+                                            <th>"时间"</th>
+                                            <th>"操作"</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {list
+                                            .into_iter()
+                                            .map(|order| {
+                                                let order_id = order.id;
+                                                let status = order.status.clone();
+                                                let is_pending = status == "pending";
+                                                view! {
+                                                    <tr>
+                                                        <td>{format!("#{}", order.id)}</td>
+                                                        <td>
+                                                            {product_label(&order.product, &order.option)}
+                                                        </td>
+                                                        <td>{format_cents(order.amount_cents)}</td>
+                                                        <td>{order.provider.clone()}</td>
+                                                        <td>{order_status_label(&order.status)}</td>
+                                                        <td>{order.created_at.clone()}</td>
+                                                        <td>
+                                                            {is_pending
+                                                                .then(|| {
+                                                                    view! {
+                                                                        <div class="admin-actions">
+                                                                            <button
+                                                                                class="btn btn-small"
+                                                                                type="button"
+                                                                                on:click=move |_| {
+                                                                                    run_action(
+                                                                                        revision,
+                                                                                        message,
+                                                                                        admin_confirm_order(order_id),
+                                                                                    );
+                                                                                }
+                                                                            >
+                                                                                "确认收款"
+                                                                            </button>
+                                                                            <button
+                                                                                class="btn btn-small"
+                                                                                type="button"
+                                                                                on:click=move |_| {
+                                                                                    run_action(
+                                                                                        revision,
+                                                                                        message,
+                                                                                        admin_cancel_order(order_id),
+                                                                                    );
+                                                                                }
+                                                                            >
+                                                                                "取消"
+                                                                            </button>
+                                                                        </div>
+                                                                    }
+                                                                })}
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            })
+                                            .collect_view()}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                    .into_any(),
+                }}
+            </Suspense>
         </AdminPage>
     }
 }

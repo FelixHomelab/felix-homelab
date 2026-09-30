@@ -20,6 +20,7 @@ pub mod comments;
 pub mod community;
 pub mod components;
 pub mod content;
+pub mod orders;
 pub mod pages;
 pub mod reviews;
 pub mod roles;
