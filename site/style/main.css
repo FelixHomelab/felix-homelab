@@ -1533,8 +1533,15 @@ html.dark .admin-nav a.active {
     gap: 0.5rem;
 }
 
-.agent-card-url {
-    margin: 0;
+.agent-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.agent-host {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     color: var(--accent);
@@ -1543,9 +1550,50 @@ html.dark .admin-nav a.active {
     white-space: nowrap;
 }
 
-.agent-card .muted {
+.agent-open {
+    flex: none;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: color 0.15s ease;
+}
+
+.agent-card:hover .agent-open {
+    color: var(--accent);
+}
+
+.agent-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--text-muted);
+    display: inline-block;
+}
+
+.dot-ok {
+    background: var(--ok);
+}
+
+.dot-warn {
+    background: var(--warn);
+}
+
+.dot-info {
+    background: var(--info);
+}
+
+.agent-card-note {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
 }
 
 

@@ -317,65 +317,56 @@ fn format_seconds(seconds: i64) -> String {
     }
 }
 
-/// 首屏上的一个 Agent 入口卡片。
+/// 订阅卡片：标题 + 运行状态点 + 主机名 + 打开动作（尽量少的文字）。
 #[component]
 pub(crate) fn MyAgentCard(agent: AgentRow) -> impl IntoView {
-    let status_label = match agent.status.as_str() {
-        "active" => "已开通",
-        "stopped" => "已暂停",
-        other => other,
-    };
-    let status_class = match agent.status.as_str() {
-        "active" => "status status-running",
-        "stopped" => "status status-exited",
-        _ => "status",
-    };
-    let runtime_hint = match agent
+    // 运行状态优先于配置状态：用户关心“现在能不能直接打开”
+    let (runtime_label, dot_class) = match agent
         .runtime
         .as_ref()
         .map(|r| (r.state.as_str(), r.desired.as_str()))
     {
-        Some(("running", _)) => "运行中",
-        Some((_, "sleeping")) => "睡眠中（打开即唤醒）",
-        Some(("exited", _)) => "已停止",
-        Some(_) => "准备中",
-        None => "部署中",
+        Some(("running", _)) => ("运行中", "dot dot-ok"),
+        Some((_, "sleeping")) => ("睡眠中", "dot dot-muted"),
+        Some(("exited", _)) => ("已停止", "dot dot-warn"),
+        Some(_) => ("准备中", "dot dot-muted"),
+        None => (
+            if agent.status == "stopped" { "已暂停" } else { "部署中" },
+            "dot dot-muted",
+        ),
     };
-    // 旧有效期已折算进时长池后，不再展示逐实例到期时间（计费以池为准）
-    let expires = if agent.pooled_at.is_some() {
-        "时间已计入时长池".to_string()
-    } else {
-        agent
-            .expires_at
-            .clone()
-            .map(|value| format!("有效期至 {value}"))
-            .unwrap_or_else(|| "长期有效".to_string())
-    };
+    // 只展示主机名，去掉协议前缀；整卡都是链接，不再堆说明文字
+    let host = agent
+        .url
+        .trim_start_matches("https://")
+        .trim_end_matches('/')
+        .to_string();
     let note = agent.note.trim().to_string();
     let is_dsh = agent.kind == "dsh";
     // DSH 首次进入需要带令牌链接；OpenCode 直接打开即可
     let href = agent.login_url.clone().unwrap_or_else(|| agent.url.clone());
 
     view! {
-        <a class="agent-card" href=href target="_blank" rel="noreferrer">
+        <a class="agent-card" href=href target="_blank" rel="noreferrer" title=agent.url.clone()>
             <div class="agent-card-head">
                 <strong>{agent_kind_label(&agent.kind)}</strong>
-                <span class=status_class>{status_label.to_string()}</span>
+                <span class="agent-state">
+                    <i class=dot_class></i>
+                    {runtime_label}
+                </span>
             </div>
-            <p class="agent-card-url">{agent.url.clone()}</p>
-            <p class="muted">
-                {agent.subdomain.clone()} " · " {runtime_hint} " · " {expires}
-            </p>
-            {is_dsh
+            <div class="agent-card-foot">
+                <span class="agent-host">{host}</span>
+                <span class="agent-open">
+                    {if is_dsh { "自动登录 · 打开" } else { "打开" }} " ↗"
+                </span>
+            </div>
+            {(!note.is_empty())
                 .then(|| {
                     view! {
-                        <p class="muted">
-                            "首次进入请点此卡片（自动完成登录）；模型/服务商在站内「设置」里配置。"
-                        </p>
+                        <p class="agent-card-note">{note.clone()}</p>
                     }
                 })}
-            {(!note.is_empty())
-                .then(|| view! { <p class="muted">{note.clone()}</p> })}
         </a>
     }
 }
