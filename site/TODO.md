@@ -1300,3 +1300,27 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 - **agent-ctl**：移除 openclaw 分支（XFF 注入/trustedProxies/allowedOrigins/token 全部不再需要）、
   镜像变量改 `AGENT_ZEROCLAW_IMAGE`、pin/升级检测/白名单同步更新；
   `containers/agent-openclaw` 构建目录删除；`build-agent-image.sh` 对 zeroclaw 改为拉取官方镜像。
+
+## DSH 启动慢/卡顿优化（2026-09-30）
+
+问题：DSH 以「开发态」直出插件源码——首屏两个 preload 组合包原始 **15.9MB**，
+慢链路（~65KB/s）首访需约 **68 秒**，且浏览器解析巨量 JS 导致交互卡顿。
+
+处理（全部在镜像构建期，运行态零开销）：
+- **内嵌大图瘦身**（`patch-client-images.py`）：settings-account 把 4 张引导原图
+  以 base64 内嵌（~4.8MB），统一转成 960px/q65 WebP（-3.94MB）。
+- **插件包 minify**（`minify-client-bundles.py`，esbuild `--keep-names`）：
+  159 个 client 包共 -4.07MB；容器内 Chromium 无头渲染验证通过（0 JS 错误）。
+- **combo URL 改 `?rev=`**（同脚本内补丁）：路径以 `.js` 结尾，为后续 CF
+  缓存规则（需在 CF 侧加 `/plugins/*` Eligible for cache，可绕过 Cookie 默认不缓存）
+  留好条件；DSH 自身 chunk URL 本来就是这个形式。
+- 构建期与运行期保持解耦：补丁找不到目标会构建失败（升级 DSH 时强制人工复核）。
+
+效果：首屏原始 15.9MB→**7.5MB**，gzip 6.5MB→**2.7MB**，公网实测首访
+68s→**18s**；浏览器侧 `immutable` 缓存命中后二次访问即时。
+
+遗留（另行处理）：
+- `@huanx/kilo-zen2dsh` 与 `@opencode2dsh/dsh-plugin` 抢注册同一 provider
+  （`an adapter for provider "opencode2dsh" is already registered`），
+  kilo2dsh 被守护隔离、webchat 随之中断导入；二选一或改注册 ID。
+- CF Cache Rule（`/plugins/*` Eligible）由站长在 CF 侧添加后，首访成本可全局只付一次。

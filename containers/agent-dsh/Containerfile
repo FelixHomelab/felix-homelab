@@ -216,10 +216,24 @@ RUN printf '%s\n' \
 	'    allowRestart: false' \
 	> /opt/dsh-home/agent-patch.yml
 
+# ---- 客户端内嵌大图瘦身（首屏体积优化）----
+# DSH 客户端把引导欢迎图以 base64 内嵌（settings-account 单个包 ~4.8MB），
+# 首次加载整包下发且几乎不可压缩——构建期统一转成小尺寸 WebP。
+COPY patch-client-images.py /usr/local/bin/patch-client-images.py
+RUN dnf install -y --setopt=install_weak_deps=False python3-pillow \
+ && python3 /usr/local/bin/patch-client-images.py \
+ && dnf remove -y python3-pillow && dnf clean all
+
+# 插件 client 包构建期 minify（esbuild --keep-names）：首屏组合包体积再降四成。
+COPY minify-client-bundles.py /usr/local/bin/minify-client-bundles.py
+RUN npm install -g esbuild@0.25.10 --silent --no-fund --no-audit \
+ && python3 /usr/local/bin/minify-client-bundles.py \
+ && npm rm -g esbuild && npm cache clean --force
+
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=11
+ARG PROFILE_REV=12
 RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_REF:0:8}+costmeter${DSHCOSTMETER_VERSION}+oc2dsh${OPENCODE2DSH_REF:0:8}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_REF:0:8}+devrules${DSHDEV_RULES_REF}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
