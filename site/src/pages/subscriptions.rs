@@ -4,7 +4,6 @@
 //! 容量订阅的订单/用量数据随购买系统上线后补全，这里先给出清晰空态。
 
 use crate::components::PageHeader;
-use crate::agents::{agent_kind_label, my_agent_access};
 use crate::archive::{
     archive_status_label, hold_fee_text, mark_notifications_read, my_archive_cases,
     my_notifications, respond_archive_case,
@@ -50,7 +49,6 @@ pub fn SubscriptionsPage() -> impl IntoView {
             </p>
         </section>
 
-        <AgentAccessSection />
         <SubscriptionStatusSection />
         <ArchiveSection />
         <NotificationsSection />
@@ -226,87 +224,6 @@ fn NotificationsSection() -> impl IntoView {
                 }}
             </Suspense>
         </section>
-    }
-}
-
-/// Agent 控制台接入：需要手动粘贴令牌的实例（目前 OpenClaw）。
-#[component]
-fn AgentAccessSection() -> impl IntoView {
-    let access = Resource::new(|| (), |_| my_agent_access());
-    view! {
-        <Suspense fallback=move || ()>
-            {move || match access.get().and_then(|result| result.ok()) {
-                Some(list) if list.is_empty() => ().into_any(),
-                Some(list) => view! {
-                    <section class="wrap section">
-                        <div class="section-head">
-                            <h2>"Agent 控制台接入"</h2>
-                            <span class="muted">"打开控制台后粘贴对应令牌即可连接（浏览器会记住）"</span>
-                        </div>
-                        <div class="card">
-                            {list
-                                .into_iter()
-                                .map(|item| {
-                                    let slot = item.slot;
-                                    let label = format!(
-                                        "{} · 实例 #{}",
-                                        agent_kind_label(&item.kind),
-                                        slot,
-                                    );
-                                    let token_show = item.token.clone();
-                                    let token_copy = item.token.clone();
-                                    let shown = RwSignal::new(false);
-                                    view! {
-                                        <div class="order-row">
-                                            <strong>{label}</strong>
-                                            {move || {
-                                                if shown.get() {
-                                                    view! {
-                                                        <code class="token-reveal">{token_show.clone()}</code>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    view! {
-                                                        <span class="muted">"令牌已隐藏"</span>
-                                                    }
-                                                        .into_any()
-                                                }
-                                            }}
-                                            <button
-                                                class="btn btn-small"
-                                                type="button"
-                                                on:click=move |_| shown.update(|v| *v = !*v)
-                                            >
-                                                {move || if shown.get() { "隐藏" } else { "显示令牌" }}
-                                            </button>
-                                            <button
-                                                class="btn btn-small"
-                                                type="button"
-                                                on:click=move |_| {
-                                                    #[cfg(feature = "hydrate")]
-                                                    {
-                                                        if let Some(window) = web_sys::window() {
-                                                            let _ = window
-                                                                .navigator()
-                                                                .clipboard()
-                                                                .write_text(&token_copy);
-                                                        }
-                                                    }
-                                                }
-                                            >
-                                                "复制"
-                                            </button>
-                                        </div>
-                                    }
-                                })
-                                .collect_view()}
-                        </div>
-                    </section>
-                }
-                .into_any(),
-                None => ().into_any(),
-            }}
-        </Suspense>
     }
 }
 

@@ -819,70 +819,54 @@ pub async fn update_agent_note(agent_id: i64, note: String) -> crate::auth::Acti
     }
 }
 
-/// Agent 控制台接入信息（仅发给所有者）：需要手动粘贴令牌的实例。
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AgentAccess {
-    pub slot: i64,
-    pub kind: String,
-    /// 控制台/网关令牌（= agent-ctl 生成的实例密码）
-    pub token: String,
-}
-
-/// 当前用户需要「控制台令牌」的实例列表（目前只有 OpenClaw 需要）。
+/// 取当前用户在指定实例上的「控制台令牌」（目前只有 OpenClaw 需要）。
 ///
-/// 令牌由 agent-ctl 在创建实例时生成并保存在 `/agents/state.json`；
-/// 用户运行在云端容器里没有终端，因此由站点把令牌展示给所有者。
+/// 令牌由 agent-ctl 创建实例时生成并保存在 `/agents/state.json`；
+/// 云端用户没有终端，由站点按实例下发（仅所有者可取；其它类型返回 None）。
 #[server]
-pub async fn my_agent_access() -> Result<Vec<AgentAccess>, ServerFnError> {
+pub async fn my_agent_token(slot: i64) -> Result<Option<String>, ServerFnError> {
+    use crate::state::AppState;
+
     let Some(identity) = crate::auth::current_identity().await else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
-    let app = use_context::<crate::state::AppState>().expect("AppState 应作为 context 提供");
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
     let username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?1")
         .bind(identity.id)
         .fetch_one(&app.pool)
         .await
         .map_err(|e| ServerFnError::new(format!("查询用户名失败: {e}")))?;
 
-    // 仅这些类型需要用户手动粘贴令牌（OpenCode/DSH 由网关自动完成鉴权）
-    const TOKEN_KINDS: [&str; 1] = ["openclaw"];
-
     let path = std::path::Path::new(AGENTS_DIR).join("state.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
     let Some(entries) = value.get("agents").and_then(|v| v.as_object()) else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
 
-    let mut out = Vec::new();
     for entry in entries.values() {
         let owner = entry.get("username").and_then(|v| v.as_str()).unwrap_or("");
-        if owner.to_ascii_lowercase() != username.to_ascii_lowercase() {
-            continue;
-        }
+        let entry_slot = entry.get("slot").and_then(|v| v.as_i64()).unwrap_or(1);
         let kind = entry.get("kind").and_then(|v| v.as_str()).unwrap_or("");
-        if !TOKEN_KINDS.contains(&kind) {
+        if owner.to_ascii_lowercase() != username.to_ascii_lowercase()
+            || entry_slot != slot
+            || kind != "openclaw"
+        {
             continue;
         }
         if entry.get("desired").and_then(|v| v.as_str()) == Some("removed") {
-            continue;
+            return Ok(None);
         }
-        let Some(token) = entry.get("password").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let slot = entry.get("slot").and_then(|v| v.as_i64()).unwrap_or(1);
-        out.push(AgentAccess {
-            slot,
-            kind: kind.to_string(),
-            token: token.to_string(),
-        });
+        return Ok(entry
+            .get("password")
+            .and_then(|v| v.as_str())
+            .map(str::to_string));
     }
-    out.sort_by_key(|item| item.slot);
-    Ok(out)
+    Ok(None)
 }
 
 /// 时长池视图：某统计窗口内的总时长与剩余时长（秒）。

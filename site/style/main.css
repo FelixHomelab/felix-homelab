@@ -2338,3 +2338,23 @@ html.splash-pending .site-footer {
     border: 1px solid var(--border);
     word-break: break-all;
 }
+
+
+/* OpenClaw 卡片：令牌行（在重命名铅笔下方，右对齐） */
+.agent-token-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: -0.2rem;
+}
+
+.agent-token-row .token-reveal {
+    flex: 1 0 100%;
+    text-align: left;
+}
+
+.agent-token-tip {
+    font-size: 0.75rem;
+}

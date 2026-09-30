@@ -453,9 +453,100 @@ pub(crate) fn MyAgentCard(agent: AgentRow) -> impl IntoView {
                 <span class="agent-host">{host}</span>
                 <span class="agent-open">"打开 ↗"</span>
             </a>
+            {(agent.kind == "openclaw")
+                .then(|| {
+                    view! { <OpenClawTokenRow agent_slot=agent.slot /> }
+                })}
             {move || {
                 let message = error.get();
                 (!message.is_empty()).then(|| view! { <p class="agent-card-err">{message}</p> })
+            }}
+        </div>
+    }
+}
+
+/// OpenClaw 卡片的令牌行：位于重命名铅笔下方，显示 / 复制该实例的 Gateway 令牌。
+///
+/// 令牌按需从服务端取（不随列表下发，避免令牌出现在 SSR HTML 里）；
+/// 每个实例一行，天然一一对应（一个用户可开通多个 OpenClaw）。
+#[component]
+fn OpenClawTokenRow(agent_slot: i64) -> impl IntoView {
+    let token = RwSignal::new(None::<String>);
+    let revealed = RwSignal::new(false);
+    let feedback = RwSignal::new(String::new());
+
+    let fetch = move |then_reveal: bool| {
+        #[cfg(feature = "hydrate")]
+        leptos::task::spawn_local(async move {
+            match crate::agents::my_agent_token(agent_slot).await {
+                Ok(Some(value)) => {
+                    token.set(Some(value));
+                    if then_reveal {
+                        revealed.set(true);
+                    }
+                }
+                Ok(None) => feedback.set("未找到令牌".to_string()),
+                Err(error) => feedback.set(format!("获取失败：{error}")),
+            }
+        });
+        #[cfg(not(feature = "hydrate"))]
+        let _ = then_reveal;
+    };
+
+    let copy = move |_| {
+        feedback.set(String::new());
+        let token = token;
+        #[cfg(feature = "hydrate")]
+        leptos::task::spawn_local(async move {
+            let value = match token.get_untracked() {
+                Some(value) => Some(value),
+                None => match crate::agents::my_agent_token(agent_slot).await {
+                    Ok(Some(value)) => {
+                        token.set(Some(value.clone()));
+                        Some(value)
+                    }
+                    _ => None,
+                },
+            };
+            match value {
+                Some(value) => {
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.navigator().clipboard().write_text(&value);
+                    }
+                    feedback.set("已复制".to_string());
+                }
+                None => feedback.set("未找到令牌".to_string()),
+            }
+        });
+    };
+
+    let toggle = move |_| {
+        feedback.set(String::new());
+        if token.get_untracked().is_some() {
+            revealed.update(|v| *v = !*v);
+        } else {
+            fetch(true);
+        }
+    };
+
+    view! {
+        <div class="agent-token-row">
+            <button class="btn btn-small" type="button" on:click=copy>"复制令牌"</button>
+            <button class="btn btn-small" type="button" on:click=toggle>
+                {move || if revealed.get() { "隐藏" } else { "显示" }}
+            </button>
+            {move || {
+                let text = feedback.get();
+                (!text.is_empty()).then(|| view! { <span class="muted agent-token-tip">{text}</span> })
+            }}
+            {move || {
+                revealed
+                    .get()
+                    .then(|| {
+                        token
+                            .get()
+                            .map(|value| view! { <code class="token-reveal">{value}</code> })
+                    })
             }}
         </div>
     }
