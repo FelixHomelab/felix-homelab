@@ -1599,6 +1599,7 @@ pub fn Layout(children: Children) -> impl IntoView {
             <span class="splash-logo">"Wraindrock"</span>
         </div>
         <SiteHeader />
+        <crate::components::NotificationBanner />
         <main class="site-main">{children()}</main>
         <SiteFooter />
     }

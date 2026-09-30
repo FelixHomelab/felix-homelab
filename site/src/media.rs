@@ -77,6 +77,12 @@ fn skip_compress(mime: &str) -> bool {
 /// 压缩后 / 原大小 ≥ 此比例则不采用压缩（节省解码开销与空间意义不大）。
 const COMPRESS_KEEP_RATIO: f64 = 0.95;
 
+/// 供保管流程删除 blob 用。
+#[cfg(feature = "ssr")]
+pub fn blob_path_for(sha: &str, compression: &str) -> PathBuf {
+    blob_path(sha, compression)
+}
+
 fn blob_path(sha: &str, compression: &str) -> PathBuf {
     let shard = &sha[..2.min(sha.len())];
     let name = if compression == "none" {

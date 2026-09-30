@@ -112,7 +112,25 @@ pub fn product_label(product: &str, option: &str) -> String {
             };
             format!("个人外置云存储 / {period}")
         }
+        "archive_hold" => "数据保管占用费".to_string(),
         _ => product.to_string(),
+    }
+}
+
+/// 字节 → 可读容量（B / KB / MB / GB / TB）。
+pub fn format_bytes(bytes: i64) -> String {
+    let value = bytes.max(0) as f64;
+    let units = ["B", "KB", "MB", "GB", "TB"];
+    let mut size = value;
+    let mut unit = 0usize;
+    while size >= 1024.0 && unit < units.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} {}", value as i64, units[0])
+    } else {
+        format!("{size:.1} {}", units[unit])
     }
 }
 
@@ -292,6 +310,29 @@ pub async fn create_order(product: String, option: String) -> Result<CreateOrder
             let cents = external_storage_amount_cents(&option)
                 .ok_or_else(|| ServerFnError::new("周期不支持"))?;
             (cents, option.clone())
+        }
+        "archive_hold" => {
+            // 数据保管占用费：option = "case:<案例ID>"
+            let case_id: i64 = option
+                .strip_prefix("case:")
+                .and_then(|value| value.parse().ok())
+                .ok_or_else(|| ServerFnError::new("保管案例参数错误"))?;
+            let owned: Option<i64> = sqlx::query_scalar(
+                "SELECT id FROM archive_cases WHERE id = ?1 AND user_id = ?2 \
+                 AND status IN ('notified', 'held')",
+            )
+            .bind(case_id)
+            .bind(identity.id)
+            .fetch_optional(&app.pool)
+            .await
+            .map_err(|e| ServerFnError::new(format!("查询保管案例失败: {e}")))?;
+            if owned.is_none() {
+                return Err(ServerFnError::new("保管案例不存在或无需付费"));
+            }
+            (
+                crate::archive::ARCHIVE_HOLD_FEE_CENTS,
+                format!("case:{case_id}"),
+            )
         }
         _ => return Err(ServerFnError::new("未知商品")),
     };
@@ -489,6 +530,31 @@ pub async fn mark_paid_and_grant(pool: &sqlx::SqlitePool, order_id: i64) -> Resu
                 .bind(user_id)
                 .bind(order_id)
                 .bind(format!("+{days} days"))
+                .execute(pool)
+                .await?;
+            }
+            "archive_hold" => {
+                let case_id: i64 = option
+                    .strip_prefix("case:")
+                    .and_then(|value| value.parse().ok())
+                    .ok_or_else(|| anyhow::anyhow!("保管案例参数错误"))?;
+                // 付费后：继续保管 30 天，用户可下载
+                sqlx::query(
+                    "UPDATE archive_cases SET status = 'claimed', \
+                         delete_after = datetime('now', '+30 days') \
+                     WHERE id = ?1 AND user_id = ?2",
+                )
+                .bind(case_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+                sqlx::query(
+                    "INSERT OR IGNORE INTO notifications (user_id, kind, title, body, link, dedupe_key) \
+                     VALUES (?1, 'archive', '保管费已支付', ?2, '/subscriptions', ?3)",
+                )
+                .bind(user_id)
+                .bind(format!("案例 #{case_id} 已延长保管 30 天，可随时下载。"))
+                .bind(format!("archive-claimed:{case_id}"))
                 .execute(pool)
                 .await?;
             }

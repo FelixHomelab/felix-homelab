@@ -15,6 +15,7 @@
 pub mod admin;
 pub mod agents;
 pub mod app;
+pub mod archive;
 pub mod auth;
 pub mod comments;
 pub mod community;

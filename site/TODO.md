@@ -1189,3 +1189,31 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
   - 开通后建议在测试模式（test-api.creem.io）先跑一笔验证验签与发放。
 - **待做**：容量过期后的超额处理提示、外置存储的 WebDAV 绑定界面、订单退款/对账、
   Creem 订阅生命周期（取消/逾期）同步、管理员全站容量扩容核算。
+
+---
+
+## 个人外置云存储（WebDAV）调研结论（实现前必读）
+
+**官方依据**（均 2026-09-30 拉取原文）：
+- RFC 4918《HTTP Extensions for WebDAV》：https://www.rfc-editor.org/rfc/rfc4918
+  方法：PROPFIND（列目录/取属性，Depth 0/1）、PUT、MKCOL、GET、DELETE；响应 207 Multi-Status。
+- Nextcloud 官方用户手册（Accessing files using WebDAV）：
+  https://docs.nextcloud.com/server/latest/user_manual/en/files/access_webdav.html
+  地址形如 `https://<域名>/remote.php/dav/files/<USERNAME>/`；官方建议使用**应用专用密码**
+  （设置 → 安全 → App password，可随时撤销）。
+- 坚果云官方帮助（WebDAV 说明）：https://help.jianguoyun.com/?p=2064
+  需在「账户信息 → 安全选项 → 第三方应用管理」生成**应用密码**；
+  **限制**：单文件 ≤500MB；访问频率免费用户 30 分钟 ≤600 请求（付费 ≤1500）；
+  单次请求条目 ≤750（需分页）。
+
+**设计结论（接口与用户习惯）**：
+- 认证一律 HTTP Basic（账号 + 应用密码）；多数平台禁止主密码，绑定表单与引导文案必须强调。
+- 连接前先 **OPTIONS** 看 `DAV:` 头，再 **PROPFIND Depth:0** 取
+  `quota-available-bytes` / `quota-used-bytes` —— 用于「存储池」展示与写入前余额校验。
+- 上传用 PUT（媒体大小远低于 500MB 限制；请求数远低于频率限制）；
+  XML 解析引入 `quick-xml` 只取必要字段。
+- **Range/秒开问题**：外置直读 + 加密会让 Range 变差 → 策略：外置为主存储 + 站内小缓存
+  （缩略图/近期访问）；大视频在外置上的拖动播放需整文件下载解密后再切片（UI 需注明）。
+- **默认加密可关**：平台托管密钥（AES-GCM/age），密钥随站内备份；关闭加密时直接透传。
+- **用户引导**：内置常见平台预设（Nextcloud / 坚果云 / 群晖 / 自建），
+  「测试连接」按钮（OPTIONS+PROPFIND）通过后再保存；凭据加密存储、失败自动回退本地并提示。

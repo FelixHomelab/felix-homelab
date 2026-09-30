@@ -4,7 +4,14 @@
 //! 容量订阅的订单/用量数据随购买系统上线后补全，这里先给出清晰空态。
 
 use crate::components::PageHeader;
-use crate::orders::{format_cents, my_orders, my_subscription_state, order_status_label, product_label};
+use crate::archive::{
+    archive_status_label, hold_fee_text, mark_notifications_read, my_archive_cases,
+    my_notifications, respond_archive_case,
+};
+use crate::orders::{
+    format_bytes, format_cents, my_orders, my_subscription_state, order_status_label,
+    product_label,
+};
 use crate::storage::capacity_pool;
 use leptos::prelude::*;
 use leptos_meta::{Meta, Title};
@@ -43,6 +50,180 @@ pub fn SubscriptionsPage() -> impl IntoView {
         </section>
 
         <SubscriptionStatusSection />
+        <ArchiveSection />
+        <NotificationsSection />
+    }
+}
+
+/// 数据保管：容量过期后的宽限/待确认/平台保管案例。
+#[component]
+fn ArchiveSection() -> impl IntoView {
+    let revision = RwSignal::new(0_u32);
+    let message = RwSignal::new(String::new());
+    let cases = Resource::new(move || revision.get(), |_| my_archive_cases());
+
+    view! {
+        <section class="wrap section">
+            <div class="section-head">
+                <h2>"数据保管"</h2>
+                <span class="muted">"容量到期后的宽限、确认与删除倒计时"</span>
+            </div>
+            {move || {
+                let text = message.get();
+                (!text.is_empty()).then(|| view! { <p class="notice" role="status">{text}</p> })
+            }}
+            <Suspense fallback=move || view! { <p class="muted">"载入中…"</p> }>
+                {move || match cases.get().and_then(|result| result.ok()) {
+                    Some(list) if list.is_empty() => view! {
+                        <p class="muted">"暂无需要保管的数据。"</p>
+                    }
+                    .into_any(),
+                    Some(list) => view! {
+                        <div class="card">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>"案例"</th>
+                                        <th>"状态"</th>
+                                        <th>"文件"</th>
+                                        <th>"倒计时"</th>
+                                        <th>"操作"</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {list
+                                        .into_iter()
+                                        .map(|case| {
+                                            let case_id = case.id;
+                                            let status = case.status.clone();
+                                            let can_respond = status == "notified";
+                                            let countdown = case
+                                                .delete_after
+                                                .clone()
+                                                .or(case.grace_until.clone())
+                                                .unwrap_or_else(|| "—".to_string());
+                                            view! {
+                                                <tr>
+                                                    <td>{format!("#{}", case.id)}</td>
+                                                    <td>{archive_status_label(&case.status)}</td>
+                                                    <td>
+                                                        {format!("{} 个 / {}", case.media_count, format_bytes(case.bytes))}
+                                                    </td>
+                                                    <td>{countdown}</td>
+                                                    <td>
+                                                        {can_respond
+                                                            .then(|| {
+                                                                view! {
+                                                                    <div class="admin-actions">
+                                                                        <button
+                                                                            class="btn btn-small"
+                                                                            type="button"
+                                                                            on:click=move |_| {
+                                                                                let message = message;
+                                                                                let revision = revision;
+                                                                                leptos::task::spawn_local(async move {
+                                                                                    match respond_archive_case(case_id, true).await {
+                                                                                        Ok(text) => {
+                                                                                            message.set(text);
+                                                                                            revision.update(|n| *n += 1);
+                                                                                        }
+                                                                                        Err(error) => message.set(format!("请求失败：{error}")),
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        >
+                                                                            {format!("需要（{}）", hold_fee_text())}
+                                                                        </button>
+                                                                        <button
+                                                                            class="btn btn-small"
+                                                                            type="button"
+                                                                            on:click=move |_| {
+                                                                                let message = message;
+                                                                                let revision = revision;
+                                                                                leptos::task::spawn_local(async move {
+                                                                                    match respond_archive_case(case_id, false).await {
+                                                                                        Ok(text) => {
+                                                                                            message.set(text);
+                                                                                            revision.update(|n| *n += 1);
+                                                                                        }
+                                                                                        Err(error) => message.set(format!("请求失败：{error}")),
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        >
+                                                                            "不需要（留存一周后删除）"
+                                                                        </button>
+                                                                    </div>
+                                                                }
+                                                            })}
+                                                    </td>
+                                                </tr>
+                                            }
+                                        })
+                                        .collect_view()}
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    .into_any(),
+                    None => ().into_any(),
+                }}
+            </Suspense>
+        </section>
+    }
+}
+
+/// 站内通知列表。
+#[component]
+fn NotificationsSection() -> impl IntoView {
+    let revision = RwSignal::new(0_u32);
+    let notifications = Resource::new(move || revision.get(), |_| my_notifications());
+
+    view! {
+        <section class="wrap section">
+            <div class="section-head">
+                <h2>"通知"</h2>
+                <button
+                    class="btn btn-small"
+                    type="button"
+                    on:click=move |_| {
+                        let revision = revision;
+                        leptos::task::spawn_local(async move {
+                            let _ = mark_notifications_read().await;
+                            revision.update(|n| *n += 1);
+                        });
+                    }
+                >
+                    "全部标为已读"
+                </button>
+            </div>
+            <Suspense fallback=move || view! { <p class="muted">"载入中…"</p> }>
+                {move || match notifications.get().and_then(|result| result.ok()) {
+                    Some(list) if list.is_empty() => view! {
+                        <p class="muted">"暂无通知。"</p>
+                    }
+                    .into_any(),
+                    Some(list) => view! {
+                        <ul class="notice-list">
+                            {list
+                                .into_iter()
+                                .map(|item| {
+                                    view! {
+                                        <li class:unread=!item.read>
+                                            <strong>{item.title}</strong>
+                                            <span class="muted">" · " {item.created_at}</span>
+                                            <p>{item.body}</p>
+                                        </li>
+                                    }
+                                })
+                                .collect_view()}
+                        </ul>
+                    }
+                    .into_any(),
+                    None => ().into_any(),
+                }}
+            </Suspense>
+        </section>
     }
 }
 
@@ -219,19 +400,4 @@ fn CapacityPoolCard() -> impl IntoView {
     }
 }
 
-/// 字节格式化：B / KB / MB / GB / TB（保留一位小数）。
-fn format_bytes(bytes: i64) -> String {
-    let value = bytes.max(0) as f64;
-    let units = ["B", "KB", "MB", "GB", "TB"];
-    let mut size = value;
-    let mut unit = 0usize;
-    while size >= 1024.0 && unit < units.len() - 1 {
-        size /= 1024.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{} {}", value as i64, units[0])
-    } else {
-        format!("{size:.1} {}", units[unit])
-    }
-}
+

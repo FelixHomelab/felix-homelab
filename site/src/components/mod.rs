@@ -27,6 +27,27 @@ pub fn ready_after_hydration() -> Signal<bool> {
     ready.into()
 }
 
+/// 顶栏下的通知提示条：有未读通知时显示（登录用户）。
+#[component]
+pub fn NotificationBanner() -> impl IntoView {
+    let count = Resource::new(|| (), |_| crate::archive::unread_notification_count());
+    view! {
+        <Suspense fallback=|| ()>
+            {move || {
+                match count.get().and_then(|result| result.ok()) {
+                    Some(n) if n > 0 => view! {
+                        <a class="notice-banner" href="/subscriptions">
+                            {format!("你有 {n} 条订阅提醒 · 点击查看")}
+                        </a>
+                    }
+                    .into_any(),
+                    _ => ().into_any(),
+                }
+            }}
+        </Suspense>
+    }
+}
+
 /// 顶部导航栏。
 ///
 /// 移动端菜单用 **纯 CSS 开关**（隐藏 checkbox + label）：不依赖 wasm 水合，

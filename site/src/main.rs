@@ -21,7 +21,8 @@ async fn main() -> anyhow::Result<()> {
     use felix_homelab_site::app::{shell, App};
     use felix_homelab_site::state::AppState;
     use felix_homelab_site::{
-        agents, auth, content, db, media, orders, register_server_fns, seo, stt, uploads,
+        agents, archive, auth, content, db, media, orders, register_server_fns, seo, stt,
+        uploads,
     };
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
@@ -55,6 +56,9 @@ async fn main() -> anyhow::Result<()> {
 
     // 媒体按龄重压缩后台任务（>7d/-3、>1m/-7、>3m/-19；热文件跳过）
     media::spawn_recompression_task(pool.clone());
+
+    // 容量到期提醒 / 数据保管流程
+    archive::spawn_maintenance_task(pool.clone());
 
     // --- 内容 ---
     let content_dir = std::env::var("CONTENT_DIR").unwrap_or_else(|_| "content".to_string());

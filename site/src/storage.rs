@@ -101,7 +101,10 @@ pub async fn capacity_pool(window: String) -> Result<CapacityPoolView, ServerFnE
 /// 已用容量（字节）：用户全部媒体的原始大小合计。
 #[cfg(feature = "ssr")]
 pub async fn user_capacity_used(pool: &sqlx::SqlitePool, user_id: i64) -> i64 {
-    sqlx::query_scalar("SELECT COALESCE(SUM(original_size),0) FROM media WHERE owner_id = ?1")
+    sqlx::query_scalar(
+        "SELECT COALESCE(SUM(original_size),0) FROM media \
+         WHERE owner_id = ?1 AND archived_at IS NULL",
+    )
         .bind(user_id)
         .fetch_one(pool)
         .await
