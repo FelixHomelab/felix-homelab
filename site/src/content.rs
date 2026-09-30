@@ -182,6 +182,8 @@ pub fn render_markdown(md: &str, allow_html: bool) -> String {
 
     let mut out = String::new();
     html::push_html(&mut out, rewritten.into_iter());
+    // 正文图片懒加载（生成的 <img> 都是我们产出的，字符串替换安全且简单）
+    out = out.replace("<img ", "<img loading=\"lazy\" decoding=\"async\" ");
     out
 }
 

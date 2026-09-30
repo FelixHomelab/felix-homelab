@@ -3,7 +3,9 @@
 //! 下单与支付流程待接入（随注册/审核完成后实现）；本页先承接导航入口。
 
 use crate::components::PageHeader;
-use crate::orders::{capacity_price_cents, create_order, format_cents};
+#[cfg(feature = "hydrate")]
+use crate::orders::create_order;
+use crate::orders::{capacity_price_cents, format_cents};
 use leptos::prelude::*;
 use leptos_meta::{Meta, Title};
 

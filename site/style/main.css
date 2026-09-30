@@ -2019,7 +2019,7 @@ html.dark .status-published {
     align-items: center;
     justify-content: center;
     background: #020409;
-    transition: opacity 0.6s ease;
+    transition: opacity 0.45s ease;
 }
 
 html.splash-pending .splash {

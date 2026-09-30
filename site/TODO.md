@@ -1217,3 +1217,28 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 - **默认加密可关**：平台托管密钥（AES-GCM/age），密钥随站内备份；关闭加密时直接透传。
 - **用户引导**：内置常见平台预设（Nextcloud / 坚果云 / 群晖 / 自建），
   「测试连接」按钮（OPTIONS+PROPFIND）通过后再保存；凭据加密存储、失败自动回退本地并提示。
+
+---
+
+## 性能诊断与优化（2026-09-30）
+
+**实测根因**：
+1. `/pkg*` 资产曾被设置 `Cache-Control: no-cache`（早期为绕过 CF 的 4h 缓存而加的“万金油”），
+   导致 wasm（2.9MB / gzip 后 1.0MB）每次访问都从家里回源：实测 6–8s/次。
+   → 已改 `public, max-age=31536000, immutable`（构建戳保证换发新 URL）。
+2. Cloudflare **默认不缓存 `.wasm`**（cf-cache-status: DYNAMIC）与 `.wav`；
+   `.js`/`.css`/`.png`/`.mp4` 等按扩展名缓存（实测 MISS→HIT）。
+3. 源站压缩正常（Caddy `encode zstd gzip`）；经 CF 后客户端收到 gzip（约 1.0MB）。
+4. HTML 不缓存（按设计，含登录态），TTFB 实测 0.25–0.4s，可接受。
+5. 链路底速约 180KB/s（该网络到 CF 边缘），冷缓存首次加载 ≈ 7–8s 属链路限制。
+
+**已实施**：资产缓存头修正；正文图片 `loading=lazy decoding=async`；开场动画提速
+（hold 320ms / fly 650ms）；媒体响应 `immutable`。
+
+**需要 CF 控制台加两条 Cache Rule（1 分钟）**：
+- `http.request.uri.path matches "/pkg-*"` → Eligible for cache（Edge TTL 尊重源站）
+- `http.request.uri.path matches "/media/*"` → Eligible for cache（覆盖 .wav 等）
+（内容寻址/构建戳保证不可变，安全；不要对 HTML 开缓存。）
+
+**可选深挖**：wasm-opt -Oz（再减 10–20%）、Service Worker 离线缓存、
+静态资产迁 Cloudflare Pages/R2（彻底绕开隧道回源）、CF Argo（付费）。

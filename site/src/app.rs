@@ -22,6 +22,7 @@ use crate::pages::{
 use crate::theme::{ThemePrefs, ThemeState};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, Html, MetaTags, Stylesheet};
+
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::{path, SsrMode, StaticSegment};
 
@@ -73,8 +74,8 @@ const SPLASH_BODY_SCRIPT: &str = r#"
       logo.style.transition = "transform .85s cubic-bezier(.22,.61,.36,1), color .85s ease";
       logo.style.transform = "translate(" + dx + "px," + dy + "px) scale(" + s + ")";
       logo.style.color = "var(--ink)";
-      setTimeout(finish, 880);
-    }, 480);
+      setTimeout(finish, 650);
+    }, 320);
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", run);
