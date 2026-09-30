@@ -1010,10 +1010,14 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
     `config/backup/backup-kanidm.sh`（SQLite 在线 .backup + 证书）已接入每日/手动备份、
     install/uninstall/Makefile/`.env.example` 已接线；试实例卷 `kanidm-p0-data` 已删除
     （`kanidm-cli-home` 保留：CLI 登录会话缓存，丢了重新 login 即可）
-  - ⏳ Forgejo OIDC：Kanidm 建 confidential 客户端 `forgejo` + Forgejo `admin auth add-oauth`
-    （auto-discover 用按客户端 discovery URL；先关自动注册、按 `preferred_username` 绑定既有
-    `Felix` 账号；本地密码登录**保留并联**）
-  - ⏳ 主站 OIDC（同样并联，保留密码登录）
+  - ✅ Forgejo OIDC（已闭环）：机密客户端 `forgejo`；踩坑与结论：
+    1) `create` 第三参是 landing URL，redirect 必须 `add-redirect-url` 加；
+    2) 需 `warning-insecure-client-disable-pkce`（Forgejo 早期不带 PKCE）；
+    3) `groups` 作用域输出组 SPN/UUID，Forgejo `--admin-group felix-admins@id.wraindrock.com`；
+    4) 绑定：本地登录后访问 `/user/oauth2/kanidm`，`external_login_user` 记录 sub=Kanidm UUID；
+    5) 本地密码登录保留并联
+  - ⏳ 主站 OIDC（同样并联，保留密码登录）：Kanidm 组 → 站点角色
+    （super/communitymaster/skymaster/agentmaster）映射待定
 - P2：Tuwunel 部署（**完全关闭联邦**），Element 接入；数据卷纳入备份。
 - P3：OpenCloud 外接 IdP PoC。
 

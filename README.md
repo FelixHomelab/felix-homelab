@@ -352,7 +352,10 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
 - **OIDC 接入要点**（实测）：发现地址是**按客户端**的
   `https://id.wraindrock.com/oauth2/openid/<客户端名>/.well-known/openid-configuration`；
   `update-claim-map <客户端> <声明> <组> [值...]`（值以空格分隔，JSON 数组字面量不可用），
-  数组声明先 `update-claim-map-join <客户端> <声明> array`。
+  数组声明先 `update-claim-map-join <客户端> <声明> array`；
+  内置 `groups` 作用域会输出组 SPN/UUID 列表（自定义 claim 同名时会被覆盖，本项目按 SPN 匹配）。
+  口令策略：Kanidm 要求 zxcvbn 4/4（日期样式、用户名/域名词会被重罚），弱口令无法提交；
+  密码 + TOTP 才算满足 MFA 提交条件（CLI：`person credential use-reset-token` 交互式设置）。
 - **备份**：随每日 03:00 / 后台手动备份执行 `config/backup/backup-kanidm.sh`
   （`podman unshare` 内 SQLite 在线 `.backup` + 证书 → `felix-homelab-kanidm-<时间戳>.tar.gz`）。
 - **恢复**：停服务，把归档解回 `felix-homelab-kanidm-data` 卷，再启动：
@@ -362,8 +365,14 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
     -C "$(podman volume inspect -f '{{.Mountpoint}}' felix-homelab-kanidm-data)" .
   systemctl --user start felix-homelab-kanidm.service
   ```
-- **状态**：P0 完成（服务/客户端/发现/公网全通）；P1 进行中——Forgejo OIDC
-  （本地密码登录保留为并行方式）、主站 OIDC。规划见 `site/TODO.md`。
+- **Forgejo 接入（已完成）**：Kanidm 建机密客户端 `forgejo`（`forgejo.wraindrock.com/user/oauth2/kanidm/callback`），
+  Forgejo 侧 `admin auth add-oauth --provider openidConnect --auto-discover-url …/oauth2/openid/forgejo/.well-known/openid-configuration`。
+  实测要点：① 目标 redirect URL 必须 `add-redirect-url` 单独加（`create` 的第三参是 landing URL）；
+  ② 给客户端 `warning-insecure-client-disable-pkce`（Forgejo 早期不发送 PKCE）；
+  ③ `groups` 作用域产出的是组 SPN/UUID 列表，`--admin-group` 用 `felix-admins@id.wraindrock.com`；
+  ④ 账号绑定：先本地登录 Forgejo，再访问 `/user/oauth2/kanidm` 完成关联（`external_login_user` 记 sub=Kanidm UUID）。
+  本地密码登录保留为并行后备；站点右上角「使用kanidm登录」已可一键进入。
+- **状态**：P0 完成；P1 进行中——✅ Forgejo OIDC（已闭环），⏳ 主站 OIDC。规划见 `site/TODO.md`。
 
 ## 后台运维（/admin）
 
