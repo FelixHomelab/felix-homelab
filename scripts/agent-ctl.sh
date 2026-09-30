@@ -9,7 +9,7 @@
 #     通过 Caddy 子域 + 主站会话鉴权访问。
 #
 # 用法：
-#   agent-ctl.sh build [kind]              构建模板镜像（opencode/dsh/openclaw/kilocode/pi）
+#   agent-ctl.sh build [kind]              构建/拉取模板镜像（opencode/dsh/kilocode/pi/zeroclaw）
 #   agent-ctl.sh grant <user> [kind] [slot] 创建并启动（授权仍以站点后台为准）
 #   agent-ctl.sh start|stop|remove <user> [slot]
 #   agent-ctl.sh setkey <user> [slot] [KEY=VALUE ...]  写 DSH 密钥（只写不读值）
@@ -44,7 +44,7 @@ fi
 
 AGENT_IMAGE="${AGENT_IMAGE:-localhost/felix-agent-opencode:latest}"
 AGENT_DSH_IMAGE="${AGENT_DSH_IMAGE:-localhost/felix-agent-dsh:latest}"
-AGENT_OPENCLAW_IMAGE="${AGENT_OPENCLAW_IMAGE:-localhost/felix-agent-openclaw:latest}"
+AGENT_ZEROCLAW_IMAGE="${AGENT_ZEROCLAW_IMAGE:-ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5-debian}"
 AGENT_KILOCODE_IMAGE="${AGENT_KILOCODE_IMAGE:-localhost/felix-agent-kilocode:latest}"
 AGENT_PI_IMAGE="${AGENT_PI_IMAGE:-localhost/felix-agent-pi:latest}"
 AGENT_BASE_DOMAIN="${AGENT_BASE_DOMAIN:-wraindrock.com}"
@@ -321,12 +321,6 @@ route_write() {
 	b64="$(printf 'opencode:%s' "$password" | base64 | tr -d '\n')"
 	local kind vnc_block=""
 	kind="$(state_field "$key" kind)"
-	# OpenClaw 要求「代理归属」：XFF 链里必须含真实客户端 IP（非受信跳）；
-	# Cloudflare Tunnel 仅提供 CF-Connecting-IP（XFF 里没有客户端）→ 网关这层注入。
-	local xff_line=""
-	if [ "$kind" = "openclaw" ]; then
-		xff_line=$'\n\t\theader_up X-Forwarded-For {http.request.header.CF-Connecting-IP}'
-	fi
 	if [ "$kind" = "dsh" ]; then
 		local vnc_port=$((AGENT_VNC_PORT_BASE + port - AGENT_PORT_BASE))
 		vnc_block="
@@ -354,7 +348,7 @@ handle @agent_$slug {
 		uri /api/agent/auth?user=$username&slot=$slot&orig={http.request.uri}
 	}
 	reverse_proxy 127.0.0.1:$port {
-		header_up Authorization "Basic $b64"$xff_line
+		header_up Authorization "Basic $b64"
 	}
 }$vnc_block
 EOF
@@ -390,7 +384,7 @@ caddy_reload() {
 image_of() {
 	case "$1" in
 	dsh) printf '%s' "$AGENT_DSH_IMAGE" ;;
-	openclaw) printf '%s' "$AGENT_OPENCLAW_IMAGE" ;;
+	zeroclaw) printf '%s' "$AGENT_ZEROCLAW_IMAGE" ;;
 	kilocode) printf '%s' "$AGENT_KILOCODE_IMAGE" ;;
 	pi) printf '%s' "$AGENT_PI_IMAGE" ;;
 	*) printf '%s' "$AGENT_IMAGE" ;;
@@ -401,7 +395,7 @@ require_image() {
 	local image
 	image="$(image_of "$1")"
 	if ! podman image exists "$image"; then
-		die "模板镜像不存在：$image（先执行 make agent-build-<kind>，可用 opencode/dsh/openclaw/kilocode/pi）"
+		die "模板镜像不存在：$image（先执行 make agent-build-<kind>，可用 opencode/dsh/kilocode/pi/zeroclaw）"
 	fi
 }
 
@@ -498,20 +492,19 @@ container_create() {
 			--trusted-host "$dsh_host.$AGENT_LOCAL_DOMAIN"
 			--trusted-host "$dsh_host.$AGENT_BASE_DOMAIN")
 		;;
-	openclaw)
-		# OpenClaw Gateway：控制台与网关同端口；token（实例密码）由入口脚本写入配置；
-		# 控制台要求显式允许浏览器来源（gateway.controlUi.allowedOrigins），
-		# 来源即本实例的访问域名（公网 + 本地）。
-		local oc_subdomain oc_origin oc_origin_local
-		oc_subdomain="$(state_field "$key" subdomain)"
-		[ -n "$oc_subdomain" ] || oc_subdomain="$slug"
-		oc_origin="https://$oc_subdomain.$AGENT_BASE_DOMAIN"
-		oc_origin_local="https://$oc_subdomain.$AGENT_LOCAL_DOMAIN"
-		args+=(--env "AGENT_PORT=$port")
-		args+=(--env "AGENT_TOKEN=$password")
-		args+=(--env "AGENT_ORIGIN=$oc_origin")
-		args+=(--env "AGENT_ORIGIN_LOCAL=$oc_origin_local")
-		args+=("$(image_of "$kind")")
+	zeroclaw)
+		# ZeroClaw（官方镜像）：Gateway + Web Dashboard 同端口。
+		# 数据独立挂 /zeroclaw-data（命名卷子目录，首启由镜像内容初始化 Dashboard 资源）；
+		# 配置走 schema-mirror 环境变量（ZEROCLAW_<path，__ 分隔>）。
+		# 站内网关已完成用户鉴权，这里关闭 pairing 并允许公开绑定。
+		local zc_volume="$volume-zc"
+		podman volume exists "$zc_volume" 2>/dev/null || podman volume create "$zc_volume" >/dev/null
+		args+=(--volume "$zc_volume:/zeroclaw-data:Z")
+		args+=(--env "ZEROCLAW_gateway__host=0.0.0.0")
+		args+=(--env "ZEROCLAW_gateway__allow_public_bind=true")
+		args+=(--env "ZEROCLAW_gateway__port=$port")
+		args+=(--env "ZEROCLAW_gateway__require_pairing=false")
+		args+=("$(image_of "$kind")" gateway start)
 		;;
 	kilocode | pi)
 		# 终端型 Agent：容器内 ttyd 提供 Web 终端（AGENT_PORT 注入端口）
@@ -663,6 +656,7 @@ do_purge() {
 	log "永久删除：$username #$slot（$subdomain）"
 	podman rm -f "$(container_of "$key")" >/dev/null 2>&1 || true
 	podman volume rm -f "felix-agent-$slug-data" >/dev/null 2>&1 || true
+	podman volume rm -f "felix-agent-$slug-data-zc" >/dev/null 2>&1 || true
 	podman network rm -f "${AGENT_NET_PREFIX}${slug}" >/dev/null 2>&1 || true
 	rm -rf "$WORK_ROOT/$slug"
 	rm -f "$CADDY_DIR/$slug.caddy"
@@ -936,7 +930,7 @@ changed = False
 for key, entry in data.get("agents", {}).items():
     if entry.get("desired") != "started":
         continue
-    if entry.get("kind") not in ("dsh", "opencode", "openclaw", "kilocode", "pi"):
+    if entry.get("kind") not in ("dsh", "opencode", "kilocode", "pi", "zeroclaw"):
         pass
     name = f"felix-agent-{entry.get('slug', '')}"
     try:
@@ -1167,14 +1161,14 @@ list_versions() {
 		current=""
 		[ "$image" = "$AGENT_IMAGE" ] && current="opencode"
 		[ "$image" = "$AGENT_DSH_IMAGE" ] && current="${current:+$current,}dsh"
-		[ "$image" = "$AGENT_OPENCLAW_IMAGE" ] && current="${current:+$current,}openclaw"
+		[ "$image" = "$AGENT_ZEROCLAW_IMAGE" ] && current="${current:+$current,}zeroclaw"
 		[ "$image" = "$AGENT_KILOCODE_IMAGE" ] && current="${current:+$current,}kilocode"
 		[ "$image" = "$AGENT_PI_IMAGE" ] && current="${current:+$current,}pi"
 		printf '%-46s %-17s %-9s %-24s %s\n' \
 			"$image" "$(printf '%s' "$created" | cut -d' ' -f1-2)" "$size" "${used:-—}" "${current:-—}"
 	done < <(podman images \
 		--format '{{.CreatedAt}}|{{.Repository}}:{{.Tag}}|{{.Size}}' 2>/dev/null \
-		| grep -E '(^|/)felix-agent-(opencode|dsh|openclaw|kilocode|pi):' | sort -r)
+		| grep -E '(^|/)(felix-agent-(opencode|dsh|kilocode|pi)|zeroclaw):' | sort -r)
 }
 
 # 固定模板镜像版本：把 AGENT_IMAGE / AGENT_DSH_IMAGE 写回 .env（版本标签由
@@ -1184,12 +1178,12 @@ pin_image() {
 	case "$kind" in
 	opencode) var=AGENT_IMAGE ;;
 	dsh) var=AGENT_DSH_IMAGE ;;
-	openclaw) var=AGENT_OPENCLAW_IMAGE ;;
+	zeroclaw) var=AGENT_ZEROCLAW_IMAGE ;;
 	kilocode) var=AGENT_KILOCODE_IMAGE ;;
 	pi) var=AGENT_PI_IMAGE ;;
-	*) die "用法：agent-ctl.sh pin <opencode|dsh|openclaw|kilocode|pi> <版本|latest>" ;;
+	*) die "用法：agent-ctl.sh pin <opencode|dsh|kilocode|pi|zeroclaw> <版本|latest>" ;;
 	esac
-	[ -n "$ref" ] || die "用法：agent-ctl.sh pin <opencode|dsh|openclaw|kilocode|pi> <版本|latest>"
+	[ -n "$ref" ] || die "用法：agent-ctl.sh pin <opencode|dsh|kilocode|pi|zeroclaw> <版本|latest>"
 	repo="${!var%:*}"
 	if [ "$ref" = "latest" ]; then
 		target="$repo:latest"

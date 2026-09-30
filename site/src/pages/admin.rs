@@ -1182,7 +1182,7 @@ pub fn AdminAgentPage() -> impl IntoView {
                             >
                                 <option value="opencode">"OpenCode"</option>
                                 <option value="dsh">"DeepSeek Harness"</option>
-                                <option value="openclaw">"OpenClaw"</option>
+                                <option value="zeroclaw">"ZeroClaw"</option>
                                 <option value="kilocode">"Kilo Code"</option>
                                 <option value="pi">"Pi"</option>
                             </select>

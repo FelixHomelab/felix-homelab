@@ -1282,3 +1282,21 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 - **默认插件**：DSH 增加 `@huanx/kilo-zen2dsh@0.4.0`、`dsh-webchat@0.2.0`；
   OpenClaw 增加 FreeRide（官方仓库固定提交 + `pip install -e`，首启注册技能）；
   Pi 增加 `pi-freerouter@0.1.17`（构建期烘焙，首启复制到 HOME）。
+
+## OpenClaw 移除 → ZeroClaw（2026-09-30）
+
+**背景**：OpenClaw 在实测中问题较多（代理归属校验、控制台来源、令牌交付都要专门适配），
+站长决策：移除 OpenClaw，改用 **ZeroClaw**（官方仓库 `zeroclaw-labs/zeroclaw`）。
+
+- **官方镜像**：`ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5-debian`（固定版本；debian 变体自带 sh/curl，
+  便于健康检查与调试；`latest` 是 distroless 无 shell）。镜像内嵌 Web Dashboard，开箱即用。
+- **运行方式**：`gateway start`（与控制台同端口，默认 42617）；持久状态挂 `/zeroclaw-data`。
+- **配置**：schema-mirror 环境变量（`ZEROCLAW_<路径>`，`__` 作层级分隔），
+  agent-ctl 注入 `gateway.host=0.0.0.0`、`allow_public_bind=true`、`port=$AGENT_PORT`、
+  `require_pairing=false`（站内网关已完成用户鉴权，无需 pairing 令牌）；
+  健康检查 `GET /`（或 `/health`）。
+- **站点侧**：类型白名单/标签/管理员下拉 openclaw → zeroclaw；迁移 `0019_zeroclaw.sql`
+  把存量 openclaw 行改写为 zeroclaw；卡片移除 OpenClaw 专用令牌行与 `my_agent_token`。
+- **agent-ctl**：移除 openclaw 分支（XFF 注入/trustedProxies/allowedOrigins/token 全部不再需要）、
+  镜像变量改 `AGENT_ZEROCLAW_IMAGE`、pin/升级检测/白名单同步更新；
+  `containers/agent-openclaw` 构建目录删除；`build-agent-image.sh` 对 zeroclaw 改为拉取官方镜像。

@@ -464,10 +464,11 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
 
 导航会按权限自动过滤，越权访问页面与接口都会被拒（服务端逐个校验）。
 
-- **Agent 类型**：OpenCode、DeepSeek Harness、**OpenClaw**（自托管 Gateway，自带控制台）、
+- **Agent 类型**：OpenCode、DeepSeek Harness、**ZeroClaw**（官方镜像，Gateway + Web Dashboard）、
   **Kilo Code**、**Pi**（终端型，容器内 ttyd 提供 Web 终端）。
-  构建：`make agent-build` / `-dsh` / `-openclaw` / `-kilocode` / `-pi`；
-  类型白名单在 `site/src/agents.rs` 与 `agent_subscriptions.kind`（见迁移 0018）。
+  镜像：`make agent-build` / `-dsh` / `-kilocode` / `-pi` 本地构建，
+  `make agent-build-zeroclaw` 拉取官方 `ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5-debian`；
+  类型白名单在 `site/src/agents.rs` 与 `agent_subscriptions.kind`（见迁移 0019）。
 
 ## AI Agent（多租户，P1 试点）
 

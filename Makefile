@@ -29,7 +29,7 @@ SERVICES := felix-homelab-db.service felix-homelab-forgejo.service \
 
 .PHONY: install register build-images build-site status logs restart stop start \
 	backup backup-list sync-backup restore deploy uninstall purge prune migrate help \
-	agent-build agent-build-dsh agent-build-openclaw agent-build-kilocode agent-build-pi agent-list agent-apply agent-stop agent-remove \
+	agent-build agent-build-dsh agent-build-kilocode agent-build-pi agent-build-zeroclaw agent-list agent-apply agent-stop agent-remove \
 	agent-setkey doctor
 
 help:
@@ -57,8 +57,8 @@ agent-build: ## 构建多租户 Agent 模板镜像（OpenCode）
 agent-build-dsh: ## 构建多租户 Agent 模板镜像（DeepSeek Harness）
 	$(REPO_DIR)/scripts/build-agent-image.sh dsh
 
-agent-build-openclaw: ## 构建多租户 Agent 模板镜像（OpenClaw）
-	$(REPO_DIR)/scripts/build-agent-image.sh openclaw
+agent-build-zeroclaw: ## 拉取 ZeroClaw 官方 Agent 镜像
+	$(REPO_DIR)/scripts/build-agent-image.sh zeroclaw
 
 agent-build-kilocode: ## 构建多租户 Agent 模板镜像（Kilo Code）
 	$(REPO_DIR)/scripts/build-agent-image.sh kilocode

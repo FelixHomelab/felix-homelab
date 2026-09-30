@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 /// 支持的模板类型（仅服务端校验用）。
 #[cfg(feature = "ssr")]
-const AGENT_KINDS: [&str; 5] = ["opencode", "dsh", "openclaw", "kilocode", "pi"];
+const AGENT_KINDS: [&str; 5] = ["opencode", "dsh", "kilocode", "pi", "zeroclaw"];
 
 /// 单个用户可开通的实例数上限（P1 保护宿主资源）。
 #[cfg(feature = "ssr")]
@@ -36,7 +36,7 @@ pub fn agent_kind_label(kind: &str) -> &'static str {
     match kind {
         "opencode" => "OpenCode",
         "dsh" => "DeepSeek Harness",
-        "openclaw" => "OpenClaw",
+        "zeroclaw" => "ZeroClaw",
         "kilocode" => "Kilo Code",
         "pi" => "Pi",
         _ => "Agent",
@@ -817,56 +817,6 @@ pub async fn update_agent_note(agent_id: i64, note: String) -> crate::auth::Acti
             Ok(Err("保存失败，稍后再试。".to_string()))
         }
     }
-}
-
-/// 取当前用户在指定实例上的「控制台令牌」（目前只有 OpenClaw 需要）。
-///
-/// 令牌由 agent-ctl 创建实例时生成并保存在 `/agents/state.json`；
-/// 云端用户没有终端，由站点按实例下发（仅所有者可取；其它类型返回 None）。
-#[server]
-pub async fn my_agent_token(slot: i64) -> Result<Option<String>, ServerFnError> {
-    use crate::state::AppState;
-
-    let Some(identity) = crate::auth::current_identity().await else {
-        return Ok(None);
-    };
-    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
-    let username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?1")
-        .bind(identity.id)
-        .fetch_one(&app.pool)
-        .await
-        .map_err(|e| ServerFnError::new(format!("查询用户名失败: {e}")))?;
-
-    let path = std::path::Path::new(AGENTS_DIR).join("state.json");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Ok(None);
-    };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return Ok(None);
-    };
-    let Some(entries) = value.get("agents").and_then(|v| v.as_object()) else {
-        return Ok(None);
-    };
-
-    for entry in entries.values() {
-        let owner = entry.get("username").and_then(|v| v.as_str()).unwrap_or("");
-        let entry_slot = entry.get("slot").and_then(|v| v.as_i64()).unwrap_or(1);
-        let kind = entry.get("kind").and_then(|v| v.as_str()).unwrap_or("");
-        if owner.to_ascii_lowercase() != username.to_ascii_lowercase()
-            || entry_slot != slot
-            || kind != "openclaw"
-        {
-            continue;
-        }
-        if entry.get("desired").and_then(|v| v.as_str()) == Some("removed") {
-            return Ok(None);
-        }
-        return Ok(entry
-            .get("password")
-            .and_then(|v| v.as_str())
-            .map(str::to_string));
-    }
-    Ok(None)
 }
 
 /// 时长池视图：某统计窗口内的总时长与剩余时长（秒）。

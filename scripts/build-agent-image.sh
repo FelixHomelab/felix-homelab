@@ -58,11 +58,13 @@ dsh)
 	DIR="$REPO_DIR/containers/agent-dsh"
 	BUILD_ARGS=(--build-arg "DSH_VERSION=$VERSION" --build-arg "DSHMARKET_VERSION=$MARKET_VERSION" --build-arg "DSHGUARDIAN_REF=$GUARDIAN_REF" --build-arg "DSHCOSTMETER_VERSION=$COSTMETER_VERSION" --build-arg "OPENCODE2DSH_REF=$OC2DSH_REF" --build-arg "DSHBETTERSIDEBAR_VERSION=$SIDEBAR_VERSION" --build-arg "DSHEGOBROWSER_REF=$EGOBROWSER_REF" --build-arg "DSHDEV_RULES_REF=$DEV_RULES_REF" --build-arg "OBSCURA_VERSION=$OBSCURA_VER" --build-arg "KILOZEN_VERSION=$KILOZEN_VERSION" --build-arg "DSHWEBCHAT_VERSION=$DSHWEBCHAT_VERSION")
 	;;
-openclaw)
-	VERSION="${OPENCLAW_VERSION:-2026.9.7}"
-	IMAGE="${AGENT_OPENCLAW_IMAGE:-localhost/felix-agent-openclaw:latest}"
-	DIR="$REPO_DIR/containers/agent-openclaw"
-	BUILD_ARGS=(--build-arg "OPENCLAW_VERSION=$VERSION")
+zeroclaw)
+	# ZeroClaw 使用官方镜像，不在本地构建：固定 debian 变体（自带 sh/curl，便于健康检查）
+	VERSION="${ZEROCLAW_VERSION:-v0.8.5-debian}"
+	IMAGE="${AGENT_ZEROCLAW_IMAGE:-ghcr.io/zeroclaw-labs/zeroclaw:$VERSION}"
+	log "拉取官方镜像 $IMAGE"
+	podman pull "$IMAGE"
+	exit 0
 	;;
 kilocode)
 	VERSION="${KILOCODE_VERSION:-7.8.1}"
@@ -78,7 +80,7 @@ pi)
 	BUILD_ARGS=(--build-arg "AGENT_PKG=@earendil-works/pi-coding-agent" --build-arg "AGENT_VERSION=$VERSION" --build-arg "AGENT_BIN=pi" --build-arg "PI_PACKAGES=npm:pi-freerouter@$PI_FREEROUTER_VERSION")
 	;;
 *)
-	printf '未知模板：%s（可选 opencode / dsh / openclaw / kilocode / pi）\n' "$KIND" >&2
+	printf '未知模板：%s（可选 opencode / dsh / kilocode / pi / zeroclaw）\n' "$KIND" >&2
 	exit 1
 	;;
 esac
