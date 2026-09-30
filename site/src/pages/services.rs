@@ -70,10 +70,12 @@ pub fn ServicesPage() -> impl IntoView {
             name="description"
             content="Wraindrock 订阅：AI Agent 按周期订阅；OpenCloud 与 Forgejo 按容量订阅，价格与容量说明。"
         />
-        <PageHeader
-            title="购买订阅"
-            lede="Wraindrock 的三项自托管订阅：AI Agent 按周期；OpenCloud 与 Forgejo 按容量（共用一份）。下单入口即将开放。"
-        />
+        <section class="wrap">
+            <PageHeader
+                title="购买订阅"
+                lede="Wraindrock 的三项自托管订阅：AI Agent 按周期；OpenCloud 与 Forgejo 按容量（共用一份）。下单入口即将开放。"
+            />
+        </section>
 
         <section class="wrap section">
             <div class="section-head">

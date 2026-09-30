@@ -18,10 +18,12 @@ pub fn SubscriptionsPage() -> impl IntoView {
             name="description"
             content="查看已订阅的 AI Agent 与 OpenCloud / Forgejo 容量及使用情况。"
         />
-        <PageHeader
-            title="我的订阅"
-            lede="已订阅的 AI Agent 与容量（OpenCloud / Forgejo）集中在这里。"
-        />
+        <section class="wrap">
+            <PageHeader
+                title="我的订阅"
+                lede="已订阅的 AI Agent 与容量（OpenCloud / Forgejo）集中在这里。"
+            />
+        </section>
 
         <MyAgentsSection />
 
