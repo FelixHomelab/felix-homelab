@@ -25,6 +25,23 @@ if [ -d "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin" ]; then
 	chmod 0755 "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin"/*.sh 2>/dev/null || true
 fi
 
+# 第三方插件会以「静态 import」引用 DSH 内部包（dsh-webchat → dsh-settings、
+# dsh-llm 等），而 pnpm 只把它们装在全局 dsh 包自己的 node_modules 里，profile
+# 侧解析不到（表现为 failed to import）。这里把全局 @deepseek-ai/* 全部软链进
+# profile：同一 realpath → Node 仍解析到同一模块实例，服务单例语义不变。
+DSH_REAL="$(readlink -f "$(command -v dsh)" 2>/dev/null || true)"
+if [ -n "$DSH_REAL" ]; then
+	GLOBAL_AI="$(dirname "$(dirname "$DSH_REAL")")/node_modules/@deepseek-ai"
+	PROFILE_AI="$DSH_HOME/profiles/web/node_modules/@deepseek-ai"
+	if [ -d "$GLOBAL_AI" ] && [ -d "$PROFILE_AI" ]; then
+		for pkg in "$GLOBAL_AI"/*; do
+			[ -e "$pkg" ] || continue
+			name="$(basename "$pkg")"
+			[ -e "$PROFILE_AI/$name" ] || ln -s "$pkg" "$PROFILE_AI/$name" 2>/dev/null || true
+		done
+	fi
+fi
+
 # 容器内虚拟桌面：让 ego-browser 以「原生有头」方式运行在虚拟显示上，
 # 用户经 <子域>/vnc/vnc.html 跨设备查看/操作真实浏览器窗口。
 if [ "${FELIX_DESKTOP:-1}" = "1" ] && [ -x /usr/local/bin/felix-desktop-start.sh ]; then
