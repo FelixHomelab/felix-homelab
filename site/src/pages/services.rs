@@ -79,35 +79,45 @@ pub fn ServicesPage() -> impl IntoView {
 
         <section class="wrap section">
             <div class="section-head">
-                <h2>"AI Agent"</h2>
-                <span class="muted">"独立实例 · 周期订阅"</span>
+                <h2>"AI Agent（时间池充值）"</h2>
+                <span class="muted">"自助开启 · 按量自动计费"</span>
             </div>
             <div class="plan-grid">
                 <div class="plan-card">
-                    <h3>"1 周"</h3>
-                    <p class="plan-price">"¥6" <span>"/ 周"</span></p>
+                    <h3>"充值 ¥6"</h3>
+                    <p class="plan-price">"≈ 9.5 天" <span>"运行时间"</span></p>
                     <p class="plan-note">"适合短期试用"</p>
                 </div>
                 <div class="plan-card">
-                    <h3>"1 个月"</h3>
-                    <p class="plan-price">"¥19" <span>"/ 月"</span></p>
-                    <p class="plan-note">"≈ ¥4.4 / 周"</p>
+                    <h3>"充值 ¥19"</h3>
+                    <p class="plan-price">"= 30 天" <span>"运行时间"</span></p>
+                    <p class="plan-note">"基准费率：¥0.63 / 天"</p>
                 </div>
                 <div class="plan-card">
-                    <h3>"1 年"</h3>
-                    <p class="plan-price">"¥99" <span>"/ 年"</span></p>
-                    <p class="plan-note">"≈ ¥8.25 / 月（最划算）"</p>
+                    <h3>"充值 ¥99"</h3>
+                    <p class="plan-price">"≈ 156 天" <span>"运行时间"</span></p>
+                    <p class="plan-note">"也可充值任意金额，按费率折算"</p>
                 </div>
             </div>
-            <p class="muted">
-                "独立运行环境、数据隔离、常驻可用；支持 OpenCode 与 DSH 两种工作台，开通后按周期续费。"
-            </p>
-            <p class="muted">
-                "订阅时长是账号内全部 Agent 共享的总时长池：只订阅一个 Agent 时可运行满整个时长；"
-                "订阅多个时共享同一池，同时运行的 Agent 越多、消耗越快。"
-                "计费档位：运行 1×、睡眠半价（0.5×，睡眠仍占用本站资源）、彻底停止不计时；"
-                "耗尽或到期后全部停止，续费即恢复。"
-            </p>
+            <div class="prose">
+                <ul>
+                    <li>
+                        "Agent 由你自己选择并随时开启 / 停止；充值的时长进入账号「时间池」，按实际使用自动扣费。"
+                    </li>
+                    <li>
+                        "扣费档位：运行 1×、睡眠 0.5×（睡眠仍占用本站资源）、彻底停止不计时。"
+                    </li>
+                    <li>
+                        "时间用完后数据默认保留 1 天；需要继续保留按 0.3× 计费（约 ¥0.19 / 天）。"
+                    </li>
+                    <li>
+                        "可选开启「允许透支」：最低可至 −¥5，用于延长使用与数据保存；欠费超限即停止。"
+                    </li>
+                    <li>
+                        "本站维护期间不计费；当前为单一费率试运行，如遇资源紧张会提前公告调整。"
+                    </li>
+                </ul>
+            </div>
         </section>
 
         <section class="wrap section">

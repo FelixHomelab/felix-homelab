@@ -210,7 +210,7 @@ pub(crate) fn MyAgentsSection() -> impl IntoView {
                     <div class="section-head">
                         <h2>"我的 Agent"</h2>
                         <span class="muted">
-                            "打开卡片即进入；订阅时长为全部 Agent 共享的总时长池，睡眠按半价计时"
+                            "打开卡片即进入；时间池按量自动计费（运行 1×、睡眠 0.5×、停止不计）"
                         </span>
                     </div>
                     <div class="agent-grid">
