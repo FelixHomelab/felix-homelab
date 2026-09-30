@@ -1035,3 +1035,32 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
 映射表；VIP 的权限定义（先定义能做什么，再谈同步）；无邮件找回的线下重置流程。
 
 **备用路径**：Tuwunel 由 Conduwuit 衍生，回退选项为 Continuwuity（同源、内存相近）。
+
+---
+
+## 商业化：服务购买（决策已定，待实现）
+
+**商品与定价**（导航「服务购买」已上线目录页，下单/支付待接）：
+
+- **AI Agent**：¥6/周、¥19/月、¥99/年（周期订阅）。
+- **OpenCloud**：5GB ¥5/月（¥49/年）；每 +5GB 加 ¥4.5/月（¥44.1/年，九折且**不累进**——资源受限）；
+  单用户上限 30GB；全站上限 200GB。
+- **Forgejo**：与 OpenCloud 同价，**容量共享**（一份容量两服务通用）。
+- 金额**不取整**，最多保留两位小数。
+
+**临时空间（1GB/人 → 改为动态均分）**：全站预留 50GB 池，动态均分给所有注册用户
+（每人份额 = 上限/注册用户数）；池满或某用户占用达其均分额 → 仅限制该用户**上传（写）**，
+**不限制下载（读）**。
+
+**支付**：Creem（Merchant of Record，个人可用），checkout + webhook；订单/订阅/续费进后台。
+
+**实施顺序**：主站 OIDC（并联，保留密码登录）→ 邀请码注册 + 管理员审核 →
+下单/支付/续费 → 配额落地（OpenCloud + Forgejo）→ OpenCloud 按统一账号重做。
+
+**主站 OIDC 客户端（Kanidm 侧已就绪）**：机密客户端 `site`，
+回调 `https://www.wraindrock.com/auth/oidc/callback`，scope map 覆盖
+`felix-users` 与 `felix-admins`；密钥在宿主 `.env` 的 `SITE_OIDC_SECRET`。
+
+**后台大改（要求）**：自适应卡片式入口，卡片划分与管理员类型绑定
+（super / agentmaster / communitymaster / skymaster），权责分明；
+新增「服务」管理（订单审批、订阅、容量与临时池使用情况、200GB 上限看板）。
