@@ -372,19 +372,20 @@ async fn authenticate_and_start_session(
     pool: &sqlx::SqlitePool,
     username: &str,
     password: &str,
+    totp: Option<&str>,
 ) -> Result<(), String> {
     use sqlx::Row;
 
     let row = sqlx::query(
-        "SELECT id, password_hash, status FROM users WHERE username = ?1 COLLATE NOCASE",
+        "SELECT id, username, password_hash, status,                 EXISTS(SELECT 1 FROM oauth_identities oi                        WHERE oi.user_id = users.id AND oi.provider = 'kanidm') AS linked          FROM users WHERE username = ?1 COLLATE NOCASE",
     )
     .bind(username)
     .fetch_optional(pool)
     .await
-        .map_err(|e| {
-            leptos::logging::error!("查询用户失败: {e}");
-            "服务器出了点问题，稍后再试。".to_string()
-        })?;
+    .map_err(|e| {
+        leptos::logging::error!("查询用户失败: {e}");
+        "服务器出了点问题，稍后再试。".to_string()
+    })?;
 
     let Some(row) = row else {
         // 用户不存在时也做一次等价的哈希校验：否则「存在」要花几十毫秒而
@@ -397,21 +398,221 @@ async fn authenticate_and_start_session(
         return Err("用户名或密码不对。".to_string());
     };
 
-    let stored: String = row.get("password_hash");
-    if !crypto::verify_password(password, &stored) {
-        // 与「用户不存在」返回同一句话，避免泄露某个用户名是否已注册
-        return Err("用户名或密码不对。".to_string());
-    }
-
     let status: String = row.get("status");
     if status != "active" {
         return Err("这个账号已被停用。".to_string());
+    }
+
+    let linked: bool = row.get("linked");
+    if linked {
+        // 统一账号：凭据以全站唯一账号为准（对用户无感，本站登录就是它的登录）。
+        // 密码不再落本站库；动态验证码（如管理员启用）走第二个输入框。
+        let ident: String = row.get("username");
+        verify_with_kanidm(&ident, password, totp).await?;
+    } else {
+        // 过渡期：尚未接入统一账号的老用户仍用本站密码（后续随激活流程迁移）
+        let stored: String = row.get("password_hash");
+        if !crypto::verify_password(password, &stored) {
+            // 与「用户不存在」返回同一句话，避免泄露某个用户名是否已注册
+            return Err("用户名或密码不对。".to_string());
+        }
     }
 
     let user_id: i64 = row.get("id");
     let token = create_session(pool, user_id).await?;
     cookies::set_session(&token);
     Ok(())
+}
+
+/// 向全站统一账号（内部实现，用户不可见）校验用户名/密码（+动态验证码）。
+///
+/// 走 HTTP 认证会话：init2 → begin → 逐项凭据（TOTP/密码）→ success。
+/// 这条链路与站点自己的 CLI/官方客户端同源；密码只在本请求内转发，不落任何日志。
+#[cfg(feature = "ssr")]
+async fn verify_with_kanidm(ident: &str, password: &str, totp: Option<&str>) -> Result<(), String> {
+    use serde_json::{json, Value};
+
+    fn service_error(context: &str, error: impl std::fmt::Display) -> String {
+        tracing::error!("{context}: {error}");
+        "登录服务暂时不可用，请稍后再试。".to_string()
+    }
+
+    let base = std::env::var("SITE_KANIDM_URL")
+        .unwrap_or_else(|_| "https://id.wraindrock.com".to_string());
+    let auth_url = format!("{}/v1/auth", base.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .user_agent("WraindrockSite/0.1 (+https://www.wraindrock.com)")
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|error| service_error("初始化统一账号客户端失败", error))?;
+
+    // 1) 初始化认证会话（会话 id 在响应头）
+    let response = client
+        .post(&auth_url)
+        .json(&json!({
+            "step": { "init2": { "username": ident, "issue": "token", "privileged": false } }
+        }))
+        .send()
+        .await
+        .map_err(|error| service_error("统一账号认证初始化失败", error))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        return Err(service_error("统一账号认证初始化返回异常", status));
+    }
+    let session = response
+        .headers()
+        .get("x-kanidm-auth-session-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            tracing::error!("统一账号认证响应缺少会话头");
+            "登录服务暂时不可用，请稍后再试。".to_string()
+        })?;
+    let mut state: Value = response
+        .json::<Value>()
+        .await
+        .map_err(|error| service_error("解析统一账号认证响应失败", error))?
+        .get("state")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mech = pick_password_mech(&state).ok_or_else(|| {
+        "这个账号不支持密码登录，请联系站长。".to_string()
+    })?;
+
+    // 2) 开始密码认证
+    state = auth_post(&client, &auth_url, &session, json!({ "step": { "begin": mech } }))
+        .await?
+        .get("state")
+        .cloned()
+        .unwrap_or(Value::Null);
+
+    // 3) 逐项提交凭据；密码只提交一次，避免异常循环
+    let mut password_sent = false;
+    let mut last_sent = "";
+    for _ in 0..5 {
+        if state.get("success").is_some() {
+            return Ok(());
+        }
+        if let Some(reason) = state.get("denied").and_then(Value::as_str) {
+            tracing::warn!("统一账号拒绝登录（{reason}）");
+            return Err(match last_sent {
+                "totp" => "动态验证码不对或已过期。",
+                "password" => "用户名或密码不对。",
+                _ => "登录失败，请重试。",
+            }
+            .to_string());
+        }
+
+        let allowed = state
+            .get("continue")
+            .or_else(|| state.get("choose"))
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        if allowed.iter().any(|item| item == "totp") {
+            let Some(code) = totp.map(str::trim).filter(|value| !value.is_empty()) else {
+                return Err("请输入动态验证码后重试。".to_string());
+            };
+            let code: u32 = code
+                .parse()
+                .map_err(|_| "动态验证码应为 6 位数字。".to_string())?;
+            last_sent = "totp";
+            state = auth_post(
+                &client,
+                &auth_url,
+                &session,
+                json!({ "step": { "cred": { "totp": code } } }),
+            )
+            .await?
+            .get("state")
+            .cloned()
+            .unwrap_or(Value::Null);
+        } else if allowed.iter().any(|item| item == "password") {
+            if password_sent {
+                return Err("登录流程异常，请稍后再试。".to_string());
+            }
+            password_sent = true;
+            last_sent = "password";
+            state = auth_post(
+                &client,
+                &auth_url,
+                &session,
+                json!({ "step": { "cred": { "password": password } } }),
+            )
+            .await?
+            .get("state")
+            .cloned()
+            .unwrap_or(Value::Null);
+        } else if allowed.iter().any(|item| item == "backupcode") {
+            let Some(code) = totp.map(str::trim).filter(|value| !value.is_empty()) else {
+                return Err("请输入动态验证码或备用码后重试。".to_string());
+            };
+            last_sent = "totp";
+            state = auth_post(
+                &client,
+                &auth_url,
+                &session,
+                json!({ "step": { "cred": { "backupcode": code } } }),
+            )
+            .await?
+            .get("state")
+            .cloned()
+            .unwrap_or(Value::Null);
+        } else {
+            return Err("这个账号需要其它验证方式，暂不支持在网页登录。".to_string());
+        }
+    }
+    Err("登录流程异常，请稍后再试。".to_string())
+}
+
+/// 从 `choose` 列表里选可用机制：优先"密码+MFA"，其次"仅密码"。
+#[cfg(feature = "ssr")]
+fn pick_password_mech(state: &serde_json::Value) -> Option<&'static str> {
+    let choose = state.get("choose")?.as_array()?;
+    let has = |name: &str| choose.iter().any(|item| item.as_str() == Some(name));
+    if has("passwordmfa") {
+        Some("passwordmfa")
+    } else if has("password") {
+        Some("password")
+    } else {
+        None
+    }
+}
+
+/// 统一的认证步骤 POST：带会话头、解析 JSON、把异常折叠成用户可读错误。
+#[cfg(feature = "ssr")]
+async fn auth_post(
+    client: &reqwest::Client,
+    url: &str,
+    session: &str,
+    body: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let response = client
+        .post(url)
+        .header("x-kanidm-auth-session-id", session)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|error| {
+            tracing::error!("统一账号认证请求失败: {error}");
+            "登录服务暂时不可用，请稍后再试。".to_string()
+        })?;
+    if !response.status().is_success() {
+        let status = response.status();
+        tracing::error!("统一账号认证步骤返回异常: {status}");
+        return Err("登录服务暂时不可用，请稍后再试。".to_string());
+    }
+    response.json().await.map_err(|error| {
+        tracing::error!("解析统一账号认证响应失败: {error}");
+        "登录服务暂时不可用，请稍后再试。".to_string()
+    })
 }
 
 /// 按用户名取用户视图（仅服务端内部用）。
@@ -745,7 +946,7 @@ pub async fn register(
         return Ok(Err("这个用户名已经被用了。".to_string()));
     }
 
-    match authenticate_and_start_session(&app.pool, &username, &password).await {
+    match authenticate_and_start_session(&app.pool, &username, &password, None).await {
         Ok(()) => Ok(Ok(())),
         Err(message) => Ok(Err(message)),
     }
@@ -753,13 +954,13 @@ pub async fn register(
 
 /// 登录。
 #[server]
-pub async fn login(username: String, password: String) -> ActionResult {
+pub async fn login(username: String, password: String, totp: Option<String>) -> ActionResult {
     use crate::state::AppState;
 
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
     let username = username.trim().to_string();
 
-    match authenticate_and_start_session(&app.pool, &username, &password).await {
+    match authenticate_and_start_session(&app.pool, &username, &password, totp.as_deref()).await {
         Ok(()) => Ok(Ok(())),
         Err(message) => Ok(Err(message)),
     }

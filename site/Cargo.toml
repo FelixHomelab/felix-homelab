@@ -43,10 +43,8 @@ sha2 = { version = "0.11", optional = true }
 hex = { version = "0.4", optional = true }
 # server function 显式注册用（见 lib.rs 的 register_server_fns）
 server_fn = { version = "0.8", optional = true, features = ["axum"] }
-# OIDC 登录：向 Kanidm 的 token / userinfo 端点发 HTTPS 请求（rustls，不依赖 openssl）
+# 统一账号 HTTP 校验（对用户不可见——本站登录就是它的登录；rustls，不依赖 openssl）
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
-# PKCE 的 code_challenge 需要 base64url(SHA-256(verifier))
-base64 = { version = "0.22", optional = true }
 
 # 仅客户端（hydrate）依赖
 #
@@ -92,7 +90,6 @@ ssr = [
     "dep:hex",
     "dep:server_fn",
     "dep:reqwest",
-    "dep:base64",
     "leptos/ssr",
     "leptos_meta/ssr",
     "leptos_router/ssr",

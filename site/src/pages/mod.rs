@@ -1168,15 +1168,16 @@ pub fn AppearancePage() -> impl IntoView {
 pub fn LoginPage() -> impl IntoView {
     let username = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
+    // 动态验证码：管理员等启用了两步验证的账号需要；普通账号留空即可
+    let totp = RwSignal::new(String::new());
     let message = RwSignal::new(String::new());
     let busy = RwSignal::new(false);
-    // 登录成功后跳到「我的账号」，避免停在登录页让人误以为没登上。
-    let navigate = use_navigate();
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let name = username.get_untracked();
         let pwd = password.get_untracked();
+        let code = totp.get_untracked();
 
         if name.trim().is_empty() || pwd.is_empty() {
             message.set("请填写用户名和密码。".to_string());
@@ -1185,10 +1186,17 @@ pub fn LoginPage() -> impl IntoView {
 
         message.set(String::new());
         busy.set(true);
-        let navigate = navigate.clone();
         leptos::task::spawn_local(async move {
-            match crate::auth::login(name, pwd).await {
-                Ok(Ok(())) => navigate("/me", Default::default()),
+            let code = (!code.trim().is_empty()).then_some(code);
+            match crate::auth::login(name, pwd, code).await {
+                Ok(Ok(())) => {
+                    // 整页跳转而不是 SPA 导航：登录状态在 SSR 首帧就正确，
+                    // 顶栏不会出现“已登录却还显示登录/注册”的错位。
+                    #[cfg(feature = "hydrate")]
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.location().set_href("/me");
+                    }
+                }
                 Ok(Err(text)) => {
                     message.set(text);
                     busy.set(false);
@@ -1224,6 +1232,16 @@ pub fn LoginPage() -> impl IntoView {
                         on:input=move |ev| password.set(event_target_value(&ev))
                     />
                 </label>
+                <label class="field">
+                    <span>"动态验证码（如已启用）"</span>
+                    <input
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="one-time-code"
+                        prop:value=move || totp.get()
+                        on:input=move |ev| totp.set(event_target_value(&ev))
+                    />
+                </label>
                 {move || {
                     let text = message.get();
                     (!text.is_empty()).then(|| view! { <p class="error" role="alert">{text}</p> })
@@ -1231,11 +1249,6 @@ pub fn LoginPage() -> impl IntoView {
                 <button class="btn btn-primary" type="submit" disabled=move || busy.get()>
                     {move || if busy.get() { "登录中…" } else { "登录" }}
                 </button>
-            </form>
-            // 用 form GET 而不是 <a>：Leptos 客户端路由会拦截站内 <a> 点击
-            // （SPA 跳转），而 /auth/oidc/start 是 Axum 后端路由，必须整页请求。
-            <form method="get" action="/auth/oidc/start" class="auth-alt">
-                <button class="btn" type="submit">"使用 Kanidm 登录"</button>
             </form>
             <p class="muted auth-alt">"还没有账号？" <a href="/register">"注册一个"</a></p>
         </section>

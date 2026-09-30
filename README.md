@@ -383,10 +383,11 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
 - **开户**：`scripts/kanidm-adduser.sh <用户名> "<显示名>" [邮箱]` 一键建号 + 入组 +
   生成 7 天有效的 onboarding 链接（`https://id.wraindrock.com/ui/reset?token=…`），
   私发对方设密码即完成；无需邮件系统。自助注册入口待主站 OIDC（用 Kanidm 服务账号 API token 自动建号）。
-- **主站接入（已完成）**：主站登录页「使用 Kanidm 登录」（`/auth/oidc/start` → `/auth/oidc/callback`），
-  授权码 + PKCE + userinfo，按 `sub` 关联（首次按用户名绑定）既有站点账号，与密码登录**并联**；
-  关联记录在 `site.db` 的 `oauth_identities` 表。注意登录按钮用 `<form method="get">` 而不是 `<a>`：
-  Leptos 客户端路由会拦截站内 `<a>` 点击，导致后端路由拿不到请求（踩坑记录）。
+- **主站接入（已完成，无感原生）**：主站登录页就是**本站账号**的登录（用户名 + 密码 + 可选动态验证码），
+  服务端在内部完成统一账号校验（HTTP 认证会话：init2 → begin → TOTP/密码），用户界面不出现底层组件名。
+  已绑定账号的凭据不再落本站库（`oauth_identities` 记录 `sub`）；过渡期未绑定的老用户仍可用本站旧密码。
+  Forgejo 的认证源已更名为「Wraindrock」（登录按钮「使用Wraindrock登录」，回调
+  `/user/oauth2/Wraindrock/callback`）。
 - **状态**：P0 完成；P1 进行中——✅ Forgejo OIDC（已闭环）、✅ 分组账户策略与开户流程、✅ 主站 OIDC。规划见 `site/TODO.md`。
 
 ## 后台运维（/admin）

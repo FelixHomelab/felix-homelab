@@ -1021,10 +1021,12 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
   - ✅ 分组账户策略（实测）：`idm_all_persons` 放宽为 any + 最短 10 位（普通用户密码-only），
     `felix-admins`=mfa（多组取最严）；zxcvbn 4/4 仍强制。开户：`scripts/kanidm-adduser.sh`
     （建号→入组→7 天 onboarding 链接，私发即可，无需邮件）
-  - ✅ 主站 OIDC（已闭环）：`/auth/oidc/start` + `/auth/oidc/callback`（授权码 + PKCE + userinfo），
-    按 sub 关联、首次按用户名绑定（`oauth_identities` 表），密码登录并联保留；
-    浏览器实测 Felix 全程登录成功。踩坑：登录按钮必须用 `<form method="get">`，
-    站内 `<a>` 会被 Leptos 客户端路由截走（SPA 跳转，后端收不到请求）
+  - ✅ 主站登录（无感原生，已闭环）：登录页即本站账号登录（用户名/密码/动态验证码），
+    服务端内部走统一账号 HTTP 认证会话（init2 → begin → totp → password），用户界面零底层品牌；
+    已绑定用户凭据不落本站库，过渡期未绑定老用户回退本站旧密码。
+    （最初实现过 OIDC 跳转版，因“不能让用户看到/关联外部账号”而**移除**，站点 OIDC 客户端已删）
+  - ✅ Forgejo 品牌清洗：认证源更名 Wraindrock（按钮「使用Wraindrock登录」），Kanidm 侧补新回调；
+    其跳转过程仍会显示底层组件登录页，彻底透明化留待后续可选优化
   - ⏳ 注册入口（邀请码 + 管理员审核）：主站后端用 Kanidm 服务账号 api-token 自动建号
     → 生成 onboarding 链接站内展示；Kanidm 组 → 站点角色映射随注册一起定
 - P2：Tuwunel 部署（**完全关闭联邦**），Element 接入；数据卷纳入备份。
