@@ -372,7 +372,14 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
   ③ `groups` 作用域产出的是组 SPN/UUID 列表，`--admin-group` 用 `felix-admins@id.wraindrock.com`；
   ④ 账号绑定：先本地登录 Forgejo，再访问 `/user/oauth2/kanidm` 完成关联（`external_login_user` 记 sub=Kanidm UUID）。
   本地密码登录保留为并行后备；站点右上角「使用kanidm登录」已可一键进入。
-- **状态**：P0 完成；P1 进行中——✅ Forgejo OIDC（已闭环），⏳ 主站 OIDC。规划见 `site/TODO.md`。
+- **账户策略（实测结论）**：内置 `idm_all_persons` 的 `credential-type-minimum` 已从 `mfa` 放宽为 `any`
+  （口令最短 10 位），**普通用户仅密码即可**；`felix-admins` 组保持 `mfa`（多组并存取最严，
+  实测管理员仍强制 TOTP/Passkey）。注意 zxcvbn 4/4 口令质量始终强制（与 MFA 独立），
+  建议开户时用 4 个词（如 `blue-cat-happy-river`）。
+- **开户**：`scripts/kanidm-adduser.sh <用户名> "<显示名>" [邮箱]` 一键建号 + 入组 +
+  生成 7 天有效的 onboarding 链接（`https://id.wraindrock.com/ui/reset?token=…`），
+  私发对方设密码即完成；无需邮件系统。自助注册入口待主站 OIDC（用 Kanidm 服务账号 API token 自动建号）。
+- **状态**：P0 完成；P1 进行中——✅ Forgejo OIDC（已闭环）、✅ 分组账户策略与开户流程，⏳ 主站 OIDC。规划见 `site/TODO.md`。
 
 ## 后台运维（/admin）
 

@@ -1016,8 +1016,12 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
     3) `groups` 作用域输出组 SPN/UUID，Forgejo `--admin-group felix-admins@id.wraindrock.com`；
     4) 绑定：本地登录后访问 `/user/oauth2/kanidm`，`external_login_user` 记录 sub=Kanidm UUID；
     5) 本地密码登录保留并联
+  - ✅ 分组账户策略（实测）：`idm_all_persons` 放宽为 any + 最短 10 位（普通用户密码-only），
+    `felix-admins`=mfa（多组取最严）；zxcvbn 4/4 仍强制。开户：`scripts/kanidm-adduser.sh`
+    （建号→入组→7 天 onboarding 链接，私发即可，无需邮件）
   - ⏳ 主站 OIDC（同样并联，保留密码登录）：Kanidm 组 → 站点角色
-    （super/communitymaster/skymaster/agentmaster）映射待定
+    （super/communitymaster/skymaster/agentmaster）映射待定；同时做**注册入口**
+    （主站后端用 Kanidm 服务账号 api-token 自动建号 → 直接跳 onboarding，自助完成）
 - P2：Tuwunel 部署（**完全关闭联邦**），Element 接入；数据卷纳入备份。
 - P3：OpenCloud 外接 IdP PoC。
 
