@@ -1232,6 +1232,11 @@ pub fn LoginPage() -> impl IntoView {
                     {move || if busy.get() { "登录中…" } else { "登录" }}
                 </button>
             </form>
+            // 用 form GET 而不是 <a>：Leptos 客户端路由会拦截站内 <a> 点击
+            // （SPA 跳转），而 /auth/oidc/start 是 Axum 后端路由，必须整页请求。
+            <form method="get" action="/auth/oidc/start" class="auth-alt">
+                <button class="btn" type="submit">"使用 Kanidm 登录"</button>
+            </form>
             <p class="muted auth-alt">"还没有账号？" <a href="/register">"注册一个"</a></p>
         </section>
     }

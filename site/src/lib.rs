@@ -28,6 +28,8 @@ pub mod theme;
 
 // 只在服务端存在：客户端 wasm 包里既没有数据库也没有 Axum
 #[cfg(feature = "ssr")]
+pub mod auth_oidc;
+#[cfg(feature = "ssr")]
 pub mod db;
 #[cfg(feature = "ssr")]
 pub mod seo;

@@ -316,6 +316,53 @@ mod cookies {
     }
 }
 
+/// 为指定用户建会话并返回明文令牌。
+///
+/// 供 server function（密码登录）与普通 Axum 处理器（OIDC 回调）共用；
+/// 调用方决定怎么把令牌写进 cookie（Leptos 上下文里用 `cookies::set_session`，
+/// 普通处理器自己拼 `Set-Cookie`）。
+#[cfg(feature = "ssr")]
+pub(crate) async fn create_session(
+    pool: &sqlx::SqlitePool,
+    user_id: i64,
+) -> Result<String, String> {
+    let (token, token_hash) = crypto::new_session_token();
+
+    // 过期时间交给 SQLite 自己算，避免 Rust 侧与数据库侧的日期格式对不上
+    sqlx::query(
+        "INSERT INTO sessions (user_id, token_hash, expires_at) \
+         VALUES (?1, ?2, datetime('now', ?3))",
+    )
+    .bind(user_id)
+    .bind(&token_hash)
+    .bind(format!("+{SESSION_DAYS} days"))
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        leptos::logging::error!("创建会话失败: {e}");
+        "服务器出了点问题，稍后再试。".to_string()
+    })?;
+
+    // 顺手清掉该用户的过期会话，不必另设定时任务
+    let _ = sqlx::query("DELETE FROM sessions WHERE user_id = ?1 AND expires_at <= datetime('now')")
+        .bind(user_id)
+        .execute(pool)
+        .await;
+
+    let _ = sqlx::query("UPDATE users SET last_login_at = datetime('now') WHERE id = ?1")
+        .bind(user_id)
+        .execute(pool)
+        .await;
+
+    // 把账号里的外观偏好镜像进 cookie。主题的读取路径是同步的，cookie 就是账号偏好的
+    // 缓存；镜像失败只影响「这次登录后的外观」，不该让登录本身失败。
+    if let Err(error) = crate::theme::mirror_account_prefs(pool, user_id).await {
+        leptos::logging::warn!("镜像账号外观偏好失败: {error}");
+    }
+
+    Ok(token)
+}
+
 /// 认证与建会话的内部实现。
 ///
 /// 抽成普通异步函数而不是 server function：注册成功后要直接登录，
@@ -362,42 +409,8 @@ async fn authenticate_and_start_session(
     }
 
     let user_id: i64 = row.get("id");
-    let (token, token_hash) = crypto::new_session_token();
-
-    // 过期时间交给 SQLite 自己算，避免 Rust 侧与数据库侧的日期格式对不上
-    sqlx::query(
-        "INSERT INTO sessions (user_id, token_hash, expires_at) \
-         VALUES (?1, ?2, datetime('now', ?3))",
-    )
-    .bind(user_id)
-    .bind(&token_hash)
-    .bind(format!("+{SESSION_DAYS} days"))
-    .execute(pool)
-    .await
-    .map_err(|e| {
-        leptos::logging::error!("创建会话失败: {e}");
-        "服务器出了点问题，稍后再试。".to_string()
-    })?;
-
-    // 顺手清掉该用户的过期会话，不必另设定时任务
-    let _ = sqlx::query("DELETE FROM sessions WHERE user_id = ?1 AND expires_at <= datetime('now')")
-        .bind(user_id)
-        .execute(pool)
-        .await;
-
-    let _ = sqlx::query("UPDATE users SET last_login_at = datetime('now') WHERE id = ?1")
-        .bind(user_id)
-        .execute(pool)
-        .await;
-
+    let token = create_session(pool, user_id).await?;
     cookies::set_session(&token);
-
-    // 把账号里的外观偏好镜像进 cookie。主题的读取路径是同步的，cookie 就是账号偏好的
-    // 缓存；镜像失败只影响「这次登录后的外观」，不该让登录本身失败。
-    if let Err(error) = crate::theme::mirror_account_prefs(pool, user_id).await {
-        leptos::logging::warn!("镜像账号外观偏好失败: {error}");
-    }
-
     Ok(())
 }
 

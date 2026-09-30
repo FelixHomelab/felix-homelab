@@ -1021,9 +1021,12 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
   - ✅ 分组账户策略（实测）：`idm_all_persons` 放宽为 any + 最短 10 位（普通用户密码-only），
     `felix-admins`=mfa（多组取最严）；zxcvbn 4/4 仍强制。开户：`scripts/kanidm-adduser.sh`
     （建号→入组→7 天 onboarding 链接，私发即可，无需邮件）
-  - ⏳ 主站 OIDC（同样并联，保留密码登录）：Kanidm 组 → 站点角色
-    （super/communitymaster/skymaster/agentmaster）映射待定；同时做**注册入口**
-    （主站后端用 Kanidm 服务账号 api-token 自动建号 → 直接跳 onboarding，自助完成）
+  - ✅ 主站 OIDC（已闭环）：`/auth/oidc/start` + `/auth/oidc/callback`（授权码 + PKCE + userinfo），
+    按 sub 关联、首次按用户名绑定（`oauth_identities` 表），密码登录并联保留；
+    浏览器实测 Felix 全程登录成功。踩坑：登录按钮必须用 `<form method="get">`，
+    站内 `<a>` 会被 Leptos 客户端路由截走（SPA 跳转，后端收不到请求）
+  - ⏳ 注册入口（邀请码 + 管理员审核）：主站后端用 Kanidm 服务账号 api-token 自动建号
+    → 生成 onboarding 链接站内展示；Kanidm 组 → 站点角色映射随注册一起定
 - P2：Tuwunel 部署（**完全关闭联邦**），Element 接入；数据卷纳入备份。
 - P3：OpenCloud 外接 IdP PoC。
 

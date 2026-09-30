@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     use felix_homelab_site::app::{shell, App};
     use felix_homelab_site::state::AppState;
     use felix_homelab_site::{
-        agents, auth, content, db, register_server_fns, seo, uploads,
+        agents, auth, auth_oidc, content, db, register_server_fns, seo, uploads,
     };
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
@@ -107,6 +107,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/agent/auth", get(agents::agent_auth))
         // 云侧 Caddy on-demand TLS 的授权回调（见 README「AI Agent」）
         .route("/api/agent/tls-ask", get(agents::agent_tls_ask))
+        // 主站 Kanidm OIDC 登录（与密码登录并联，见 auth_oidc.rs）
+        .route("/auth/oidc/start", get(auth_oidc::start))
+        .route("/auth/oidc/callback", get(auth_oidc::callback))
         // server function 兜底挂载：本环境 leptos_routes 的自动挂载不生效，
         // 改为「显式注册（register_server_fns）+ 这里统一切到 handle_server_fns」。
         .route("/api/{*fn_name}", post(leptos_axum::handle_server_fns))
