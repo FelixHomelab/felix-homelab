@@ -30,19 +30,17 @@ pub fn SubscriptionsPage() -> impl IntoView {
                 <h2>"容量订阅（OpenCloud / Forgejo）"</h2>
                 <span class="muted">"购买订阅后显示容量与使用情况"</span>
             </div>
-            <div class="panel">
-                <div class="panel-body prose">
-                    <p>"暂无容量订阅。"</p>
-                    <p class="muted">
-                        "OpenCloud 与 Forgejo 共用一份容量；购买入口开放后，这里会显示："
-                        "已购容量、已使用、剩余额度与到期时间。"
-                    </p>
-                    <p>
-                        <a class="btn" href="/services">
-                            "去购买订阅"
-                        </a>
-                    </p>
-                </div>
+            <div class="card">
+                <p class="muted">"暂无容量订阅。"</p>
+                <p>
+                    "OpenCloud 与 Forgejo 共用一份容量；购买入口开放后，这里会显示："
+                    "已购容量、已使用、剩余额度与到期时间。"
+                </p>
+                <p>
+                    <a class="btn" href="/services">
+                        "去购买订阅"
+                    </a>
+                </p>
             </div>
         </section>
     }

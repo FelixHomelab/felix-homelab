@@ -189,10 +189,30 @@ a:hover {
     gap: clamp(0.75rem, 1.2vw, 1.5rem);
 }
 
-/* 移动端菜单按钮：桌面隐藏；外观复用 .btn，仅控制显隐。
+/* 移动端菜单开关：隐藏 checkbox + label；桌面隐藏 label，外观复用 .btn。
    用 .header-right 提高优先级，避免被后面的 .btn{display:inline-block} 覆盖 */
 .header-right .nav-toggle {
     display: none;
+}
+
+.nav-toggle-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.nav-toggle-close {
+    display: none;
+}
+
+#site-nav-toggle:checked ~ .header-right .nav-toggle-open {
+    display: none;
+}
+
+#site-nav-toggle:checked ~ .header-right .nav-toggle-close {
+    display: inline;
 }
 
 .site-nav a {
@@ -723,7 +743,7 @@ button.btn {
         display: none;
     }
 
-    .site-nav.open {
+    #site-nav-toggle:checked ~ .site-nav {
         display: flex;
         flex: 0 0 100%;
         flex-direction: column;
@@ -732,7 +752,7 @@ button.btn {
         border-top: 1px solid var(--border);
     }
 
-    .site-nav.open a {
+    #site-nav-toggle:checked ~ .site-nav a {
         padding: 0.5rem 0.25rem;
         font-size: 0.9375rem;
     }
@@ -1925,4 +1945,46 @@ html.splash-pending .site-main,
 html.splash-pending .site-footer {
     opacity: 0;
     transition: none;
+}
+
+
+/* ---------- 购买订阅：价格卡 ---------- */
+
+.plan-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+
+.plan-card {
+    padding: 1.25rem 1.35rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.plan-card h3 {
+    margin: 0 0 0.4rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.plan-price {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.plan-price span {
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.plan-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.875rem;
+    color: var(--text-muted);
 }

@@ -83,6 +83,24 @@ const SPLASH_BODY_SCRIPT: &str = r#"
 })();
 "#;
 
+/// 导航交互补丁（body 末尾）：移动端点导航链接或按 Esc 后收起菜单。
+///
+/// 纯 DOM 委托监听，不依赖 wasm 水合；配合 checkbox 开关，任何时刻都可交互。
+const NAV_SCRIPT: &str = r#"
+(function () {
+  function close() {
+    var cb = document.getElementById("site-nav-toggle");
+    if (cb) cb.checked = false;
+  }
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.closest && e.target.closest(".site-nav a")) close();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") close();
+  });
+})();
+"#;
+
 /// 文档外壳。整站只有这一处 `<html>`。
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -102,6 +120,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <body>
                 <App />
                 <script inner_html=SPLASH_BODY_SCRIPT></script>
+                <script inner_html=NAV_SCRIPT></script>
             </body>
         </html>
     }

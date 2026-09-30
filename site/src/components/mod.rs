@@ -25,16 +25,23 @@ pub fn ready_after_hydration() -> Signal<bool> {
 }
 
 /// 顶部导航栏。
+///
+/// 移动端菜单用 **纯 CSS 开关**（隐藏 checkbox + label）：不依赖 wasm 水合，
+/// 页面一可点就能用。此前用 Leptos 信号控制，水合完成前的点击会“没反应”，
+/// 表现为「菜单有时打得开、有时打不开」。
 #[component]
 pub fn SiteHeader() -> impl IntoView {
-    // 移动端「收敛菜单」开关：桌面端用不到（按钮与折叠样式都只在窄屏生效）
-    let nav_open = RwSignal::new(false);
-
     view! {
         <header class="site-header">
             <div class="wrap header-inner">
                 <a class="brand" href="/">"Wraindrock"</a>
-                <nav class="site-nav" class:open=move || nav_open.get()>
+                <input
+                    type="checkbox"
+                    id="site-nav-toggle"
+                    class="nav-toggle-input"
+                    aria-label="展开导航"
+                />
+                <nav class="site-nav">
                     <a href="/blog">"博客"</a>
                     <a href="/community">"社区"</a>
                     <a href="/sky">"光遇"</a>
@@ -59,14 +66,10 @@ pub fn SiteHeader() -> impl IntoView {
                     <a href="/about">"关于"</a>
                 </nav>
                 <div class="header-right">
-                    <button
-                        type="button"
-                        class="btn btn-small nav-toggle"
-                        aria-expanded=move || if nav_open.get() { "true" } else { "false" }
-                        on:click=move |_| nav_open.update(|v| *v = !*v)
-                    >
-                        {move || if nav_open.get() { "关闭" } else { "菜单" }}
-                    </button>
+                    <label class="btn btn-small nav-toggle" for="site-nav-toggle">
+                        <span class="nav-toggle-open">"菜单"</span>
+                        <span class="nav-toggle-close">"关闭"</span>
+                    </label>
                     <UserMenu />
                 </div>
             </div>
