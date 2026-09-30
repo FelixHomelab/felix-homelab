@@ -231,6 +231,7 @@ pub(crate) fn MyAgentsSection() -> impl IntoView {
 fn TimePoolCard() -> impl IntoView {
     let window = RwSignal::new("all".to_string());
     let pool = Resource::new(move || window.get(), |w| agent_time_pool(w));
+    let billing = Resource::new_blocking(|| (), |_| crate::agents::billing_status_view());
 
     let tabs = [
         ("all", "全部"),
@@ -298,6 +299,17 @@ fn TimePoolCard() -> impl IntoView {
                     }
                 }}
             </Suspense>
+            {move || {
+                billing
+                    .get()
+                    .and_then(|result| result.ok())
+                    .filter(|status| status.paused)
+                    .map(|_| {
+                        view! {
+                            <p class="muted pool-hint">"全站免费期：暂停计费，余额保留"</p>
+                        }
+                    })
+            }}
         </div>
     }
 }
@@ -449,6 +461,17 @@ pub(crate) fn MyAgentCard(agent: AgentRow) -> impl IntoView {
                     {runtime_label}
                 </span>
             </div>
+            {agent
+                .queue
+                .as_ref()
+                .map(|spot| {
+                    let ahead = spot.ahead;
+                    view! {
+                        <p class="agent-queue">
+                            "排队中 · 前方 " {ahead} " 位，轮到后自动启动"
+                        </p>
+                    }
+                })}
             <a class="agent-card-link" href=href target="_blank" rel="noreferrer" title=agent.url.clone()>
                 <span class="agent-host">{host}</span>
                 <span class="agent-open">"打开 ↗"</span>

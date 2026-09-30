@@ -100,6 +100,8 @@ pub struct AdminUser {
     pub comment_count: i64,
     /// 细分管理角色（user_roles）：agentmaster / communitymaster / skymaster
     pub scopes: Vec<String>,
+    /// 资源分组：normal / developer / admin（决定并发与容量权益）
+    pub res_group: String,
 }
 
 /// 后台统计。
@@ -392,7 +394,7 @@ pub async fn admin_list_users() -> Result<Vec<AdminUser>, ServerFnError> {
 
     let rows = sqlx::query(
         "SELECT u.id, u.username, u.display_name, u.role, u.status, u.created_at, \
-                u.last_login_at, \
+                u.last_login_at, u.res_group, \
                 (SELECT COUNT(*) FROM comments c WHERE c.user_id = u.id) AS comment_count, \
                 COALESCE((SELECT group_concat(r.role, ',') FROM user_roles r WHERE r.user_id = u.id), '') \
                     AS scopes \
@@ -419,6 +421,7 @@ pub async fn admin_list_users() -> Result<Vec<AdminUser>, ServerFnError> {
                 .filter(|value| !value.is_empty())
                 .map(str::to_string)
                 .collect(),
+            res_group: row.get("res_group"),
         })
         .collect())
 }
@@ -524,6 +527,185 @@ pub async fn admin_set_user_scope(
             .await
     };
     result.map_err(|e| ServerFnError::new(format!("更新管理角色失败: {e}")))?;
+    Ok(Ok(()))
+}
+
+/// 设置用户资源分组（normal / developer / admin）。
+#[server]
+pub async fn admin_set_user_group(id: i64, group: String) -> ActionResult {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    if let Err(message) = require_admin().await {
+        return Ok(Err(message));
+    }
+    let group = group.trim().to_ascii_lowercase();
+    if !matches!(group.as_str(), "normal" | "developer" | "admin") {
+        return Ok(Err("分组取值不合法。".to_string()));
+    }
+    sqlx::query("UPDATE users SET res_group = ?1 WHERE id = ?2")
+        .bind(&group)
+        .bind(id)
+        .execute(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("更新资源分组失败: {e}")))?;
+    Ok(Ok(()))
+}
+
+/// 后台读取「资源与计费」设置。
+#[server]
+pub async fn admin_resource_settings() -> Result<crate::policy::ResourceSettings, ServerFnError> {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    require_admin()
+        .await
+        .map_err(|message| ServerFnError::new(message))?;
+
+    let status = crate::policy::billing_status(&app.pool).await;
+    Ok(crate::policy::ResourceSettings {
+        billing_paused: status.paused,
+        pause_started_at: status.started_at,
+        pause_ends_at: status.ends_at,
+        global_running_cap: crate::policy::global_cap(&app.pool).await,
+        group_cap_normal: crate::policy::group_cap(&app.pool, "normal").await,
+        group_cap_admin: crate::policy::group_cap(&app.pool, "admin").await,
+        group_cap_developer: crate::policy::group_cap(&app.pool, "developer").await,
+    })
+}
+
+/// 保存「资源与计费」设置（超级管理员）。
+#[server]
+#[allow(clippy::too_many_arguments)]
+pub async fn admin_save_resource_settings(
+    billing_paused: bool,
+    pause_started_at: String,
+    pause_ends_at: String,
+    global_running_cap: i64,
+    group_cap_normal: i64,
+    group_cap_admin: i64,
+    group_cap_developer: i64,
+) -> ActionResult {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    if let Err(message) = require_admin().await {
+        return Ok(Err(message));
+    }
+    let clamp = |v: i64| v.clamp(0, 64);
+    let started = pause_started_at.trim();
+    let ends = pause_ends_at.trim();
+    // 只接受空值或 SQLite 可解析的日期（宽松校验：长度 + 数字/横杠/冒号）
+    let valid_date = |v: &str| {
+        v.is_empty()
+            || (v.len() >= 10
+                && v.len() <= 19
+                && v.chars().all(|c| c.is_ascii_digit() || c == '-' || c == ' ' || c == ':'))
+    };
+    if !valid_date(started) || !valid_date(ends) {
+        return Ok(Err("时间格式应为 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。".to_string()));
+    }
+
+    crate::policy::set_setting(&app.pool, "billing_paused", if billing_paused { "1" } else { "0" })
+        .await;
+    let started_val = if started.is_empty() {
+        crate::policy::get_setting(&app.pool, "billing_pause_started_at")
+            .await
+            .unwrap_or_default()
+    } else {
+        started.to_string()
+    };
+    crate::policy::set_setting(&app.pool, "billing_pause_started_at", &started_val).await;
+    crate::policy::set_setting(&app.pool, "billing_pause_ends_at", ends).await;
+    crate::policy::set_setting(&app.pool, "global_running_cap", &clamp(global_running_cap).to_string())
+        .await;
+    crate::policy::set_setting(&app.pool, "group_cap_normal", &clamp(group_cap_normal).to_string())
+        .await;
+    crate::policy::set_setting(&app.pool, "group_cap_admin", &clamp(group_cap_admin).to_string())
+        .await;
+    crate::policy::set_setting(
+        &app.pool,
+        "group_cap_developer",
+        &clamp(group_cap_developer).to_string(),
+    )
+    .await;
+    Ok(Ok(()))
+}
+
+/// 后台：当前排队列表（等待中）。
+#[server]
+pub async fn admin_list_queue() -> Result<Vec<crate::policy::AdminQueueEntry>, ServerFnError> {
+    use crate::state::AppState;
+    use sqlx::Row;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    require_admin()
+        .await
+        .map_err(|message| ServerFnError::new(message))?;
+
+    let rows = sqlx::query(
+        "SELECT q.id, u.username, q.slot, q.subdomain, q.kind, q.created_at, \
+                (SELECT COUNT(*) FROM agent_queue x WHERE x.status = 'waiting' AND x.id < q.id) + 1 \
+                    AS position \
+         FROM agent_queue q JOIN users u ON u.id = q.user_id \
+         WHERE q.status = 'waiting' ORDER BY q.id ASC LIMIT 200",
+    )
+    .fetch_all(&app.pool)
+    .await
+    .map_err(|e| ServerFnError::new(format!("查询排队失败: {e}")))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| crate::policy::AdminQueueEntry {
+            id: row.get("id"),
+            username: row.get("username"),
+            slot: row.get("slot"),
+            subdomain: row.get("subdomain"),
+            kind: row.get("kind"),
+            created_at: row.get("created_at"),
+            position: row.get("position"),
+        })
+        .collect())
+}
+
+/// 后台：取消某条排队记录（通知所有者）。
+#[server]
+pub async fn admin_cancel_queue(id: i64) -> ActionResult {
+    use crate::state::AppState;
+    use sqlx::Row;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    if let Err(message) = require_admin().await {
+        return Ok(Err(message));
+    }
+
+    let owner = sqlx::query(
+        "SELECT user_id, slot FROM agent_queue WHERE id = ?1 AND status = 'waiting'",
+    )
+    .bind(id)
+    .fetch_optional(&app.pool)
+    .await
+    .map_err(|e| ServerFnError::new(format!("查询排队记录失败: {e}")))?;
+    let Some(owner) = owner else {
+        return Ok(Err("这条排队记录不存在或已处理。".to_string()));
+    };
+    let user_id: i64 = owner.get("user_id");
+    let slot: i64 = owner.get("slot");
+    sqlx::query("UPDATE agent_queue SET status = 'cancelled' WHERE id = ?1 AND status = 'waiting'")
+        .bind(id)
+        .execute(&app.pool)
+        .await
+        .map_err(|e| ServerFnError::new(format!("取消排队失败: {e}")))?;
+    crate::policy::notify(
+        &app.pool,
+        user_id,
+        "queue",
+        "排队已被取消",
+        &format!("管理员取消了实例 #{slot} 的启动排队。"),
+        "/subscriptions",
+        &format!("queue-cancelled-{id}"),
+    )
+    .await;
     Ok(Ok(()))
 }
 

@@ -6,8 +6,8 @@
 use crate::auth::{current_user, UserState};
 use crate::pages::admin::{
     AdminAgentPage, AdminBackupPage, AdminCommentsPage, AdminCommunityPage,
-    AdminDashboardPage, AdminOrdersPage, AdminPodPage, AdminReviewsPage, AdminSkyPage,
-    AdminUsersPage,
+    AdminDashboardPage, AdminOrdersPage, AdminPodPage, AdminPolicyPage, AdminReviewsPage,
+    AdminSkyPage, AdminUsersPage,
 };
 use crate::pages::community::{
     CommunityDetailPage, CommunityIndex, CommunitySubmitPage, CommunityTagPage,
@@ -261,6 +261,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/admin/agents") view=AdminAgentPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/backup") view=AdminBackupPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/orders") view=AdminOrdersPage ssr=SsrMode::Async />
+                    <Route path=path!("/admin/policy") view=AdminPolicyPage ssr=SsrMode::Async />
 
                     // 兼容尾斜杠：leptos_router 0.8 不做尾斜杠归一，`/admin/` 会落到
                     // NotFound。给每个页面补一条带尾斜杠的别名，避免手输/复制多一个
@@ -349,6 +350,7 @@ pub fn App() -> impl IntoView {
                         ssr=SsrMode::Async
                     />
                     <Route path=path!("/admin/sky/") view=AdminSkyPage ssr=SsrMode::Async />
+                    <Route path=path!("/admin/policy/") view=AdminPolicyPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/users/") view=AdminUsersPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/pod/") view=AdminPodPage ssr=SsrMode::Async />
                     <Route path=path!("/admin/agents/") view=AdminAgentPage ssr=SsrMode::Async />

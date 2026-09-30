@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     use felix_homelab_site::app::{shell, App};
     use felix_homelab_site::state::AppState;
     use felix_homelab_site::{
-        agents, archive, auth, content, db, media, orders, register_server_fns, seo, stt,
+        agents, archive, auth, content, db, media, orders, policy, register_server_fns, seo, stt,
         uploads,
     };
     use leptos::prelude::*;
@@ -59,6 +59,9 @@ async fn main() -> anyhow::Result<()> {
 
     // 容量到期提醒 / 数据保管流程
     archive::spawn_maintenance_task(pool.clone());
+
+    // 启动排队：全局/分组并发上限满员时按顺序放行（免费用量由 policy 统一裁决）
+    policy::spawn_queue_task(pool.clone());
 
     // --- 内容 ---
     let content_dir = std::env::var("CONTENT_DIR").unwrap_or_else(|_| "content".to_string());

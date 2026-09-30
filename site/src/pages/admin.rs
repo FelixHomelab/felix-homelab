@@ -13,14 +13,17 @@ use crate::admin::{
     admin_list_comments, admin_list_community, admin_list_pod, admin_list_reviews,
     admin_list_users, admin_load_overview, admin_reply_review, admin_restart_container,
     admin_set_comment_status, admin_set_community_status, admin_set_review_status,
-    admin_set_user_role, admin_set_user_scope, admin_set_user_status, AdminComment,
-    AdminCommunityPost, AdminReview, AdminUser, BackupChannel, PodContainer,
+    admin_cancel_queue, admin_list_queue, admin_resource_settings, admin_save_resource_settings,
+    admin_set_user_group, admin_set_user_role, admin_set_user_scope, admin_set_user_status,
+    AdminComment, AdminCommunityPost, AdminReview, AdminUser, BackupChannel, PodContainer,
 };
 use crate::agents::{
     admin_agent_action, admin_grant_agent, admin_list_agents, admin_purge_agent,
     admin_renew_agent, agent_kind_label, AgentRow,
 };
 use crate::roles::{admin_permissions, role_label, SCOPED_ROLES};
+use crate::policy::ResourceSettings;
+use crate::agents::billing_status_view;
 use crate::community::kind_label as community_kind_label;
 use crate::community::{
     admin_list_tags, admin_merge_tag, admin_save_tag, CommunityTag,
@@ -135,6 +138,14 @@ fn AdminNav(perms: Vec<String>) -> impl IntoView {
                 .then(|| {
                     view! {
                         <a href="/admin/agents" class:active=move || active("/admin/agents")>"Agent"</a>
+                    }
+                })}
+            {has("super")
+                .then(|| {
+                    view! {
+                        <a href="/admin/policy" class:active=move || active("/admin/policy")>
+                            "资源"
+                        </a>
                     }
                 })}
             {has("super")
@@ -916,6 +927,7 @@ fn AdminUserRow(
     let next_role = if is_admin { "user" } else { "admin" };
 
     let scope_role = RwSignal::new(SCOPED_ROLES[0].to_string());
+    let group_now = user.res_group.clone();
 
     view! {
         <article class="admin-row">
@@ -958,6 +970,20 @@ fn AdminUserRow(
             </p>
             <div class="admin-actions">
                 <select
+                    title="资源分组（决定并发与容量权益）"
+                    prop:value=move || group_now.clone()
+                    on:change=move |ev| {
+                        let value = event_target_value(&ev);
+                        if !value.is_empty() {
+                            run_action(revision, message, admin_set_user_group(id, value));
+                        }
+                    }
+                >
+                    <option value="normal">"普通用户"</option>
+                    <option value="developer">"开发者组"</option>
+                    <option value="admin">"管理员组"</option>
+                </select>
+                <select
                     prop:value=move || scope_role.get()
                     on:change=move |ev| scope_role.set(event_target_value(&ev))
                 >
@@ -996,6 +1022,231 @@ fn AdminUserRow(
                 </button>
             </div>
         </article>
+    }
+}
+
+/// 资源与计费（超级管理员）：全站免费期、并发上限与启动排队。
+#[component]
+pub fn AdminPolicyPage() -> impl IntoView {
+    let revision = RwSignal::new(0u32);
+    let message = RwSignal::new(String::new());
+    let settings = Resource::new_blocking(move || revision.get(), |_| admin_resource_settings());
+    let queue = Resource::new_blocking(move || revision.get(), |_| admin_list_queue());
+    // 免费期横幅复用：让管理员一眼看到当前是否处于免费期
+    let billing = Resource::new_blocking(|| (), |_| billing_status_view());
+
+    view! {
+        <Title text="资源与计费 — Wraindrock" />
+        <AdminPage
+            title="资源与计费"
+            lede="全站免费期（暂停计费）、全局/分组并发上限与启动排队。".to_string()
+            perm="super"
+        >
+            <p class="notice" role="status">{move || message.get()}</p>
+
+            <Suspense fallback=|| ()>
+                {move || {
+                    billing
+                        .get()
+                        .and_then(|result| result.ok())
+                        .map(|status| {
+                            let text = if status.paused {
+                                let since = status.started_at.unwrap_or_else(|| "未知".into());
+                                let until = status.ends_at.unwrap_or_else(|| "不限结束".into());
+                                format!("当前：免费期生效中（自 {since} 起，{until}）")
+                            } else {
+                                "当前：正常计费中".to_string()
+                            };
+                            view! { <p class="free-note">{text}</p> }
+                        })
+                }}
+            </Suspense>
+
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match settings.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => {
+                        view! { <p class="error">"载入设置失败："{error.to_string()}</p> }.into_any()
+                    }
+                    Some(Ok(data)) => {
+                        view! {
+                            <PolicySettingsForm data=data revision=revision message=message />
+                        }
+                            .into_any()
+                    }
+                }}
+            </Suspense>
+
+            <h2 class="admin-section-title">"启动排队"</h2>
+            <Suspense fallback=|| view! { <p class="muted">"载入中…"</p> }>
+                {move || match queue.get() {
+                    None => view! { <p class="muted">"载入中…"</p> }.into_any(),
+                    Some(Err(error)) => {
+                        view! { <p class="error">"载入排队失败："{error.to_string()}</p> }.into_any()
+                    }
+                    Some(Ok(list)) if list.is_empty() => {
+                        view! { <p class="muted">"当前没有等待中的启动请求。"</p> }.into_any()
+                    }
+                    Some(Ok(list)) => {
+                        view! {
+                            <div class="admin-list">
+                                {list
+                                    .into_iter()
+                                    .map(|entry| {
+                                        let id = entry.id;
+                                        view! {
+                                            <article class="admin-row">
+                                                <p class="admin-meta">
+                                                    <span class="status status-role-admin">
+                                                        "第 " {entry.position} " 位"
+                                                    </span>
+                                                    <strong>{entry.username.clone()}</strong>
+                                                    <span class="comment-time">
+                                                        "实例 #" {entry.slot} " · " {entry.kind.clone()}
+                                                    </span>
+                                                    <span class="comment-time">{entry.created_at.clone()}</span>
+                                                </p>
+                                                <div class="admin-actions">
+                                                    <button
+                                                        class="btn btn-small"
+                                                        on:click=move |_| {
+                                                            run_action(
+                                                                revision,
+                                                                message,
+                                                                admin_cancel_queue(id),
+                                                            );
+                                                        }
+                                                    >
+                                                        "取消排队"
+                                                    </button>
+                                                </div>
+                                            </article>
+                                        }
+                                    })
+                                    .collect_view()}
+                            </div>
+                        }
+                            .into_any()
+                    }
+                }}
+            </Suspense>
+        </AdminPage>
+    }
+}
+
+/// 「资源与计费」设置表单。
+#[component]
+fn PolicySettingsForm(
+    data: ResourceSettings,
+    revision: RwSignal<u32>,
+    message: RwSignal<String>,
+) -> impl IntoView {
+    let paused = RwSignal::new(data.billing_paused);
+    let started = RwSignal::new(data.pause_started_at.clone().unwrap_or_default());
+    let ends = RwSignal::new(data.pause_ends_at.clone().unwrap_or_default());
+    let global_cap = RwSignal::new(data.global_running_cap.to_string());
+    let cap_normal = RwSignal::new(data.group_cap_normal.to_string());
+    let cap_admin = RwSignal::new(data.group_cap_admin.to_string());
+    let cap_dev = RwSignal::new(data.group_cap_developer.to_string());
+
+    let save = move |_| {
+        let parse = |value: String| value.trim().parse::<i64>().unwrap_or(0);
+        run_action(
+            revision,
+            message,
+            admin_save_resource_settings(
+                paused.get(),
+                started.get(),
+                ends.get(),
+                parse(global_cap.get()),
+                parse(cap_normal.get()),
+                parse(cap_admin.get()),
+                parse(cap_dev.get()),
+            ),
+        );
+    };
+
+    view! {
+        <div class="card policy-form">
+            <label class="checkbox-line">
+                <input
+                    type="checkbox"
+                    prop:checked=move || paused.get()
+                    on:change=move |ev| paused.set(event_target_checked(&ev))
+                />
+                "暂停全站计费（免费期）"
+            </label>
+            <div class="form-row">
+                <label>
+                    "免费期开始"
+                    <input
+                        class="input"
+                        prop:value=move || started.get()
+                        on:input=move |ev| started.set(event_target_value(&ev))
+                        placeholder="YYYY-MM-DD"
+                    />
+                </label>
+                <label>
+                    "免费期结束（留空 = 不限）"
+                    <input
+                        class="input"
+                        prop:value=move || ends.get()
+                        on:input=move |ev| ends.set(event_target_value(&ev))
+                        placeholder="留空表示不限结束"
+                    />
+                </label>
+            </div>
+            <div class="form-row">
+                <label>
+                    "全局运行上限（0 = 不限）"
+                    <input
+                        class="input"
+                        type="number"
+                        min="0"
+                        max="64"
+                        prop:value=move || global_cap.get()
+                        on:input=move |ev| global_cap.set(event_target_value(&ev))
+                    />
+                </label>
+                <label>
+                    "普通用户并发"
+                    <input
+                        class="input"
+                        type="number"
+                        min="0"
+                        max="64"
+                        prop:value=move || cap_normal.get()
+                        on:input=move |ev| cap_normal.set(event_target_value(&ev))
+                    />
+                </label>
+                <label>
+                    "管理员组并发"
+                    <input
+                        class="input"
+                        type="number"
+                        min="0"
+                        max="64"
+                        prop:value=move || cap_admin.get()
+                        on:input=move |ev| cap_admin.set(event_target_value(&ev))
+                    />
+                </label>
+                <label>
+                    "开发者组并发（0 = 不限）"
+                    <input
+                        class="input"
+                        type="number"
+                        min="0"
+                        max="64"
+                        prop:value=move || cap_dev.get()
+                        on:input=move |ev| cap_dev.set(event_target_value(&ev))
+                    />
+                </label>
+            </div>
+            <p class="muted">
+                "并发指「同时运行」的 Agent 实例数；全站运行数达到上限时，启动/唤醒会进入排队，有空位自动放行并通知。"
+            </p>
+            <button class="btn" on:click=save>"保存设置"</button>
+        </div>
     }
 }
 

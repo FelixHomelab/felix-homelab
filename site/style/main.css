@@ -2340,3 +2340,64 @@ html.splash-pending .site-footer {
 }
 
 
+
+/* 全站免费期提示（购买页 / 订阅页 / 后台） */
+.free-note {
+	margin: 0.6rem 0;
+	padding: 0.55rem 0.8rem;
+	border: 1px solid var(--line, #333);
+	border-left: 3px solid #7cd4a8;
+	border-radius: 6px;
+	background: rgba(124, 212, 168, 0.08);
+	font-size: 0.92rem;
+}
+
+.free-banner {
+	display: flex;
+	gap: 0.8rem;
+	align-items: baseline;
+	flex-wrap: wrap;
+}
+
+/* Agent 卡片：排队中提示行 */
+.agent-queue {
+	margin: 0.25rem 0 0.35rem;
+	font-size: 0.85rem;
+	color: #e8c56a;
+}
+
+/* 后台「资源与计费」表单 */
+.policy-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.8rem;
+}
+
+.policy-form .form-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.8rem;
+}
+
+.policy-form label {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	font-size: 0.9rem;
+	min-width: 10rem;
+}
+
+.policy-form .checkbox-line {
+	flex-direction: row;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.policy-form .input {
+	padding: 0.4rem 0.55rem;
+	border: 1px solid var(--line, #333);
+	border-radius: 6px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+}

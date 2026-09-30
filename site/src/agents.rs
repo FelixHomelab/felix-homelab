@@ -104,6 +104,8 @@ pub struct AgentRow {
     /// 首次进入用的带令牌链接（仅 DSH）
     pub login_url: Option<String>,
     pub runtime: Option<AgentRuntime>,
+    /// 等待启动的排队位置（非空即排队中）
+    pub queue: Option<crate::policy::QueueSpot>,
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +434,46 @@ pub async fn agent_auth(
         }
     }
 
+    // 资源政策闸门：实例未在运行时才需要“占坑”。
+    //   免费期只影响计费展示；并发上限与排队在这里生效（满员 → 入队 + 提示页）。
+    {
+        let status_map = read_agent_status();
+        let own_running = status_map
+            .get(&subdomain.to_ascii_lowercase())
+            .map(|r| r.state == "running")
+            .unwrap_or(false);
+        if !own_running {
+            let group = crate::policy::res_group(&state.pool, user_id).await;
+            let cap = crate::policy::group_cap(&state.pool, &group).await;
+            let global_limit = crate::policy::global_cap(&state.pool).await;
+            let user_running =
+                crate::policy::user_running_count(&state.pool, user_id, &status_map).await;
+            let global_running = crate::policy::global_running_count(&status_map);
+            let blocked = (cap > 0 && user_running >= cap)
+                || (global_limit > 0 && global_running >= global_limit);
+            if blocked {
+                crate::policy::enqueue(&state.pool, user_id, slot, &subdomain, &kind, "").await;
+                if let Some(spot) = crate::policy::queue_spot(&state.pool, user_id, slot).await {
+                    let cap_text = if cap > 0 { cap.to_string() } else { "不限".into() };
+                    let body = format!(
+                        "当前资源已满（本组同时运行上限 {cap_text}，全站运行上限 {global_limit}）。\
+                         已为你排队：前面还有 {} 位，轮到时将自动启动并通知你。",
+                        spot.ahead
+                    );
+                    // 非 2xx：forward_auth 会把该页面直接回给浏览器，不会误放行去代理
+                    // 尚未启动的实例（否则会 502）。
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        axum::response::Html(waking("排队中", &body)),
+                    )
+                        .into_response();
+                }
+            } else {
+                crate::policy::dequeue(&state.pool, user_id, slot).await;
+            }
+        }
+    }
+
     touch_activity(&subdomain);
 
     // 睡眠/未运行 → 唤醒并等待就绪
@@ -571,7 +613,7 @@ pub async fn agent_tls_ask(
 /// 返回最终文件路径：唤醒/凭据类请求由调用方轮询它是否被宿主处理（删除）。
 /// 文件权限 0600（可能包含用户密钥）。
 #[cfg(feature = "ssr")]
-fn write_agent_request(
+pub(crate) fn write_agent_request(
     action: &str,
     username: &str,
     slot: i64,
@@ -627,7 +669,7 @@ fn write_agent_request(
 
 /// 读取宿主回写的运行态（按 subdomain 索引）。
 #[cfg(feature = "ssr")]
-fn read_agent_status() -> std::collections::HashMap<String, AgentRuntime> {
+pub(crate) fn read_agent_status() -> std::collections::HashMap<String, AgentRuntime> {
     let mut map = std::collections::HashMap::new();
     let path = std::path::Path::new(AGENTS_DIR).join("status.json");
     let Ok(text) = std::fs::read_to_string(path) else {
@@ -719,6 +761,7 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> AgentRow {
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         runtime,
+        queue: None,
     }
 }
 
@@ -889,6 +932,15 @@ pub async fn agent_time_pool(window: String) -> Result<TimePool, ServerFnError> 
     })
 }
 
+/// 全站免费期状态（前台展示：订阅页横幅 / 时长池提示 / 购买页禁用）。
+#[server]
+pub async fn billing_status_view() -> Result<crate::policy::BillingStatus, ServerFnError> {
+    use crate::state::AppState;
+
+    let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
+    Ok(crate::policy::billing_status(&app.pool).await)
+}
+
 /// 旧 Agent 有效期 → 时长池结转（启动时执行，幂等）。
 ///
 /// 折算规则：每个实例的**剩余有效期**按 1:1 计入池内秒数；已有 `pooled_at`
@@ -955,7 +1007,35 @@ pub async fn my_agents() -> Result<Vec<AgentRow>, ServerFnError> {
         .await
         .map_err(|e| ServerFnError::new(format!("查询我的 Agent 失败: {e}")))?;
 
-    Ok(rows.iter().map(row_to_agent).collect())
+    let mut agents: Vec<AgentRow> = rows.iter().map(row_to_agent).collect();
+    // 填充排队位置（供卡片显示「排队中·前方 N 位」）
+    use sqlx::Row;
+    let queued = sqlx::query(
+        "SELECT id, slot, created_at FROM agent_queue          WHERE user_id = ?1 AND status = 'waiting' ORDER BY id ASC",
+    )
+    .bind(identity.id)
+    .fetch_all(&app.pool)
+    .await
+    .unwrap_or_default();
+    for entry in &queued {
+        let qslot: i64 = entry.get("slot");
+        let qid: i64 = entry.get("id");
+        let ahead: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM agent_queue WHERE status = 'waiting' AND id < ?1",
+        )
+        .bind(qid)
+        .fetch_one(&app.pool)
+        .await
+        .unwrap_or(0);
+        if let Some(agent) = agents.iter_mut().find(|a| a.slot == qslot) {
+            agent.queue = Some(crate::policy::QueueSpot {
+                slot: qslot,
+                ahead,
+                created_at: entry.get("created_at"),
+            });
+        }
+    }
+    Ok(agents)
 }
 
 /// 后台：给一个账号开通/续费指定类型的 Agent 实例。

@@ -13,6 +13,7 @@ use crate::orders::{
     product_label,
 };
 use crate::storage::capacity_pool;
+use crate::agents::billing_status_view;
 use leptos::prelude::*;
 use leptos_meta::{Meta, Title};
 
@@ -21,6 +22,8 @@ use super::MyAgentsSection;
 /// 我的订阅页。
 #[component]
 pub fn SubscriptionsPage() -> impl IntoView {
+    let billing = Resource::new_blocking(|| (), |_| billing_status_view());
+
     view! {
         <Title text="我的订阅 — Wraindrock" />
         <Meta
@@ -33,6 +36,30 @@ pub fn SubscriptionsPage() -> impl IntoView {
                 lede="已订阅的 AI Agent 与容量（OpenCloud / Forgejo）集中在这里。"
             />
         </section>
+
+        <Suspense fallback=|| ()>
+            {move || {
+                billing
+                    .get()
+                    .and_then(|result| result.ok())
+                    .filter(|status| status.paused)
+                    .map(|status| {
+                        let since = status.started_at.unwrap_or_else(|| "未知".to_string());
+                        let until = status.ends_at.unwrap_or_else(|| "不限结束".to_string());
+                        view! {
+                            <section class="wrap">
+                                <div class="card free-banner">
+                                    <strong>"全站免费期进行中"</strong>
+                                    <span>
+                                        "自 " {since} " 起，结束时间 " {until}
+                                        "；期间 AI Agent 运行不扣时长池，已有余额保留。"
+                                    </span>
+                                </div>
+                            </section>
+                        }
+                    })
+            }}
+        </Suspense>
 
         <MyAgentsSection />
 
@@ -362,15 +389,17 @@ fn CapacityPoolCard() -> impl IntoView {
                 {move || {
                     let data = pool.get().and_then(|result| result.ok());
                     let (total, used) = data
+                        .as_ref()
                         .map(|pool| (pool.total_bytes, pool.used_bytes))
                         .unwrap_or((0, 0));
+                    let unlimited = data.as_ref().map(|pool| pool.unlimited).unwrap_or(false);
                     let clamped_used = used.clamp(0, total.max(0));
                     let percent = if total > 0 {
                         (clamped_used as f64 / total as f64 * 100.0).clamp(0.0, 100.0)
                     } else {
                         0.0
                     };
-                    let opened = total > 0;
+                    let opened = total > 0 || unlimited;
                     view! {
                         <div>
                             <div class="pool-bar" role="progressbar" aria-valuenow=percent>
@@ -381,14 +410,25 @@ fn CapacityPoolCard() -> impl IntoView {
                                     "已用 " <strong>{format_bytes(used)}</strong>
                                 </span>
                                 <span>
-                                    "总容量 " <strong>{format_bytes(total)}</strong>
+                                    "总容量 "
+                                    <strong>
+                                        {if unlimited { "不限".to_string() } else { format_bytes(total) }}
+                                    </strong>
                                 </span>
                             </div>
-                            {(!opened)
+                            {(!opened && !unlimited)
                                 .then(|| {
                                     view! {
                                         <p class="muted pool-hint">
                                             "尚未开通容量池 · 过渡期上传不限量；购买开放后这里显示用量进度"
+                                        </p>
+                                    }
+                                })}
+                            {unlimited
+                                .then(|| {
+                                    view! {
+                                        <p class="muted pool-hint">
+                                            "你的分组容量不限（管理员组 / 开发者组权益）"
                                         </p>
                                     }
                                 })}

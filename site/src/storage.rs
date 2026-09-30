@@ -15,6 +15,9 @@ pub struct CapacityPoolView {
     pub total_bytes: i64,
     /// 当前已用（全部时间的媒体原始大小合计）
     pub used_bytes: i64,
+    /// 分组权益：容量不限（管理员组/开发者组）
+    #[serde(default)]
+    pub unlimited: bool,
 }
 
 /// 查询账号容量池（窗口内入账 + 当前已用）。
@@ -32,6 +35,7 @@ pub async fn capacity_pool(window: String) -> Result<CapacityPoolView, ServerFnE
             window,
             total_bytes: 0,
             used_bytes: 0,
+            unlimited: false,
         });
     };
     let app = use_context::<AppState>().expect("AppState 应作为 context 提供");
@@ -90,11 +94,14 @@ pub async fn capacity_pool(window: String) -> Result<CapacityPoolView, ServerFnE
         .map_err(|e| ServerFnError::new(format!("查询容量权益失败: {e}")))?;
     let total_bytes = manual_total + ent_total;
     let used_bytes = user_capacity_used(&app.pool, identity.id).await;
+    let unlimited =
+        crate::policy::is_unlimited_storage(&crate::policy::res_group(&app.pool, identity.id).await);
 
     Ok(CapacityPoolView {
         window,
         total_bytes,
         used_bytes,
+        unlimited,
     })
 }
 
@@ -116,6 +123,10 @@ pub async fn user_capacity_used(pool: &sqlx::SqlitePool, user_id: i64) -> i64 {
 /// 0 表示尚未开通——过渡期不限制上传。
 #[cfg(feature = "ssr")]
 pub async fn user_capacity_total(pool: &sqlx::SqlitePool, user_id: i64) -> i64 {
+    // 管理员组 / 开发者组：容量不限（长免费期内的资源政策）
+    if crate::policy::is_unlimited_storage(&crate::policy::res_group(pool, user_id).await) {
+        return i64::MAX / 4;
+    }
     let manual: i64 = sqlx::query_scalar(
         "SELECT COALESCE(SUM(bytes),0) FROM capacity_pool_entries WHERE user_id = ?1",
     )

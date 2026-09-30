@@ -2,6 +2,7 @@
 //!
 //! 下单与支付流程待接入（随注册/审核完成后实现）；本页先承接导航入口。
 
+use crate::agents::billing_status_view;
 use crate::components::PageHeader;
 #[cfg(feature = "hydrate")]
 use crate::orders::create_order;
@@ -67,6 +68,15 @@ fn capacity_table() -> impl IntoView {
 /// 购买订阅页。
 #[component]
 pub fn ServicesPage() -> impl IntoView {
+    let billing = Resource::new_blocking(|| (), |_| billing_status_view());
+    let paused = move || {
+        billing
+            .get()
+            .and_then(|result| result.ok())
+            .map(|status| status.paused)
+            .unwrap_or(false)
+    };
+
     view! {
         <Title text="购买订阅 — Wraindrock" />
         <Meta
@@ -83,26 +93,75 @@ pub fn ServicesPage() -> impl IntoView {
         <section class="wrap section">
             <div class="section-head">
                 <h2>"AI Agent（时间池充值）"</h2>
-                <span class="muted">"自助开启 · 按量自动计费"</span>
+                <span class="muted">"自助开启 · 免费期内不扣费"</span>
             </div>
+            {move || {
+                paused()
+                    .then(|| {
+                        view! {
+                            <p class="free-note">
+                                "全站免费期进行中：AI Agent 运行不扣时长池，无需充值（已有余额保留）。"
+                            </p>
+                        }
+                    })
+            }}
             <div class="plan-grid">
                 <div class="plan-card">
                     <h3>"充值 ¥6"</h3>
                     <p class="plan-price">"≈ 9.5 天" <span>"运行时间"</span></p>
                     <p class="plan-note">"适合短期试用"</p>
-                    <OrderButton product="agent_time".to_string() option="600".to_string() label="充值 ¥6".to_string() />
+                    {move || {
+                        if paused() {
+                            view! { <p class="free-note">"免费期中，无需充值"</p> }.into_any()
+                        } else {
+                            view! {
+                                <OrderButton
+                                    product="agent_time".to_string()
+                                    option="600".to_string()
+                                    label="充值 ¥6".to_string()
+                                />
+                            }
+                                .into_any()
+                        }
+                    }}
                 </div>
                 <div class="plan-card">
                     <h3>"充值 ¥19"</h3>
                     <p class="plan-price">"= 30 天" <span>"运行时间"</span></p>
                     <p class="plan-note">"基准费率：¥0.63 / 天"</p>
-                    <OrderButton product="agent_time".to_string() option="1900".to_string() label="充值 ¥19".to_string() />
+                    {move || {
+                        if paused() {
+                            view! { <p class="free-note">"免费期中，无需充值"</p> }.into_any()
+                        } else {
+                            view! {
+                                <OrderButton
+                                    product="agent_time".to_string()
+                                    option="1900".to_string()
+                                    label="充值 ¥19".to_string()
+                                />
+                            }
+                                .into_any()
+                        }
+                    }}
                 </div>
                 <div class="plan-card">
                     <h3>"充值 ¥99"</h3>
                     <p class="plan-price">"≈ 156 天" <span>"运行时间"</span></p>
                     <p class="plan-note">"也可充值任意金额，按费率折算"</p>
-                    <OrderButton product="agent_time".to_string() option="9900".to_string() label="充值 ¥99".to_string() />
+                    {move || {
+                        if paused() {
+                            view! { <p class="free-note">"免费期中，无需充值"</p> }.into_any()
+                        } else {
+                            view! {
+                                <OrderButton
+                                    product="agent_time".to_string()
+                                    option="9900".to_string()
+                                    label="充值 ¥99".to_string()
+                                />
+                            }
+                                .into_any()
+                        }
+                    }}
                 </div>
             </div>
             <div class="prose">
