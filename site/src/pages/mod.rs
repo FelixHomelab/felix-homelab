@@ -2,6 +2,9 @@
 
 pub mod admin;
 pub mod community;
+pub mod services;
+
+pub use services::ServicesPage;
 
 use crate::auth::UserState;
 use crate::agents::{agent_kind_label, my_agents, AgentRow};

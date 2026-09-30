@@ -14,8 +14,8 @@ use crate::pages::community::{
 };
 use crate::pages::{
     AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, HomePage, Layout,
-    LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, SkyBoostingPage,
-    SkyCategoryPage, SkyIndex, SkyOfficialPage, UserProfilePage,
+    LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, ServicesPage,
+    SkyBoostingPage, SkyCategoryPage, SkyIndex, SkyOfficialPage, UserProfilePage,
 };
 use crate::theme::{ThemePrefs, ThemeState};
 use leptos::prelude::*;
@@ -117,6 +117,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/projects") view=ProjectIndex ssr=SsrMode::Async />
                     <Route path=path!("/projects/:slug") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about") view=AboutPage ssr=SsrMode::Async />
+                    <Route path=path!("/services") view=ServicesPage ssr=SsrMode::Async />
                     <Route path=path!("/sky") view=SkyIndex ssr=SsrMode::Async />
                     // boosting 必须排在 :category 之前，否则它会被当成一个分类
                     <Route path=path!("/sky/boosting") view=SkyBoostingPage ssr=SsrMode::Async />
@@ -209,6 +210,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/projects/") view=ProjectIndex ssr=SsrMode::Async />
                     <Route path=path!("/projects/:slug/") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about/") view=AboutPage ssr=SsrMode::Async />
+                    <Route path=path!("/services/") view=ServicesPage ssr=SsrMode::Async />
                     <Route path=path!("/sky/") view=SkyIndex ssr=SsrMode::Async />
                     <Route path=path!("/sky/boosting/") view=SkyBoostingPage ssr=SsrMode::Async />
                     <Route path=path!("/sky/community/") view=SkyCommunityIndex ssr=SsrMode::Async />
