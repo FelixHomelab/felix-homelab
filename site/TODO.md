@@ -1274,6 +1274,11 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
   agent-ctl 按实例注入 `AGENT_ORIGIN(_LOCAL)`，入口写入白名单（公网域名 + 本地域名 + 回环）。
   实测：来源错误消失，进入正常的「输入 Gateway 令牌」页。
   令牌获取（官方命令）：`podman exec <容器> openclaw gateway auth-token --show`。
+  **云端用户无终端** → 站点下发：`my_agent_access` 读 `/agents/state.json` 的实例密码，
+  「我的订阅 → Agent 控制台接入」显示/复制（仅所有者）；实测与 state 值一致。
+  备选方案（未采用）：`gateway.auth.mode: trusted-proxy` 要求来源为非本机接口地址，
+  pasta 下代理来源恰是容器自身网段 → 官方防伪校验（trusted_proxy_local_interface_source）
+  会拒绝，故不采用。
 - **默认插件**：DSH 增加 `@huanx/kilo-zen2dsh@0.4.0`、`dsh-webchat@0.2.0`；
   OpenClaw 增加 FreeRide（官方仓库固定提交 + `pip install -e`，首启注册技能）；
   Pi 增加 `pi-freerouter@0.1.17`（构建期烘焙，首启复制到 HOME）。

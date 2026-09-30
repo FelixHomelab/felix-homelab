@@ -71,6 +71,7 @@ web-sys = { version = "=0.3.104", features = [
     "Location",
     # 媒体工具条：图片上传 / 录音（MediaRecorder）/ fetch 上传
     "Blob",
+    "Clipboard",
     "BlobEvent",
     "BlobPropertyBag",
     "File",

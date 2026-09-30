@@ -2327,3 +2327,14 @@ html.splash-pending .site-footer {
     color: var(--text-muted);
     font-size: 0.875rem;
 }
+
+
+.token-reveal {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    word-break: break-all;
+}
