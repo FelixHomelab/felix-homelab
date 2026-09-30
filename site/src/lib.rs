@@ -30,6 +30,8 @@ pub mod theme;
 #[cfg(feature = "ssr")]
 pub mod db;
 #[cfg(feature = "ssr")]
+pub mod media;
+#[cfg(feature = "ssr")]
 pub mod seo;
 #[cfg(feature = "ssr")]
 pub mod state;

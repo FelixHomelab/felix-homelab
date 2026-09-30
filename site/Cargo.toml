@@ -43,6 +43,10 @@ sha2 = { version = "0.11", optional = true }
 hex = { version = "0.4", optional = true }
 # server function 显式注册用（见 lib.rs 的 register_server_fns）
 server_fn = { version = "0.8", optional = true, features = ["axum"] }
+# 媒体存储：流式文件响应（Range 使用）
+tokio-util = { version = "0.7", features = ["io"], optional = true }
+# 媒体存储：zstd 压缩（绑定 libzstd；构建镜像里已有 C 工具链）
+zstd = { version = "0.13", optional = true }
 # 统一账号 HTTP 校验（对用户不可见——本站登录就是它的登录；rustls，不依赖 openssl）
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 
@@ -90,6 +94,8 @@ ssr = [
     "dep:hex",
     "dep:server_fn",
     "dep:reqwest",
+    "dep:zstd",
+    "dep:tokio-util",
     "leptos/ssr",
     "leptos_meta/ssr",
     "leptos_router/ssr",

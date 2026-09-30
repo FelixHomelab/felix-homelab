@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     use felix_homelab_site::app::{shell, App};
     use felix_homelab_site::state::AppState;
     use felix_homelab_site::{
-        agents, auth, content, db, register_server_fns, seo, uploads,
+        agents, auth, content, db, media, register_server_fns, seo, uploads,
     };
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
@@ -105,6 +105,13 @@ async fn main() -> anyhow::Result<()> {
         )
         // 已上传图片的对外出口
         .route("/uploads/{*path}", get(uploads::serve_upload))
+        // 富媒体：上传（multipart）与读取（Range/按需解压）
+        .route(
+            "/api/media",
+            post(media::upload).layer(DefaultBodyLimit::max(1024 << 20)),
+        )
+        .route("/media/{id}", get(media::serve))
+        .route("/media/{id}/{*name}", get(media::serve_named))
         // 多租户 Agent 网关鉴权：Caddy forward_auth 调用（GET），
         // 必须在下面的 server function 兜底路由之前注册。
         .route("/api/agent/auth", get(agents::agent_auth))
