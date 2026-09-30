@@ -504,7 +504,11 @@ container_create() {
 		args+=(--env "ZEROCLAW_gateway__allow_public_bind=true")
 		args+=(--env "ZEROCLAW_gateway__port=$port")
 		args+=(--env "ZEROCLAW_gateway__require_pairing=false")
-		args+=("$(image_of "$kind")" gateway start)
+		args+=(--env "SHELL=/bin/sh")
+		# 首启把磁盘配置补齐到当前 schema（幂等），否则控制台会报「路径与磁盘不同」drift；
+		# 镜像 ENTRYPOINT 是 zeroclaw，必须覆盖为 sh 才能执行包装命令
+		args+=(--entrypoint sh)
+		args+=("$(image_of "$kind")" -c 'zeroclaw config migrate >/dev/null 2>&1 || true; exec zeroclaw gateway start')
 		;;
 	kilocode | pi)
 		# 终端型 Agent：容器内 ttyd 提供 Web 终端（AGENT_PORT 注入端口）
