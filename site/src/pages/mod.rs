@@ -9,7 +9,7 @@ pub use services::ServicesPage;
 pub use subscriptions::SubscriptionsPage;
 
 use crate::auth::UserState;
-use crate::agents::{agent_kind_label, my_agents, AgentRow};
+use crate::agents::{agent_kind_label, agent_time_pool, my_agents, AgentRow, TimePool};
 use crate::community::list_community;
 use crate::components::comments::CommentSection;
 use crate::components::community::CommunityCard;
@@ -187,22 +187,25 @@ pub(crate) fn MyAgentsSection() -> impl IntoView {
         if !mounted.get() {
             return None;
         }
-        let list = match agents.get().and_then(|result| result.ok()) {
-            Some(list) if !list.is_empty() => list,
-            // 未登录 / 未开通：给一句提示，避免整块消失让人以为坏了
-            _ => {
-                return Some(
-                    view! {
-                        <section class="wrap section">
-                            <div class="section-head">
-                                <h2>"我的 Agent"</h2>
-                                <span class="muted">"登录主站后显示；管理员开通后自动出现在这里"</span>
-                            </div>
-                        </section>
-                    }
-                    .into_any(),
-                );
+        let list = agents
+            .get()
+            .and_then(|result| result.ok())
+            .unwrap_or_default();
+        let grid = if list.is_empty() {
+            view! {
+                <p class="muted">"还没有 Agent；自助开通入口上线后，这里会出现你的实例卡片。"</p>
             }
+            .into_any()
+        } else {
+            view! {
+                <div class="agent-grid">
+                    {list
+                        .into_iter()
+                        .map(|agent| view! { <MyAgentCard agent=agent /> })
+                        .collect_view()}
+                </div>
+            }
+            .into_any()
         };
         Some(
             view! {
@@ -213,16 +216,104 @@ pub(crate) fn MyAgentsSection() -> impl IntoView {
                             "打开卡片即进入；时间池按量自动计费（运行 1×、睡眠 0.5×、停止不计）"
                         </span>
                     </div>
-                    <div class="agent-grid">
-                        {list
-                            .into_iter()
-                            .map(|agent| view! { <MyAgentCard agent=agent /> })
-                            .collect_view()}
-                    </div>
+                    <TimePoolCard />
+                    {grid}
                 </section>
             }
             .into_any(),
         )
+    }
+}
+
+/// 时长池卡片：独占一行的进度条（总时长 / 剩余时长），
+/// 支持切换统计窗口：全部 / 本月 / 本周 / 今天。
+#[component]
+fn TimePoolCard() -> impl IntoView {
+    let window = RwSignal::new("all".to_string());
+    let pool = Resource::new(move || window.get(), |w| agent_time_pool(w));
+
+    let tabs = [
+        ("all", "全部"),
+        ("month", "本月"),
+        ("week", "本周"),
+        ("day", "今天"),
+    ];
+
+    view! {
+        <div class="card pool-card">
+            <div class="pool-head">
+                <h3>"时长池"</h3>
+                <div class="pool-tabs" role="tablist">
+                    {tabs
+                        .into_iter()
+                        .map(|(key, label)| {
+                            view! {
+                                <button
+                                    type="button"
+                                    class="pool-tab"
+                                    class:active=move || window.get() == key
+                                    on:click=move |_| window.set(key.to_string())
+                                >
+                                    {label}
+                                </button>
+                            }
+                        })
+                        .collect_view()}
+                </div>
+            </div>
+            <Suspense fallback=move || view! { <p class="muted">"载入中…"</p> }>
+                {move || {
+                    let data = pool.get().and_then(|result| result.ok());
+                    let (total, remaining) = data
+                        .map(|pool| (pool.total_seconds, pool.remaining_seconds))
+                        .unwrap_or((0, 0));
+                    let percent = if total > 0 {
+                        (remaining.max(0) as f64 / total as f64 * 100.0).clamp(0.0, 100.0)
+                    } else {
+                        0.0
+                    };
+                    let filled = total > 0 && remaining > 0;
+                    view! {
+                        <div>
+                            <div class="pool-bar" role="progressbar" aria-valuenow=percent>
+                                <div class="pool-fill" style=format!("width:{percent:.1}%")></div>
+                            </div>
+                            <div class="pool-nums">
+                                <span>
+                                    "剩余 " <strong>{format_seconds(remaining)}</strong>
+                                </span>
+                                <span>
+                                    "总时长 " <strong>{format_seconds(total)}</strong>
+                                </span>
+                            </div>
+                            {(!filled)
+                                .then(|| {
+                                    view! {
+                                        <p class="muted pool-hint">
+                                            "尚未充值 · 充值入口开放后这里显示时长进度，计费自动进行"
+                                        </p>
+                                    }
+                                })}
+                        </div>
+                    }
+                }}
+            </Suspense>
+        </div>
+    }
+}
+
+/// 秒数转可读时长：优先「天 + 小时」，小于一天用「小时 + 分钟」。
+fn format_seconds(seconds: i64) -> String {
+    let seconds = seconds.max(0);
+    let days = seconds / 86_400;
+    let hours = (seconds % 86_400) / 3_600;
+    let minutes = (seconds % 3_600) / 60;
+    if days > 0 {
+        format!("{days} 天 {hours} 小时")
+    } else if hours > 0 {
+        format!("{hours} 小时 {minutes} 分钟")
+    } else {
+        format!("{minutes} 分钟")
     }
 }
 

@@ -779,6 +779,28 @@ pub async fn admin_list_agents(include_deleted: bool) -> Result<Vec<AgentRow>, S
 }
 
 /// 用户首屏：当前登录账号自己的 Agent 入口（未登录返回空表）。
+/// 时长池视图：某统计窗口内的总时长与剩余时长（秒）。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TimePool {
+    /// 统计窗口：all / month / week / day
+    pub window: String,
+    pub total_seconds: i64,
+    pub remaining_seconds: i64,
+}
+
+/// 查询账号时长池（充值入账与剩余）。
+///
+/// 计量/充值系统尚未落地：当前统一返回 0，前端显示空态进度条；
+/// 落地后按 `window`（全部/本月/本周/今天）从时间池流水聚合。
+#[server]
+pub async fn agent_time_pool(window: String) -> Result<TimePool, ServerFnError> {
+    Ok(TimePool {
+        window,
+        total_seconds: 0,
+        remaining_seconds: 0,
+    })
+}
+
 #[server]
 pub async fn my_agents() -> Result<Vec<AgentRow>, ServerFnError> {
     use crate::state::AppState;
