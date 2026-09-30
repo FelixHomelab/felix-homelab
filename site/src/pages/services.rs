@@ -102,6 +102,11 @@ pub fn ServicesPage() -> impl IntoView {
             <p class="muted">
                 "独立运行环境、数据隔离、常驻可用；支持 OpenCode 与 DSH 两种工作台，开通后按周期续费。"
             </p>
+            <p class="muted">
+                "订阅时长是账号内全部 Agent 共享的总运行时长：只订阅一个 Agent 时可运行满整个时长；"
+                "订阅多个时共享同一时长池，同时运行的 Agent 越多、消耗越快；暂停/睡眠不计时，"
+                "耗尽或到期后全部停止，续费即恢复。"
+            </p>
         </section>
 
         <section class="wrap section">

@@ -209,7 +209,9 @@ pub(crate) fn MyAgentsSection() -> impl IntoView {
                 <section class="wrap section">
                     <div class="section-head">
                         <h2>"我的 Agent"</h2>
-                        <span class="muted">"打开卡片即进入；DSH 会自动完成登录"</span>
+                        <span class="muted">
+                            "打开卡片即进入；订阅时长为全部 Agent 共享的总运行时长，睡眠不计时"
+                        </span>
                     </div>
                     <div class="agent-grid">
                         {list
