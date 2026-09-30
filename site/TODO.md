@@ -1270,6 +1270,10 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
   容器内动态计算 trustedProxies（自身 IP/网关/网段 + 回环）；网关路由对 openclaw 注入
   `X-Forwarded-For: {CF-Connecting-IP}`（Tunnel 场景 XFF 不含客户端）。本地 curl 因客户端是回环
   会被判不可归属（403），用公网验证。
+- **OpenClaw 控制台来源**：`gateway.controlUi.allowedOrigins` 需显式允许浏览器来源；
+  agent-ctl 按实例注入 `AGENT_ORIGIN(_LOCAL)`，入口写入白名单（公网域名 + 本地域名 + 回环）。
+  实测：来源错误消失，进入正常的「输入 Gateway 令牌」页。
+  令牌获取（官方命令）：`podman exec <容器> openclaw gateway auth-token --show`。
 - **默认插件**：DSH 增加 `@huanx/kilo-zen2dsh@0.4.0`、`dsh-webchat@0.2.0`；
   OpenClaw 增加 FreeRide（官方仓库固定提交 + `pip install -e`，首启注册技能）；
   Pi 增加 `pi-freerouter@0.1.17`（构建期烘焙，首启复制到 HOME）。

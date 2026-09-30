@@ -57,7 +57,17 @@ gw["bind"] = "lan"
 gw.setdefault("auth", {})
 gw["auth"]["mode"] = "token"
 gw["auth"]["token"] = os.environ["TOKEN"]
-gw.setdefault("controlUi", {})["enabled"] = True
+control = gw.setdefault("controlUi", {})
+control["enabled"] = True
+# 浏览器来源白名单：本实例访问域名（公网/本地）+ 回环直连（调试用）
+origins = []
+for key in ("AGENT_ORIGIN", "AGENT_ORIGIN_LOCAL"):
+    value = os.environ.get(key, "").strip()
+    if value:
+        origins.append(value)
+port = int(os.environ["PORT"])
+origins += [f"http://127.0.0.1:{port}", f"http://localhost:{port}"]
+control["allowedOrigins"] = sorted(set(origins))
 gw["trustedProxies"] = json.loads(os.environ["TRUSTED"])
 with open(path, "w") as handle:
     json.dump(config, handle, indent=2)

@@ -499,9 +499,18 @@ container_create() {
 			--trusted-host "$dsh_host.$AGENT_BASE_DOMAIN")
 		;;
 	openclaw)
-		# OpenClaw Gateway：控制台与网关同端口；token（实例密码）由入口脚本写入配置
+		# OpenClaw Gateway：控制台与网关同端口；token（实例密码）由入口脚本写入配置；
+		# 控制台要求显式允许浏览器来源（gateway.controlUi.allowedOrigins），
+		# 来源即本实例的访问域名（公网 + 本地）。
+		local oc_subdomain oc_origin oc_origin_local
+		oc_subdomain="$(state_field "$key" subdomain)"
+		[ -n "$oc_subdomain" ] || oc_subdomain="$slug"
+		oc_origin="https://$oc_subdomain.$AGENT_BASE_DOMAIN"
+		oc_origin_local="https://$oc_subdomain.$AGENT_LOCAL_DOMAIN"
 		args+=(--env "AGENT_PORT=$port")
 		args+=(--env "AGENT_TOKEN=$password")
+		args+=(--env "AGENT_ORIGIN=$oc_origin")
+		args+=(--env "AGENT_ORIGIN_LOCAL=$oc_origin_local")
 		args+=("$(image_of "$kind")")
 		;;
 	kilocode | pi)
