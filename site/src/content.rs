@@ -142,7 +142,7 @@ pub fn render_markdown(md: &str, allow_html: bool) -> String {
             ..
         }) = &events[index]
         {
-            if is_audio_media_url(dest_url) {
+            if let Some(tag) = media_tag(dest_url) {
                 let mut label = String::new();
                 let mut depth = 1usize;
                 let mut cursor = index + 1;
@@ -162,7 +162,10 @@ pub fn render_markdown(md: &str, allow_html: bool) -> String {
                 }
                 let url = escape_attr(dest_url);
                 rewritten.push(Event::Html(
-                    format!("<audio controls preload=\"metadata\" src=\"{url}\"></audio>").into(),
+                    format!(
+                        "<{tag} controls preload=\"metadata\" src=\"{url}\"></{tag}>"
+                    )
+                    .into(),
                 ));
                 let caption = label.trim();
                 if !caption.is_empty() && caption != "🎤 语音" {
@@ -182,16 +185,28 @@ pub fn render_markdown(md: &str, allow_html: bool) -> String {
     out
 }
 
-/// 是否为本站媒体里的音频（语音消息）：`/media/{id}/{name}.{ext}`。
+/// 媒体链接 → 播放器标签：音频 `audio`、视频 `video`；其余 None。
+///
+/// 仅认可本站 `/media/` 路径 + 扩展名白名单，放在用户内容里也安全。
 #[cfg(feature = "ssr")]
-fn is_audio_media_url(url: &str) -> bool {
+fn media_tag(url: &str) -> Option<&'static str> {
     if !url.starts_with("/media/") {
-        return false;
+        return None;
     }
     let lower = url.to_ascii_lowercase();
-    [".webm", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac"]
+    if [".webm", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac"]
         .iter()
         .any(|ext| lower.ends_with(ext))
+    {
+        return Some("audio");
+    }
+    if [".mp4", ".webm", ".m4v", ".mov", ".ogv"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+    {
+        return Some("video");
+    }
+    None
 }
 
 #[cfg(feature = "ssr")]

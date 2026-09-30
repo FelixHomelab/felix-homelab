@@ -2187,6 +2187,14 @@ html.splash-pending .site-footer {
     margin: 0.6rem 0;
 }
 
+.prose video {
+    display: block;
+    width: 100%;
+    max-width: 42rem;
+    margin: 0.6rem 0;
+    border-radius: var(--radius-sm);
+}
+
 .prose .media-caption {
     margin: 0.25rem 0 0.75rem;
     font-size: 0.8125rem;

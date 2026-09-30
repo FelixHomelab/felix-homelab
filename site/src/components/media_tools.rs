@@ -2,6 +2,7 @@
 //!
 //! 社区发布页与评论框共用。交互：
 //! - 「图片」：选择图片 → POST /api/media → 正文追加 `![图片](/media/...)`；
+//! - 「视频」：选择视频 → 上传后追加 `[🎬 视频](/media/...)`（正文按 `<video>` 渲染）；
 //! - 「语音」：点击开始录音（MediaRecorder）→ 再点停止 → 音频上传 /api/media，
 //!   并调用 /api/stt 转写 → 正文追加「识别文字 + 🎤 语音播放条（Markdown 链接）」，
 //!   发送前可自由编辑。
@@ -25,6 +26,7 @@ fn append_line(text: &RwSignal<String>, line: &str) {
 #[component]
 pub fn MediaTools(#[prop(into)] text: RwSignal<String>) -> impl IntoView {
     let file_input = NodeRef::<leptos::html::Input>::new();
+    let video_input = NodeRef::<leptos::html::Input>::new();
     let busy = RwSignal::new(false);
     let recording = RwSignal::new(false);
     let message = RwSignal::new(String::new());
@@ -32,6 +34,13 @@ pub fn MediaTools(#[prop(into)] text: RwSignal<String>) -> impl IntoView {
     let pick_image = move |_| {
         #[cfg(feature = "hydrate")]
         if let Some(input) = file_input.get() {
+            let _ = input.click();
+        }
+    };
+
+    let pick_video = move |_| {
+        #[cfg(feature = "hydrate")]
+        if let Some(input) = video_input.get() {
             let _ = input.click();
         }
     };
@@ -61,6 +70,31 @@ pub fn MediaTools(#[prop(into)] text: RwSignal<String>) -> impl IntoView {
         let _ = ev;
     };
 
+    let on_video_change = move |ev: leptos::ev::Event| {
+        #[cfg(feature = "hydrate")]
+        {
+            use wasm_bindgen::JsCast;
+            let Some(target) = ev.target() else { return };
+            let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() else {
+                return;
+            };
+            let Some(files) = input.files() else { return };
+            let Some(file) = files.get(0) else { return };
+            input.set_value("");
+            busy.set(true);
+            message.set(String::new());
+            leptos::task::spawn_local(async move {
+                match imp::upload_file(&file, "/api/media").await {
+                    Ok(url) => append_line(&text, &format!("[🎬 视频]({url})")),
+                    Err(error) => message.set(error),
+                }
+                busy.set(false);
+            });
+        }
+        #[cfg(not(feature = "hydrate"))]
+        let _ = ev;
+    };
+
     let toggle_record = move |_| {
         #[cfg(feature = "hydrate")]
         imp::toggle_recording(recording, busy, message, text);
@@ -75,6 +109,13 @@ pub fn MediaTools(#[prop(into)] text: RwSignal<String>) -> impl IntoView {
                 class="hidden-file"
                 on:change=on_file_change
             />
+            <input
+                node_ref=video_input
+                type="file"
+                accept="video/*"
+                class="hidden-file"
+                on:change=on_video_change
+            />
             <button
                 type="button"
                 class="btn btn-small"
@@ -82,6 +123,14 @@ pub fn MediaTools(#[prop(into)] text: RwSignal<String>) -> impl IntoView {
                 disabled=move || busy.get()
             >
                 {move || if busy.get() { "上传中…" } else { "图片" }}
+            </button>
+            <button
+                type="button"
+                class="btn btn-small"
+                on:click=pick_video
+                disabled=move || busy.get()
+            >
+                "视频"
             </button>
             <button
                 type="button"

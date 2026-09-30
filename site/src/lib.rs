@@ -24,6 +24,7 @@ pub mod pages;
 pub mod reviews;
 pub mod roles;
 pub mod sky;
+pub mod storage;
 pub mod theme;
 
 // 只在服务端存在：客户端 wasm 包里既没有数据库也没有 Axum

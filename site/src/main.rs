@@ -53,6 +53,9 @@ async fn main() -> anyhow::Result<()> {
     // 旧 Agent 有效期结转时长池（幂等；见 site/TODO.md 的 AI Agent 计费规则）
     agents::convert_legacy_agent_time(&pool).await?;
 
+    // 媒体按龄重压缩后台任务（>7d/-3、>1m/-7、>3m/-19；热文件跳过）
+    media::spawn_recompression_task(pool.clone());
+
     // --- 内容 ---
     let content_dir = std::env::var("CONTENT_DIR").unwrap_or_else(|_| "content".to_string());
     content::store::load(&content_dir)

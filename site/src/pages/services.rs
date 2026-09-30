@@ -154,6 +154,42 @@ pub fn ServicesPage() -> impl IntoView {
 
         <section class="wrap section">
             <div class="section-head">
+                <h2>"个人外置云存储"</h2>
+                <span class="muted">"独立订阅 · 不占用本站容量池"</span>
+            </div>
+            <div class="plan-grid">
+                <div class="plan-card">
+                    <h3>"按月"</h3>
+                    <p class="plan-price">"¥9" <span>"/ 月"</span></p>
+                    <p class="plan-note">"随时可停"</p>
+                </div>
+                <div class="plan-card">
+                    <h3>"按季"</h3>
+                    <p class="plan-price">"¥29" <span>"/ 季"</span></p>
+                    <p class="plan-note">"≈ ¥9.7 / 月"</p>
+                </div>
+                <div class="plan-card">
+                    <h3>"按年"</h3>
+                    <p class="plan-price">"¥119" <span>"/ 年"</span></p>
+                    <p class="plan-note">"≈ ¥9.9 / 月（暂定）"</p>
+                </div>
+            </div>
+            <div class="prose">
+                <ul>
+                    <li>
+                        "绑定你自己的云存储（WebDAV 协议，遵循 "
+                        <a href="https://www.rfc-editor.org/rfc/rfc4918" target="_blank" rel="noreferrer">"RFC 4918"</a>
+                        "；后续扩展 S3 等），站内媒体与文件优先写入你的外置存储。"
+                    </li>
+                    <li>"默认加密存储（可关闭）：文件在写入你的云存储前先加密，密钥由本站托管。"</li>
+                    <li>"外置存储作为独立的「存储池」展示，不占用本站容量池额度。"</li>
+                    <li>"管理员可用自有外置存储扩容本站全站最大容量（提升 OpenCloud / Forgejo 等全站上限）。"</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="wrap section">
+            <div class="section-head">
                 <h2>"购买说明"</h2>
             </div>
             <div class="prose">

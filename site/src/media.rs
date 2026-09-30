@@ -2,8 +2,10 @@
 //!
 //! 存储策略（实测参数见 `site/TODO.md` 的「存储压缩策略」）：
 //! - 内容寻址（sha256），天然去重；
-//! - 可压缩类型（文本类、PCM/WAV 等）上传时用 `zstd -3`；压缩率 ≥95% 则存原样；
-//! - 已压缩格式（图片/音视频/压缩包/PDF）直接原样存；
+//! - **上传一律原样存储**（保证 Range/秒开），压缩由后台按“年龄”执行：
+//!   >7 天 `zstd-3`、>1 月 `zstd-7`、>3 月 `zstd-19`；
+//! - 高访问量（近 7 天访问过 / 累计访问 ≥30 次）跳过压缩与升级，保访问体验；
+//! - 压缩收益 <5%（≥95% 原大小）则放弃压缩；已压缩格式不参与；
 //! - 配额按**原始大小**计（`original_size`），实际占用记 `stored_size`。
 //!
 //! 路由：
@@ -154,35 +156,33 @@ pub async fn upload(
     }
 
     let original_size = bytes.len() as i64;
+
+    // 容量池校验：已开通（总额 > 0）才限制；过渡期（未开通）不拦
+    let total = crate::storage::user_capacity_total(&state.pool, user_id).await;
+    if total > 0 {
+        let used = crate::storage::user_capacity_used(&state.pool, user_id).await;
+        if used + original_size > total {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "容量池余额不足，请先购买容量或在「我的订阅」查看用量。",
+            )
+                .into_response();
+        }
+    }
+
     let sha = hex::encode(Sha256::digest(&bytes));
     let plain_path = blob_path(&sha, "none");
 
-    // 压缩判定（-3 热数据策略）。压缩与落盘放阻塞线程池，避免占住运行时。
-    let compress = !skip_compress(&mime);
-    let sha_c = sha.clone();
+    // 原样存储（内容寻址；已存在则直接复用）。压缩由后台按年龄执行。
     let bytes_c = bytes.clone();
+    let path_c = plain_path.clone();
     let result = tokio::task::spawn_blocking(move || -> std::io::Result<(String, i64)> {
-        let dir = plain_path.parent().unwrap_or(&plain_path).to_path_buf();
+        let dir = path_c.parent().unwrap_or(&path_c).to_path_buf();
         std::fs::create_dir_all(&dir)?;
-        if compress {
-            let zst_path = blob_path(&sha_c, "zstd-3");
-            let mut encoder =
-                zstd::stream::write::Encoder::new(std::fs::File::create(&zst_path)?, 3)?;
-            std::io::copy(&mut bytes_c.as_slice(), &mut encoder)?;
-            let mut out = encoder.finish()?;
-            use std::io::Write;
-            out.flush()?;
-            let zst_size = std::fs::metadata(&zst_path)?.len() as i64;
-            if zst_size as f64 / (original_size as f64) < COMPRESS_KEEP_RATIO {
-                return Ok(("zstd-3".to_string(), zst_size));
-            }
-            let _ = std::fs::remove_file(&zst_path);
+        if !path_c.exists() {
+            std::fs::write(&path_c, &bytes_c)?;
         }
-        // 原样存储（内容寻址；已存在则直接复用）
-        if !plain_path.exists() {
-            std::fs::write(&plain_path, &bytes_c)?;
-        }
-        Ok(("none".to_string(), original_size))
+        Ok(("none".to_string(), bytes_c.len() as i64))
     })
     .await;
 
@@ -193,10 +193,11 @@ pub async fn upload(
             return (StatusCode::INTERNAL_SERVER_ERROR, "存储失败，稍后再试。").into_response();
         }
         Err(e) => {
-            tracing::error!("媒体压缩任务失败: {e}");
+            tracing::error!("媒体写盘任务失败: {e}");
             return (StatusCode::INTERNAL_SERVER_ERROR, "存储失败，稍后再试。").into_response();
         }
     };
+
 
     let insert = sqlx::query(
         "INSERT INTO media (owner_id, kind, mime, original_name, original_size, stored_size, compression, sha256) \
@@ -275,10 +276,13 @@ async fn serve_media(state: AppState, id: i64, headers: HeaderMap) -> Response {
     let original_name: String = row.get("original_name");
     let path = blob_path(&sha, &compression);
 
-    let _ = sqlx::query("UPDATE media SET last_accessed_at = datetime('now') WHERE id = ?1")
-        .bind(id)
-        .execute(&state.pool)
-        .await;
+    let _ = sqlx::query(
+        "UPDATE media SET last_accessed_at = datetime('now'), access_count = access_count + 1 \
+         WHERE id = ?1",
+    )
+    .bind(id)
+    .execute(&state.pool)
+    .await;
 
     let disposition = if original_name.is_empty() {
         "inline".to_string()
@@ -408,8 +412,146 @@ fn sanitize_name(name: &str) -> String {
     }
 }
 
-/// 供其它模块引用（如未来在社区正文中内联的 URL 校验），当前保留占位。
-#[allow(dead_code)]
-pub fn media_url(id: i64) -> String {
-    format!("/media/{id}")
+/// 热度阈值：累计访问次数达到该值视为“热”，不再压缩/升级。
+const HOT_ACCESS_COUNT: i64 = 30;
+
+/// 启动媒体重压缩后台任务（站点进程内单实例；每 24h 一轮，启动后 5 分钟先跑一轮）。
+#[cfg(feature = "ssr")]
+pub fn spawn_recompression_task(pool: sqlx::SqlitePool) {
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+        loop {
+            match run_recompression_once(&pool).await {
+                Ok(0) => {}
+                Ok(count) => tracing::info!("媒体重压缩完成：{count} 个文件"),
+                Err(e) => tracing::warn!("媒体重压缩任务失败: {e}"),
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
+        }
+    });
+}
+
+/// 一轮重压缩：按“年龄”升档（none→-3→-7→-19），热文件跳过。
+#[cfg(feature = "ssr")]
+async fn run_recompression_once(pool: &sqlx::SqlitePool) -> anyhow::Result<usize> {
+    use sqlx::Row;
+
+    // 阶段：源级别 → 目标级别 → 文件年龄门槛（天）
+    let stages = [
+        ("none", "zstd-3", 7_i64),
+        ("zstd-3", "zstd-7", 30_i64),
+        ("zstd-7", "zstd-19", 90_i64),
+    ];
+    let mut done = 0usize;
+
+    for (from, to, age_days) in stages {
+        let rows = sqlx::query(
+            "SELECT id, sha256, mime FROM media \
+             WHERE compression = ?1 \
+               AND created_at <= datetime('now', ?2) \
+               AND last_accessed_at <= datetime('now','-7 days') \
+               AND access_count < ?3 \
+             ORDER BY created_at ASC LIMIT 50",
+        )
+        .bind(from)
+        .bind(format!("-{age_days} days"))
+        .bind(HOT_ACCESS_COUNT)
+        .fetch_all(pool)
+        .await?;
+
+        for row in rows {
+            let id: i64 = row.get("id");
+            let sha: String = row.get("sha256");
+            let mime: String = row.get("mime");
+            if skip_compress(&mime) {
+                continue;
+            }
+            let level = match to {
+                "zstd-3" => 3,
+                "zstd-7" => 7,
+                _ => 19,
+            };
+            match recompress_blob(&sha, from, to, level).await {
+                Ok(Some(stored)) => {
+                    sqlx::query(
+                        "UPDATE media SET compression = ?1, stored_size = ?2 WHERE id = ?3",
+                    )
+                    .bind(to)
+                    .bind(stored)
+                    .bind(id)
+                    .execute(pool)
+                    .await?;
+                    // 旧 blob 无其它行引用则删除（内容寻址可能被多行共享）
+                    let refs: i64 = sqlx::query_scalar(
+                        "SELECT COUNT(*) FROM media WHERE sha256 = ?1 AND compression = ?2",
+                    )
+                    .bind(&sha)
+                    .bind(from)
+                    .fetch_one(pool)
+                    .await
+                    .unwrap_or(0);
+                    if refs == 0 {
+                        let old = blob_path(&sha, from);
+                        let _ = std::fs::remove_file(old);
+                    }
+                    done += 1;
+                }
+                Ok(None) => {
+                    // 压缩收益不足：保持原级别（下次仍会尝试；如需避免可调阈值）
+                }
+                Err(e) => tracing::warn!("重压缩 media#{id} 失败: {e}"),
+            }
+        }
+    }
+    Ok(done)
+}
+
+/// 把 `sha` 的 blob 从 `from` 级别重压到 `to` 级别；收益不足返回 None。
+#[cfg(feature = "ssr")]
+async fn recompress_blob(
+    sha: &str,
+    from: &str,
+    to: &str,
+    level: i32,
+) -> anyhow::Result<Option<i64>> {
+    let sha = sha.to_string();
+    let from = from.to_string();
+    let to = to.to_string();
+    let joined = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<i64>> {
+        let src = blob_path(&sha, &from);
+        let dst = blob_path(&sha, &to);
+        if !src.exists() {
+            anyhow::bail!("源 blob 不存在: {}", src.display());
+        }
+        if dst.exists() {
+            return Ok(Some(std::fs::metadata(&dst)?.len() as i64));
+        }
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let data: Vec<u8> = if from == "none" {
+            std::fs::read(&src)?
+        } else {
+            let file = std::fs::File::open(&src)?;
+            let mut decoder = zstd::stream::read::Decoder::new(file)?;
+            let mut buf = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut buf)?;
+            buf
+        };
+        let original = data.len() as i64;
+        let mut encoder =
+            zstd::stream::write::Encoder::new(std::fs::File::create(&dst)?, level)?;
+        std::io::copy(&mut data.as_slice(), &mut encoder)?;
+        let mut out = encoder.finish()?;
+        use std::io::Write;
+        out.flush()?;
+        let size = std::fs::metadata(&dst)?.len() as i64;
+        if size as f64 / (original as f64) >= COMPRESS_KEEP_RATIO {
+            let _ = std::fs::remove_file(&dst);
+            return Ok(None);
+        }
+        Ok(Some(size))
+    })
+    .await??;
+    Ok(joined)
 }
