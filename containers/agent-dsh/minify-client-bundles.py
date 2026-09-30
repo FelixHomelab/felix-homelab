@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""插件客户端包构建期 minify（esbuild，保留类/函数名）。
+"""插件客户端包构建期 minify（esbuild）。
 
 DSH 的插件 client 包是未压缩的编译产物（首屏两个 preload 组合包 ~11MB），
-在慢链路上首访需数十秒。这里在构建期用 esbuild 统一压缩（`--keep-names`
-避免依赖 Function.name 的注册逻辑被改名影响）；只在该文件确实变小时替换，
-单个文件失败不影响其他文件。
+在慢链路上首访需数十秒。这里在构建期用 esbuild 统一压缩；只在该文件确实
+变小时替换，单个文件失败不影响其他文件。
+
+注意：不要加 `--keep-names`。实测其 `__name()` 包装会让
+`@deepseek-ai/dsh-client-ui-settings` 在客户端导入时抛
+`TypeError: Property description must be an object: undefined`，
+并连锁导致 configForms/locale 等 52 个客户端条目 pending（客户端启动失败）。
 """
 
 import os
@@ -48,7 +52,6 @@ def minify(path: str) -> int:
             "esbuild",
             path,
             "--minify",
-            "--keep-names",
             "--legal-comments=none",
             "--target=es2022",
             f"--outfile={tmp}",

@@ -518,7 +518,7 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
 - **定期重建**：容器可写层非持久——超过 `AGENT_RECREATE_DAYS`（默认 7 天）
   由 reconcile 重建容器（数据卷/工作区/域名/登录态保留），清掉潜在的持久化改动。
 - **版本固化与回滚**：构建模板镜像时除 `:latest` 外再打一个**不可变版本标签**
-  （如 `localhost/felix-agent-dsh:0.1.7-rc.2`），默认保留最近
+  （如 `localhost/felix-agent-dsh:0.2.0-rc.2`），默认保留最近
   `AGENT_IMAGE_KEEP`（3）个版本；`agent-ctl.sh versions` 查看本机留存与在用
   实例，`agent-ctl.sh pin <opencode|dsh> <版本>` 固定版本（写回 `.env`），
   `agent-ctl.sh recreate-all <kind>` 让全部实例换镜像（数据全保留）。
@@ -549,7 +549,7 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
   依赖安装脚本，构建时显式 `--allow-scripts`（否则 spawn helper / koffi /
   node-pty 缺失，表现为“功能不完整”）。
 - **自带插件市场 dsh-market**：镜像构建期按官方方式
-  `dsh plugin --profile web add dshmarket@<固定版本>`（默认 1.66.3，
+  `dsh plugin --profile web add dshmarket@<固定版本>`（默认 1.66.6，
   `.env` 的 `DSHMARKET_VERSION` 可调），用户打开 **设置 → 插件市场** 即可
   浏览/搜索/一键安装社区插件与主题。容器化下市场的一键重启会替换容器主
   进程，因此启动参数带 `--patch /opt/dsh-home/agent-patch.yml` 统一禁用
@@ -570,10 +570,10 @@ Postgres/Forgejo/站点内部端口；出站互联网正常（git push 走公网
 - **自带插件守护 dsh-my-guardian**（`DSHGUARDIAN_REF`，固定 fork 提交）：
   候选区 + 失败隔离，防止用户装坏插件把容器卡死。守护是看门狗，必须最先
   加载——构建期把它的 bundle 调到名册第一位（每次加新插件后都会校验）。
-- **自带费用统计 dsh-cost-meter**（`DSHCOSTMETER_VERSION`，默认 1.7.40）：
+- **自带费用统计 dsh-cost-meter**（`DSHCOSTMETER_VERSION`，默认 1.8.0）：
   会话/模型成本、预算、官方余额与 Coding Plan 额度查询，中英双语。
 - **自带侧边栏工作台 dsh-better-sidebar**（`DSHBETTERSIDEBAR_VERSION`，默认
-  0.22.1，要求 DSH 0.1.7+）：文件树与可编辑编辑器、文件变动（Git + 本轮 AI
+  0.24.1，要求 DSH 0.1.7+）：文件树与可编辑编辑器、文件变动（Git + 本轮 AI
   改动）、任务/子代理拓扑、侧边对话、底部工作台；并向所有插件开放
   `ctx.betterSidebar` 服务（`registerTab` / `registerFileViewer`）。
 - **自带开发规则 dsh-dev-rules**（`DSHDEV_RULES_REF`，git 分发、固定提交

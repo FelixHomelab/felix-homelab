@@ -1342,3 +1342,35 @@ Tuwunel `server_name`（拟 `wraindrock.com`，一旦初始化不可改）。
   `github:xmuwenxiang/dsh-web-chat#835e501e`，不建 fork。
 - 验证：全部插件激活（无 `did not activate`），容器内 Chromium 渲染完整
   （sidebar/composer 正常，0 JS 错误）。
+
+## DSH 升级到 0.2.0-rc.2（2026-09-30）
+
+**范围**：DSH `0.1.7-rc.2` → `0.2.0-rc.2`；插件同步升级：dshmarket 1.66.3→1.66.6、
+dsh-cost-meter 1.7.40→1.8.0、dsh-better-sidebar 0.22.1→0.24.1（kilo-zen2dsh 0.4.0 /
+webchat 上游修复提交 / guardian、ego-browser、dev-rules 的固定 ref 不变）；
+用户自行安装的 dsh-pet 0.2.12 因新版兼容门禁被跳过，卷内升级到 0.3.1。
+
+**踩坑与处理**：
+
+- **版本来源优先级**：`.env`（`~/.config/felix-homelab/.env`）> 构建脚本默认。
+  升级时只改了构建脚本/Containerfile，一次构建 60 秒「成功」但版本未变——实际是
+  `.env` 里的旧 `DSH_VERSION` 覆盖。以后升版本必须改 `.env`。
+- **esbuild `--keep-names` 会破坏客户端包**：其 `__name()` 包装使
+  `@deepseek-ai/dsh-client-ui-settings` 客户端导入抛
+  `TypeError: Property description must be an object: undefined`，连锁 52 个
+  客户端条目 pending（configForms/locale 服务起不来）。已从 minify 脚本移除该
+  参数（仅 `--minify`），完整 minify 正常。
+- **pnpm 供应链「最小发布年龄」策略**（DSH 0.2 起）：插件安装/升级会审计
+  lockfile，24h 内发布的包需要 `minimumReleaseAgeExclude` 豁免。烘焙期 dsh
+  会自动豁免；但卷内 workspace 是用户层、合并时保留旧内容，导致用户装插件被
+  拦（`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`）。新增
+  `dsh-sync-pnpm-policy.py`：每次启动把镜像的 `minimumReleaseAgeExclude` /
+  `allowBuilds` 并进卷内 workspace，且**同名旧条目会被镜像条目覆盖**
+  （同名遮蔽会让新版本的豁免失效）。用户自己新增的条目保留。
+- **0.2 的插件兼容门禁**：`peerDependencies` 不满足时会 `skipping profile
+  bundle`（安全跳过而非崩溃）；插件需跟随升级，或按提示 `dsh plugin
+  allow-version` 显式豁免（不推荐）。
+
+**验证**：服务端启动无跳过/报错；容器内 Chromium 无头启动：0 pending、0 JS
+错误；Kilo（397/16）与 OpenCode Zen（84/12）适配器 ready；首屏组合包
+6.43MB（gzip ~2.2MB，较优化前 15.9MB/6.5MB 降 ~66%）。

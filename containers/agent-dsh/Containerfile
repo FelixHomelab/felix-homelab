@@ -85,7 +85,7 @@ ENV npm_config_registry=https://registry.npmmirror.com
 # 注意：npm 11 起默认不执行依赖的安装脚本（allow-scripts 安全策略），
 # 而 dsh 依赖的 spawn helper / koffi / node-pty 需要跑 install 脚本；
 # 不放开会得到“装上了但功能缺失”的 DSH。
-ARG DSH_VERSION=0.1.7-rc.2
+ARG DSH_VERSION=0.2.0-rc.2
 RUN npm install -g \
 	--allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs \
 	"@deepseek-ai/dsh@${DSH_VERSION}" \
@@ -125,7 +125,7 @@ ENV HOME=/data
 
 # ---- 自带插件市场 dsh-market（官方安装方式，固定版本）----
 # https://github.com/dsh-market/dsh-market  →  open Settings → Plugin Market
-ARG DSHMARKET_VERSION=1.66.3
+ARG DSHMARKET_VERSION=1.66.6
 RUN dsh plugin --profile web add "dshmarket@${DSHMARKET_VERSION}" \
  && test -f /opt/dsh-home/profiles/web/node_modules/dshmarket/package.json \
  && grep -q 'dshmarket' /opt/dsh-home/profiles/web/package.json
@@ -143,7 +143,7 @@ RUN dsh plugin --profile web add "github:FelixHomelab/my-dsh-plugins#${DSHGUARDI
 
 # ---- 自带费用统计 dsh-cost-meter（会话/模型成本、预算、余额与套餐额度）----
 # https://github.com/Han-1413141/dsh-cost-meter
-ARG DSHCOSTMETER_VERSION=1.7.40
+ARG DSHCOSTMETER_VERSION=1.8.0
 RUN dsh plugin --profile web add "dsh-cost-meter@${DSHCOSTMETER_VERSION}" \
 	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-cost-meter/package.json \
 	&& grep -q '"dsh-cost-meter"' /opt/dsh-home/profiles/web/package.json
@@ -178,7 +178,7 @@ RUN dsh plugin --profile web add "github:xmuwenxiang/dsh-web-chat#${DSHWEBCHAT_R
 
 # ---- 自带侧边栏工作台 dsh-better-sidebar（文件树/编辑器/文件变动/任务/侧边对话）----
 # https://github.com/omdsh-dev/DSH-better-sidebar（要求 DSH 0.1.7-rc.1+，本镜像满足）
-ARG DSHBETTERSIDEBAR_VERSION=0.22.1
+ARG DSHBETTERSIDEBAR_VERSION=0.24.1
 RUN dsh plugin --profile web add "dsh-better-sidebar@${DSHBETTERSIDEBAR_VERSION}" \
 	&& test -f /opt/dsh-home/profiles/web/node_modules/dsh-better-sidebar/package.json \
 	&& grep -q '"dsh-better-sidebar"' /opt/dsh-home/profiles/web/package.json
@@ -233,7 +233,7 @@ RUN npm install -g esbuild@0.25.10 --silent --no-fund --no-audit \
 # 版本戳：包含市场/守护版本与 profile 修订号；任一变化都会触发入口脚本的
 # 「非破坏合并」（保留用户自己装的插件、收藏与手改补丁）。合并逻辑/布局有改动时
 # 把 PROFILE_REV 加一，确保老数据卷也会重新合并一次。
-ARG PROFILE_REV=14
+ARG PROFILE_REV=15
 RUN printf '%s' "${DSH_VERSION}+market${DSHMARKET_VERSION}+guardian${DSHGUARDIAN_REF:0:8}+costmeter${DSHCOSTMETER_VERSION}+sidebar${DSHBETTERSIDEBAR_VERSION}+ego${DSHEGOBROWSER_REF:0:8}+devrules${DSHDEV_RULES_REF}+webchat${DSHWEBCHAT_REF:0:8}+r${PROFILE_REV}" > /opt/dsh-home/.dsh-image-version
 
 
@@ -255,6 +255,7 @@ RUN set -eux; \
 
 COPY dsh-entry.sh /usr/local/bin/dsh-entry.sh
 COPY dsh-merge-profile.py /usr/local/bin/dsh-merge-profile.py
+COPY dsh-sync-pnpm-policy.py /usr/local/bin/dsh-sync-pnpm-policy.py
 COPY seed-dev-rules.py /usr/local/bin/seed-dev-rules.py
 # 容器内虚拟桌面（有头 Chromium 的显示）与 ego 浏览器启动包装（私有 D-Bus + no-sandbox）
 COPY --from=novnc-build /felix-novnc /usr/local/bin/felix-novnc
@@ -264,6 +265,7 @@ COPY felix-desktop-start.sh /usr/local/bin/felix-desktop-start.sh
 COPY felix-ego-chrome.sh /usr/local/bin/felix-ego-chrome.sh
 COPY felix-ego-engine.sh /usr/local/bin/felix-ego-engine
 RUN chmod 0755 /usr/local/bin/dsh-entry.sh /usr/local/bin/dsh-merge-profile.py \
+	/usr/local/bin/dsh-sync-pnpm-policy.py \
 	/usr/local/bin/seed-dev-rules.py /usr/local/bin/felix-desktop-start.sh \
 	/usr/local/bin/felix-ego-chrome.sh /usr/local/bin/felix-ego-engine /usr/local/bin/felix-novnc \
 	/usr/local/bin/felix-llm-relay

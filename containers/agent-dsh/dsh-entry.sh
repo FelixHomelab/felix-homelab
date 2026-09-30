@@ -45,6 +45,14 @@ if [ -d "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin" ]; then
 	chmod 0755 "$DSH_HOME/profiles/web/node_modules/dsh-ego-browser/bin"/*.sh 2>/dev/null || true
 fi
 
+# 供应链策略对齐：新版 dsh 对「发布不足 24h」的包会在插件安装/升级时审计
+# lockfile；镜像烘焙的豁免/allowBuilds 在卷内是用户层（合并会保留旧的），
+# 这里每次启动把镜像的策略并进卷内 workspace。
+if [ -f /usr/local/bin/dsh-sync-pnpm-policy.py ]; then
+	python3 /usr/local/bin/dsh-sync-pnpm-policy.py \
+		"$DSH_HOME/profiles/web" /opt/dsh-home/profiles/web || true
+fi
+
 # 第三方插件会以「静态 import」引用 DSH 内部包（dsh-webchat → dsh-settings、
 # dsh-llm 等），而 pnpm 只把它们装在全局 dsh 包自己的 node_modules 里，profile
 # 侧解析不到（表现为 failed to import）。这里把全局 @deepseek-ai/* 全部软链进
