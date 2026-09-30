@@ -25,6 +25,7 @@ CORE_SERVICES=(
 	felix-homelab-site.service
 	felix-homelab-caddy.service
 	felix-homelab-opencloud.service
+	felix-homelab-kanidm.service
 	felix-homelab-agent-gateway.service
 	felix-homelab-homepage.service
 	felix-homelab-autoheal.service
@@ -149,6 +150,17 @@ ensure_env_default DSHDEV_RULES_REF 83c5ff329a1ecb9e8dc37da02eee17998f904dee
 # 会话 cookie 的共享父域（Agent 子域 SSO；站点按请求 Host 自适应）
 ensure_env_default COOKIE_DOMAIN wraindrock.com
 
+# Kanidm：统一账户管理员密码（仅 CLI 使用；老安装补生成）
+if ! grep -qE '^KANIDM_ADMIN_PASSWORD=.+' "$CONFIG_DIR/.env"; then
+	KPW="$(gen_secret)"
+	if grep -q '^KANIDM_ADMIN_PASSWORD=' "$CONFIG_DIR/.env"; then
+		sed -i "s/^KANIDM_ADMIN_PASSWORD=.*/KANIDM_ADMIN_PASSWORD=$KPW/" "$CONFIG_DIR/.env"
+	else
+		echo "KANIDM_ADMIN_PASSWORD=$KPW" >>"$CONFIG_DIR/.env"
+	fi
+	log "Kanidm 管理员密码（KANIDM_ADMIN_PASSWORD）: $KPW"
+fi
+
 # OpenCloud：公网地址与内置 IDM 管理员密码（老安装补默认/补生成）
 ensure_env_default OC_URL https://opencloud.wraindrock.com
 if ! grep -qE '^IDM_ADMIN_PASSWORD=.+' "$CONFIG_DIR/.env"; then
@@ -216,7 +228,7 @@ fi
 
 # 备份脚本随仓库同步（项目托管，非用户自定义）
 mkdir -p "$CONFIG_DIR/backup" "$CONFIG_DIR/rclone" "$CONFIG_DIR/sync"
-for script in backup.sh backup-opencloud.sh; do
+for script in backup.sh backup-opencloud.sh backup-kanidm.sh; do
 	install -m 0755 "$REPO_DIR/config/backup/$script" "$CONFIG_DIR/backup/$script"
 done
 install -m 0755 "$REPO_DIR/scripts/sync-backup.sh" "$CONFIG_DIR/backup/sync-backup.sh"
@@ -259,6 +271,7 @@ Requires=felix-homelab-backup.service
 Type=oneshot
 ExecStart=/usr/bin/podman exec felix-homelab-backup sh /usr/local/bin/backup.sh once
 ExecStart=%h/.config/felix-homelab/backup/backup-opencloud.sh
+ExecStart=%h/.config/felix-homelab/backup/backup-kanidm.sh
 EOF
 
 cat >"$SYSTEMD_USER_DIR/felix-homelab-backup.timer" <<'EOF'

@@ -28,6 +28,7 @@ SERVICES=(
 	felix-homelab-site.service
 	felix-homelab-caddy.service
 	felix-homelab-opencloud.service
+	felix-homelab-kanidm.service
 	felix-homelab-forgejo.service
 	felix-homelab-db.service
 	felix-homelab-pod.service
@@ -44,6 +45,7 @@ VOLUMES=(
 	felix-homelab-agent-gateway-config
 	felix-homelab-opencloud-config
 	felix-homelab-opencloud-data
+	felix-homelab-kanidm-data
 )
 
 log() { printf '\033[1;36m[felix]\033[0m %s\n' "$*"; }

@@ -60,9 +60,18 @@ if [ "$rc" -gt 1 ] || [ ! -s "$target" ]; then
 fi
 chmod 0644 "$target"
 
-entries="$(tar tzf "$target" | wc -l)"
-if ! tar tzf "$target" | grep -q '^etc-opencloud/opencloud\.yaml$' || [ "$entries" -lt 5 ]; then
-	log "错误：归档校验失败（缺少配置或数据为空），删除无效备份"
+listing="$(tar tzf "$target")"
+entries="$(printf '%s\n' "$listing" | wc -l)"
+case "$listing" in
+*etc-opencloud/opencloud.yaml*) ;;
+*)
+	log "错误：归档缺少配置，删除无效备份"
+	rm -f "$target"
+	exit 1
+	;;
+esac
+if [ "$entries" -lt 5 ]; then
+	log "错误：归档数据为空，删除无效备份"
 	rm -f "$target"
 	exit 1
 fi

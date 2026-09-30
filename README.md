@@ -66,11 +66,15 @@ Pod hostname 直接互访；端口只在 Pod 级别发布一次。
 | 5733     | 主站 (8090) | 站点直连 |
 | 3000     | Forgejo (3000) | 仅供 host 网络的作业容器经 `127.0.0.1:3000` 访问 |
 | 5735     | 主站 (8090) | 仅供 Agent 网关 forward_auth 调用 |
+| 8443     | Kanidm (8443) | 统一账户 IdP 直连（仅回环；公网经 Tunnel） |
 | 5740     | Agent 网关 (Caddy) | 仅宿主回环；<子域>.agent.<域名> 统一入口 |
 | 20001+   | AI Agent（动态分配） | 各 Agent 发布到宿主回环；经 5740 网关鉴权后访问 |
 
 > **OpenCloud** 不发布宿主端口：常驻 Pod 内网 `9200`，只经 Caddy
 > （`cloud.localhost` / `opencloud.wraindrock.com`）访问。
+
+> **Kanidm** 只发布到宿主回环 `127.0.0.1:8443`，公网经 Cloudflare Tunnel
+> （`id.wraindrock.com` → `https://localhost:8443`，需开 No TLS Verify）。
 
 > **Host 网络的代价**：Runner 派发的作业容器使用 `container.network: host`，
 > 因此作业内的进程能访问宿主机上仅监听回环的本地服务，并能绑定宿主端口。
@@ -96,8 +100,13 @@ Public Hostnames（Zero Trust → 该隧道 → Public Hostname）：
 | `dash.wraindrock.com` | `http://localhost:5729` | Homepage 控制台 |
 | `opencloud.wraindrock.com` | `http://localhost:5729` | OpenCloud |
 | `wraindrock.com` | `http://localhost:5729` | 顶点 301 → www（本地 Caddy 处理）|
+| `id.wraindrock.com` | `https://localhost:8443` | Kanidm 统一账户（**No TLS Verify**）|
 | `*.wraindrock.com` | `http://localhost:5740` | Agent（18 位随机码一级子域）|
 
+> **Tunnel 的 Public Hostname 按列表顺序匹配，通配必须永远排在最后**：
+> 新加的具体主机名若落在 `*.wraindrock.com` 之后会被通配截胡
+> （表现为 5740 网关回空 200）。加错时的修法：删掉 `*` 再重新添加一次，它就会排到末尾。
+>
 > 顶点留给邮箱；Agent 域名是**一级子域**（`<18位随机码>.wraindrock.com`），
 > Cloudflare 免费版 Universal SSL 正好覆盖，无需付费证书。
 >
@@ -320,6 +329,41 @@ TLS 由主 Caddy 终止）。
   ```
 - **客户端**：官方桌面/手机客户端或任意 WebDAV 客户端，地址填
   `https://opencloud.wraindrock.com`（OIDC issuer 由 `.env` 的 `OC_URL` 决定）。
+
+## 统一账户（Kanidm）
+
+自建 IdP，统一给 Forgejo / 主站 /（后续）Tuwunel 与 OpenCloud 提供 OIDC 登录。
+数据在命名卷 `felix-homelab-kanidm-data`（SQLite + TLS 证书），服务经 Cloudflare
+Tunnel 暴露为 `https://id.wraindrock.com`。
+
+- **服务**：`quadlet/felix-homelab-kanidm.container`（`kanidm/server:1.11.2`，
+  只发布 `127.0.0.1:8443`）。Kanidm **没有 Web 管理界面**，一切用 CLI。
+- **管理员**：内置超级用户是 `idm_admin`（不是 `admin`），密码在 `.env` 的
+  `KANIDM_ADMIN_PASSWORD`（首次安装自动生成；忘了可
+  `podman exec -it felix-homelab-kanidm kanidmd recover-account idm_admin` 重置）。
+- **CLI 登录**（需要 TTY，脚本化用 pexpect 转发密码；会话缓存在 `kanidm-cli-home` 卷）：
+  ```bash
+  podman run --rm -i -t --network host --add-host id.wraindrock.com:127.0.0.1 \
+    -v kanidm-cli-home:/tmp/k -e HOME=/tmp/k \
+    -e KANIDM_URL=https://id.wraindrock.com:8443 -e KANIDM_NAME=idm_admin \
+    -e KANIDM_ACCEPT_INVALID_CERTS=true \
+    --entrypoint kanidm docker.io/kanidm/tools:1.11.2 login
+  ```
+- **OIDC 接入要点**（实测）：发现地址是**按客户端**的
+  `https://id.wraindrock.com/oauth2/openid/<客户端名>/.well-known/openid-configuration`；
+  `update-claim-map <客户端> <声明> <组> [值...]`（值以空格分隔，JSON 数组字面量不可用），
+  数组声明先 `update-claim-map-join <客户端> <声明> array`。
+- **备份**：随每日 03:00 / 后台手动备份执行 `config/backup/backup-kanidm.sh`
+  （`podman unshare` 内 SQLite 在线 `.backup` + 证书 → `felix-homelab-kanidm-<时间戳>.tar.gz`）。
+- **恢复**：停服务，把归档解回 `felix-homelab-kanidm-data` 卷，再启动：
+  ```bash
+  systemctl --user stop felix-homelab-kanidm.service
+  podman unshare tar -xzf <归档> \
+    -C "$(podman volume inspect -f '{{.Mountpoint}}' felix-homelab-kanidm-data)" .
+  systemctl --user start felix-homelab-kanidm.service
+  ```
+- **状态**：P0 完成（服务/客户端/发现/公网全通）；P1 进行中——Forgejo OIDC
+  （本地密码登录保留为并行方式）、主站 OIDC。规划见 `site/TODO.md`。
 
 ## 后台运维（/admin）
 
@@ -749,6 +793,7 @@ hostname 作为监听地址。
 | `felix-homelab-caddy-*`      | Caddy 证书与配置     |
 | `felix-homelab-opencloud-config` | OpenCloud 配置与 IDM 密钥 |
 | `felix-homelab-opencloud-data`   | OpenCloud 文件与 decomposedfs 元数据（依赖 xattr） |
+| `felix-homelab-kanidm-data`      | Kanidm 数据库（SQLite）与 TLS 证书 |
 | `felix-agent-<用户名>-data`  | 各用户 Agent 运行数据（凭据/会话，每个授权账号一个） |
 
 配置目录（含 `.env`、`Caddyfile`、`homepage/`、`runner-config.yml`、`runner.secret`）

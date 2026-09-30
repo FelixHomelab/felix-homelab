@@ -961,10 +961,10 @@ UPDATE users SET role = 'admin' WHERE username = 'Felix' COLLATE NOCASE;
 
 ---
 
-## 统一账户（Kanidm + Tuwunel）— 未排期，方案已定稿待 P0 验证
+## 统一账户（Kanidm + Tuwunel）— P1 进行中（Kanidm 已常驻，接 Forgejo OIDC）
 
 > 决策记录：因云服务器端口限制无法自建邮箱，改用 **Kanidm（IdP）+ Tuwunel（Matrix
-> Homeserver）** 做统一账号。**当前优先做光遇整改，本项暂缓**；恢复时从 P0 开始。
+> Homeserver）** 做统一账号。
 
 **目标**：一套账号覆盖统一登录 / 昵称 / 私聊 / 联系人 / 多级管理员与 VIP；
 下游 Forgejo、OpenCloud、主站、Matrix 全部走 Kanidm OIDC。
@@ -996,15 +996,24 @@ v1.9.3）；自托管 Element Web 另加 ~50MB（也可先用官方托管）。
   `https://id.wraindrock.com/oauth2/openid/<client>/.well-known/openid-configuration`
 - 本地已实测：建组 `felix-admins`、public 客户端 `web`、scope 映射、
   claim 映射（`groups`，join=array）+ discovery 200
-- 待办：CF Tunnel 增加 `id.wraindrock.com → https://localhost:8443`（开启 No TLS Verify）；
-  P2 再验 Tuwunel 的 discovery 连通性
+- CF Tunnel 已加 `id.wraindrock.com → https://localhost:8443`（No TLS Verify）：
+  **注意 Tunnel 的 Public Hostname 按顺序匹配，通配 `*` 必须排最后**，否则具体
+  主机名会被通配截胡（P0 踩坑：表现为空 200）；加错时删掉 `*` 重加一次即可
+- 公网实测：`https://id.wraindrock.com/oauth2/openid/web/.well-known/openid-configuration`
+  200 / 1340B / issuer 正确
 
-**落地阶段（未开始）**：
-- P0 验证（不动现有登录）：Kanidm 试实例，确认 claim 命令、Caddy TLS 回源
-  （`reverse_proxy https://kanidm:8443 { transport http { tls_insecure_skip_verify } }`）、
-  Tuwunel 对 Kanidm discovery 的连通；产出定稿配置。
-- P1：Forgejo OIDC（官方文档最成熟）→ 主站加 OIDC 登录（**并联**，保留密码登录）；
-  按 `preferred_username` 绑定既有账号。
+**落地阶段**：
+- P0 验证（已完成）：Kanidm 试实例、claim 命令、按客户端 discovery、公网连通。
+- P1（进行中）：
+  - ✅ Kanidm 常驻化：quadlet `felix-homelab-kanidm.container`（只发布回环 8443）、
+    正式卷 `felix-homelab-kanidm-data`（数据已从试实例迁移）、
+    `config/backup/backup-kanidm.sh`（SQLite 在线 .backup + 证书）已接入每日/手动备份、
+    install/uninstall/Makefile/`.env.example` 已接线；试实例卷 `kanidm-p0-data` 已删除
+    （`kanidm-cli-home` 保留：CLI 登录会话缓存，丢了重新 login 即可）
+  - ⏳ Forgejo OIDC：Kanidm 建 confidential 客户端 `forgejo` + Forgejo `admin auth add-oauth`
+    （auto-discover 用按客户端 discovery URL；先关自动注册、按 `preferred_username` 绑定既有
+    `Felix` 账号；本地密码登录**保留并联**）
+  - ⏳ 主站 OIDC（同样并联，保留密码登录）
 - P2：Tuwunel 部署（**完全关闭联邦**），Element 接入；数据卷纳入备份。
 - P3：OpenCloud 外接 IdP PoC。
 

@@ -1,0 +1,27 @@
+[Unit]
+Description=Felix-Homelab: Kanidm（统一账户 IdP，id.wraindrock.com）
+Documentation=https://kanidm.github.io/kanidm/
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=felix-homelab-kanidm
+Image=docker.io/kanidm/server:1.11.2
+# 只发布到宿主回环；公网经 Cloudflare Tunnel（id.wraindrock.com → https://localhost:8443，noTLSVerify）
+PublishPort=127.0.0.1:8443:8443
+Timezone=local
+Environment=KANIDM_DOMAIN=id.wraindrock.com
+Environment=KANIDM_ORIGIN=https://id.wraindrock.com
+Environment=KANIDM_BINDADDRESS=0.0.0.0:8443
+Environment=KANIDM_DB_PATH=/data/kanidm.db
+Environment=KANIDM_TLS_CHAIN=/data/chain.pem
+Environment=KANIDM_TLS_KEY=/data/key.pem
+Environment=KANIDM_LOG_LEVEL=info
+Volume=felix-homelab-kanidm-data.volume:/data
+
+[Service]
+Restart=always
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target
