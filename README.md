@@ -390,6 +390,16 @@ Tunnel 暴露为 `https://id.wraindrock.com`。
   `/user/oauth2/Wraindrock/callback`）。
 - **状态**：P0 完成；P1 进行中——✅ Forgejo OIDC（已闭环）、✅ 分组账户策略与开户流程、✅ 主站 OIDC。规划见 `site/TODO.md`。
 
+## 首页与导航（订阅相关）
+
+- **开场动画**：首页每会话首次访问时，黑底居中「Wraindrock」→ 飞至顶栏品牌位 → 遮罩淡出、内容淡入。
+  纯 CSS + 两段内联脚本实现（见 `app.rs` 的 `SPLASH_*_SCRIPT`），不依赖 wasm 水合；
+  尊重 `prefers-reduced-motion`；带 5 秒兜底，脚本异常也不会把内容藏住。
+- **导航**：「购买订阅」（`/services`，价格目录）与「我的订阅」（`/subscriptions`）。
+- **我的订阅**：展示已订阅的 AI Agent（卡片：打开即用、有效期、状态）与容量订阅
+  （OpenCloud / Forgejo 共用容量；订单系统上线后显示已购/已用/剩余/到期）。
+  原先放在首页的「我的 Agent」区块已并入此页。
+
 ## 后台运维（/admin）
 
 登录主站后点顶栏「后台」，包含：

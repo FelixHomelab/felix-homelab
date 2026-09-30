@@ -38,7 +38,8 @@ pub fn SiteHeader() -> impl IntoView {
                     <a href="/blog">"博客"</a>
                     <a href="/community">"社区"</a>
                     <a href="/sky">"光遇"</a>
-                    <a href="/services">"服务购买"</a>
+                    <a href="/services">"购买订阅"</a>
+                    <a href="/subscriptions">"我的订阅"</a>
                     <a
                         class="nav-service"
                         href="https://opencloud.wraindrock.com/"

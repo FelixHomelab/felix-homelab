@@ -3,8 +3,10 @@
 pub mod admin;
 pub mod community;
 pub mod services;
+pub mod subscriptions;
 
 pub use services::ServicesPage;
+pub use subscriptions::SubscriptionsPage;
 
 use crate::auth::UserState;
 use crate::agents::{agent_kind_label, my_agents, AgentRow};
@@ -119,7 +121,6 @@ pub fn HomePage() -> impl IntoView {
             </div>
         </section>
 
-        <MyAgentsSection />
 
         <section class="wrap section">
             <div class="section-head">
@@ -176,7 +177,7 @@ pub fn HomePage() -> impl IntoView {
 /// 因此这里**服务端输出空，水合完成后才在客户端渲染**：
 /// SSR 与客户端首帧都是空，天然一致；随后 effect 触发正常更新。
 #[component]
-fn MyAgentsSection() -> impl IntoView {
+pub(crate) fn MyAgentsSection() -> impl IntoView {
     let agents = Resource::new(|| (), |_| my_agents());
     let mounted = RwSignal::new(false);
     // effect 只在客户端运行，且在水合完成后执行
@@ -225,7 +226,7 @@ fn MyAgentsSection() -> impl IntoView {
 
 /// 首屏上的一个 Agent 入口卡片。
 #[component]
-fn MyAgentCard(agent: AgentRow) -> impl IntoView {
+pub(crate) fn MyAgentCard(agent: AgentRow) -> impl IntoView {
     let status_label = match agent.status.as_str() {
         "active" => "已开通",
         "stopped" => "已暂停",
@@ -1413,6 +1414,11 @@ pub fn NotFound() -> impl IntoView {
 #[component]
 pub fn Layout(children: Children) -> impl IntoView {
     view! {
+        // 开场遮罩：默认 CSS 隐藏，仅当 <html> 带 splash-pending 时显示
+        // （见 app.rs 的 SPLASH_*_SCRIPT）。
+        <div class="splash" aria-hidden="true">
+            <span class="splash-logo">"Wraindrock"</span>
+        </div>
         <SiteHeader />
         <main class="site-main">{children()}</main>
         <SiteFooter />

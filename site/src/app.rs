@@ -15,13 +15,73 @@ use crate::pages::community::{
 use crate::pages::{
     AboutPage, AppearancePage, BlogIndex, BlogPost, BlogTag, HomePage, Layout,
     LoginPage, NotFound, ProjectIndex, ProjectShow, RegisterPage, ServicesPage,
-    SkyBoostingPage, SkyCategoryPage, SkyIndex, SkyOfficialPage, UserProfilePage,
+    SkyBoostingPage, SkyCategoryPage, SkyIndex, SkyOfficialPage, SubscriptionsPage,
+    UserProfilePage,
 };
 use crate::theme::{ThemePrefs, ThemeState};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, Html, MetaTags, Stylesheet};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::{path, SsrMode, StaticSegment};
+
+/// 开场动画判定脚本（head，尽早执行以免内容先闪现）。
+const SPLASH_HEAD_SCRIPT: &str = r#"
+try {
+  var d = document.documentElement;
+  if (location.pathname === "/"
+      && !sessionStorage.getItem("wr_splash")
+      && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    d.classList.add("splash-pending");
+    setTimeout(function () { d.classList.remove("splash-pending"); }, 5000);
+  }
+} catch (e) {}
+"#;
+
+/// 开场动画驱动脚本（body 末尾，等 DOM 就绪后执行）。
+///
+/// 纯 DOM 操作，不依赖 wasm 水合：量出居中 Logo 与顶栏品牌的位置差，
+/// 用 transform 把它“飞”到品牌位，然后淡出遮罩、内容淡入。
+const SPLASH_BODY_SCRIPT: &str = r#"
+(function () {
+  var d = document.documentElement;
+  if (!d.classList.contains("splash-pending")) return;
+  function run() {
+    var splash = document.querySelector(".splash");
+    var logo = document.querySelector(".splash-logo");
+    var brand = document.querySelector(".site-header .brand");
+    if (!splash || !logo || !brand) {
+      d.classList.remove("splash-pending");
+      return;
+    }
+    var finish = function () {
+      try { sessionStorage.setItem("wr_splash", "1"); } catch (e) {}
+      splash.classList.add("splash-hidden");
+      d.classList.remove("splash-pending");
+      setTimeout(function () {
+        if (splash.parentNode) splash.parentNode.removeChild(splash);
+      }, 700);
+    };
+    setTimeout(function () {
+      var lr = logo.getBoundingClientRect();
+      var br = brand.getBoundingClientRect();
+      if (!lr.height || !br.height) { finish(); return; }
+      var s = Math.min(Math.max(br.height / lr.height, 0.1), 1);
+      var dx = br.left - lr.left;
+      var dy = (br.top + br.height / 2) - (lr.top + lr.height / 2);
+      logo.style.transformOrigin = "top left";
+      logo.style.transition = "transform .85s cubic-bezier(.22,.61,.36,1), color .85s ease";
+      logo.style.transform = "translate(" + dx + "px," + dy + "px) scale(" + s + ")";
+      logo.style.color = "var(--ink)";
+      setTimeout(finish, 880);
+    }, 480);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+})();
+"#;
 
 /// 文档外壳。整站只有这一处 `<html>`。
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -35,9 +95,13 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <AutoReload options=options.clone() />
                 <HydrationScripts options />
                 <MetaTags />
+                // 开场动画判定：只在首页、每个会话第一次、且用户未要求减少动态效果时启用。
+                // 5 秒兜底移除 class，万一后续脚本异常也不会把内容永久藏起来。
+                <script inner_html=SPLASH_HEAD_SCRIPT></script>
             </head>
             <body>
                 <App />
+                <script inner_html=SPLASH_BODY_SCRIPT></script>
             </body>
         </html>
     }
@@ -118,6 +182,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/projects/:slug") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about") view=AboutPage ssr=SsrMode::Async />
                     <Route path=path!("/services") view=ServicesPage ssr=SsrMode::Async />
+                    <Route path=path!("/subscriptions") view=SubscriptionsPage ssr=SsrMode::Async />
                     <Route path=path!("/sky") view=SkyIndex ssr=SsrMode::Async />
                     // boosting 必须排在 :category 之前，否则它会被当成一个分类
                     <Route path=path!("/sky/boosting") view=SkyBoostingPage ssr=SsrMode::Async />
@@ -211,6 +276,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/projects/:slug/") view=ProjectShow ssr=SsrMode::Async />
                     <Route path=path!("/about/") view=AboutPage ssr=SsrMode::Async />
                     <Route path=path!("/services/") view=ServicesPage ssr=SsrMode::Async />
+                    <Route path=path!("/subscriptions/") view=SubscriptionsPage ssr=SsrMode::Async />
                     <Route path=path!("/sky/") view=SkyIndex ssr=SsrMode::Async />
                     <Route path=path!("/sky/boosting/") view=SkyBoostingPage ssr=SsrMode::Async />
                     <Route path=path!("/sky/community/") view=SkyCommunityIndex ssr=SsrMode::Async />

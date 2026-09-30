@@ -65,14 +65,14 @@ fn capacity_table() -> impl IntoView {
 #[component]
 pub fn ServicesPage() -> impl IntoView {
     view! {
-        <Title text="服务购买 — Wraindrock" />
+        <Title text="购买订阅 — Wraindrock" />
         <Meta
             name="description"
             content="Wraindrock 服务订阅：AI Agent、OpenCloud 云盘与 Forgejo 代码托管的价格与容量说明。"
         />
         <PageHeader
-            title="服务购买"
-            lede="Wraindrock 的三项自托管服务：AI Agent 按周期订阅；OpenCloud 与 Forgejo 按容量订阅。下单入口即将开放。"
+            title="购买订阅"
+            lede="Wraindrock 的三项自托管订阅：AI Agent 按周期订阅；OpenCloud 与 Forgejo 按容量订阅。下单入口即将开放。"
         />
 
         <section class="wrap section">

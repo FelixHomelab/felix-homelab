@@ -1876,3 +1876,53 @@ html.dark .status-published {
     background: #052e16;
     color: #86efac;
 }
+
+/* ---------------------------------------------------------------------------
+   开场动画（仅首页、每会话一次；见 app.rs 的 SPLASH_*_SCRIPT）
+   --------------------------------------------------------------------------- */
+
+.splash {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: #020409;
+    transition: opacity 0.6s ease;
+}
+
+html.splash-pending .splash {
+    display: flex;
+}
+
+html.splash-pending body {
+    overflow: hidden;
+}
+
+.splash-logo {
+    font-size: clamp(2.2rem, 9vw, 5.5rem);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #fff;
+    will-change: transform;
+}
+
+.splash-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 内容在动画期间隐藏，遮罩退场时淡入 */
+.site-header,
+.site-main,
+.site-footer {
+    transition: opacity 0.5s ease;
+}
+
+html.splash-pending .site-header,
+html.splash-pending .site-main,
+html.splash-pending .site-footer {
+    opacity: 0;
+    transition: none;
+}
